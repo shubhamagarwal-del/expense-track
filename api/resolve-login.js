@@ -4,6 +4,11 @@ export default async function handler(req, res) {
   if (req.method !== 'POST')
     return res.status(405).json({ error: 'Method not allowed' });
 
+  if (typeof req.body === 'string') {
+    try { req.body = JSON.parse(req.body); } catch { req.body = {}; }
+  }
+  req.body = req.body || {};
+
   const { identifier } = req.body;
   if (!identifier || !identifier.trim())
     return res.status(400).json({ error: 'Identifier is required' });
@@ -22,7 +27,7 @@ export default async function handler(req, res) {
     .limit(1)
     .maybeSingle();
 
-  if (error || !data) {
+  if (error || !data || !data.email) {
     return res.status(404).json({ error: 'No account found. Try your email address.' });
   }
 
