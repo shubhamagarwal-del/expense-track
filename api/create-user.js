@@ -48,16 +48,12 @@ export default async function handler(req, res) {
 
   const { role, name, emp_no, phone, site_name, department, company_id } = req.body;
 
-  console.log('[create-user] body:', JSON.stringify({ role, phone, name }));
-
   if (!phone || !role) {
-    return res.status(400).json({ error: 'Missing phone or role' });
+    return res.status(400).json({ error: `Missing phone or role — received: phone=${JSON.stringify(phone)}, role=${JSON.stringify(role)}, bodyType=${typeof req.body}` });
   }
 
   const email = `${phone}@expensetrack.internal`;
   const password = '0987654321';
-
-  console.log('[create-user] creating auth user:', email);
 
   // 1. Create the user using Supabase Admin API
   const { data: newUser, error: createError } = await supabaseAdmin.auth.admin.createUser({
@@ -67,8 +63,7 @@ export default async function handler(req, res) {
   });
 
   if (createError) {
-    console.log('[create-user] Supabase error:', createError.message, createError.status);
-    return res.status(400).json({ error: createError.message });
+    return res.status(400).json({ error: `[Supabase] ${createError.message} (email=${email})` });
   }
 
   // 2. Insert their role and details into the users table
