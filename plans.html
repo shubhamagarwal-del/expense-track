@@ -1,0 +1,314 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ExpenseTrack — Work Plans</title>
+  <link rel="stylesheet" href="style.css" />
+
+  <!-- PWA -->
+  <link rel="manifest" href="/manifest.json" />
+  <meta name="theme-color" content="#6366f1" />
+  <link rel="icon" type="image/svg+xml" href="/icon.svg" />
+  <link rel="apple-touch-icon" href="/icon.svg" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="ExpenseTrack" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <script src="/pwa-register.js" defer></script>
+</head>
+
+<body>
+
+  <div class="app-layout">
+    <div class="sidebar-overlay" id="sidebar-overlay" onclick="closeSidebar()"></div>
+
+    <nav class="sidebar" id="sidebar">
+      <div class="sidebar-logo">
+        <div class="logo-icon">💰</div>
+        <span class="logo-text">ExpenseTrack</span>
+      </div>
+
+      <div class="sidebar-nav">
+        <p class="sidebar-nav-label">Menu</p>
+        <a href="dashboard.html" class="sidebar-link">
+          <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round"
+              d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
+          </svg>
+          Dashboard
+        </a>
+        <a href="plans.html" class="sidebar-link active">
+          <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round"
+              d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+          </svg>
+          Work Plans
+        </a>
+        <a href="add-expense.html" class="sidebar-link" id="sb-add-link">
+          <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4" />
+          </svg>
+          Add Expense
+        </a>
+        <a href="profile.html" class="sidebar-link">
+          <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round"
+              d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+          </svg>
+          My Profile
+        </a>
+        <a href="create-user.html" class="sidebar-link" id="sb-create-user-link">
+          <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round"
+              d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z" />
+          </svg>
+          Create User
+        </a>
+
+        <a href="manage-users.html" class="sidebar-link" id="sb-manage-users-link">
+          <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round"
+              d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" />
+          </svg>
+          Manage Users
+        </a>
+      </div>
+
+      <div class="sidebar-footer">
+        <div class="sidebar-user">
+          <div class="avatar" id="sb-avatar">?</div>
+          <div>
+            <div class="sidebar-user-email" id="sb-email">Loading…</div>
+            <div class="sidebar-user-role" id="sb-role">—</div>
+          </div>
+        </div>
+        <button class="sidebar-btn" onclick="toggleTheme()">
+          <span id="theme-icon">🌙</span>
+          <span id="theme-text">Dark Mode</span>
+        </button>
+        <button class="sidebar-btn" onclick="logout()">
+          <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round"
+              d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+          </svg>
+          Sign Out
+        </button>
+      </div>
+    </nav>
+
+    <div class="app-main">
+      <header class="topbar">
+        <button class="topbar-menu" onclick="toggleSidebar()">
+          <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 12h16M4 18h16" />
+          </svg>
+        </button>
+        <span class="topbar-title">Work Plans</span>
+        <div class="topbar-right" id="topbar-right"></div>
+      </header>
+
+      <main class="page-content" id="main-content">
+        <!-- Content injected by JS -->
+        <div class="loading-state">
+          <div class="spinner"></div>
+          <span>Loading plans…</span>
+        </div>
+      </main>
+    </div>
+  </div>
+
+  <!-- Modal for New Plan -->
+  <div id="plan-modal" class="modal-overlay" style="display:none">
+    <div class="modal-card p-4 rounded-xl shadow-sm" style="max-width: 450px;">
+      <div class="modal-header flex justify-between items-center mb-4">
+        <h3 class="modal-title font-bold" style="font-size: 1.1rem">Create Work Plan</h3>
+        <button class="modal-close btn btn-ghost btn-sm" onclick="closePlanModal()"
+          style="min-height:0; width:32px; height:32px; padding:0">✕</button>
+      </div>
+      <form id="plan-form" onsubmit="handleCreatePlan(event)" class="grid gap-3">
+        <div class="form-group">
+          <label class="form-label">Plan Title</label>
+          <input type="text" id="p-title" class="form-input" placeholder="e.g. Client Meeting..." required />
+        </div>
+        <div class="form-row">
+          <div class="form-group flex-1">
+            <label class="form-label">Start Date</label>
+            <input type="date" id="p-start" class="form-input" required />
+          </div>
+          <div class="form-group flex-1">
+            <label class="form-label">End Date</label>
+            <input type="date" id="p-end" class="form-input" required />
+          </div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Details</label>
+          <textarea id="p-desc" class="form-input" rows="3" placeholder="Add some details..."></textarea>
+        </div>
+        <button type="submit" id="p-btn" class="btn btn-primary btn-block mt-2">Save Work Plan</button>
+      </form>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="app.js"></script>
+  <script>
+    let currentProfile = null;
+    let allPlans = [];
+
+    (async () => {
+      const user = await requireAuth();
+      if (!user) return;
+      const profile = await getUserProfile();
+      if (!profile) return;
+      currentProfile = profile;
+      populateSidebar(profile);
+      initTheme();
+      loadPlans();
+    })();
+
+    async function loadPlans() {
+      try {
+        const { data, error } = await db
+          .from('plans')
+          .select('*, users(email)')
+          .order('start_date', { ascending: false });
+
+        if (error) throw error;
+        allPlans = data;
+        renderPlans();
+      } catch (err) {
+        showMessage(err.message, 'error');
+      }
+    }
+
+    function renderPlans() {
+      const isAdmin = currentProfile.role === 'admin' || currentProfile.role === 'super_admin';
+      const main = document.getElementById('main-content');
+
+      let html = `
+      <div class="page-header">
+        <div class="page-title-block">
+          <h1>${isAdmin ? 'All Employee Plans' : 'My Work Plans'}</h1>
+          <p>${isAdmin ? 'Monitor team schedules and progress' : 'Schedule your tasks and goals'}</p>
+        </div>
+        ${!isAdmin ? `<button class="btn btn-primary" onclick="openPlanModal()">+ New Plan</button>` : ''}
+      </div>
+      
+      <div class="expense-list" style="margin-top: 1.5rem">
+        ${allPlans.length === 0 ? emptyState('No plans found', 'Start by creating your first work plan.') : allPlans.map(planCard).join('')}
+      </div>
+    `;
+      main.innerHTML = html;
+    }
+
+    function planCard(p) {
+      const isOwner = p.user_id === currentProfile.id;
+      const dateStr = p.start_date === p.end_date
+        ? formatDate(p.start_date)
+        : `${formatDate(p.start_date)} - ${formatDate(p.end_date)}`;
+
+      return `
+      <div class="expense-card" style="border-left: 4px solid ${p.status === 'completed' ? '#10b981' : '#6366f1'}">
+        <div class="expense-card-top">
+          <span class="expense-card-amount" style="font-size: 1.1rem">${escHtml(p.title)}</span>
+          <span class="status-badge badge-${p.status === 'completed' ? 'approved' : 'pending'}">${p.status}</span>
+        </div>
+        <div class="expense-card-meta" style="display: flex; flex-wrap: wrap; gap: 0.5rem 1rem;">
+          <span>📅 ${dateStr}</span>
+          ${currentProfile.role !== 'employee' ? `<span>👤 ${escHtml(p.users?.email)}</span>` : ''}
+        </div>
+        <div class="expense-card-desc" style="margin-top: 0.5rem; color: var(--text-2)">${escHtml(p.description || 'No details provided.')}</div>
+        
+        ${isOwner && p.status === 'active' ? `
+          <div class="expense-card-footer" style="margin-top: 1rem; border-top: 1px solid var(--border); padding-top: 0.75rem;">
+            <button onclick="markCompleted('${p.id}')" class="btn btn-primary btn-sm" style="width: 100%">Mark as Completed</button>
+          </div>
+        ` : ''}
+      </div>
+    `;
+    }
+
+    function openPlanModal() {
+      document.getElementById('plan-modal').style.display = 'flex';
+      const today = new Date().toISOString().split('T')[0];
+      document.getElementById('p-start').value = today;
+      document.getElementById('p-end').value = today;
+    }
+
+    function closePlanModal() {
+      document.getElementById('plan-modal').style.display = 'none';
+    }
+
+    async function handleCreatePlan(e) {
+      e.preventDefault();
+      const btn = document.getElementById('p-btn');
+      const title = document.getElementById('p-title').value;
+      const start_date = document.getElementById('p-start').value;
+      const end_date = document.getElementById('p-end').value;
+      const description = document.getElementById('p-desc').value;
+
+      setLoading(btn, true);
+      try {
+        const { error } = await db.from('plans').insert([{
+          user_id: currentProfile.id,
+          title,
+          start_date,
+          end_date,
+          description
+        }]);
+        if (error) throw error;
+        showMessage('Plan created!', 'success');
+        closePlanModal();
+        loadPlans();
+      } catch (err) {
+        showMessage(err.message, 'error');
+      } finally {
+        setLoading(btn, false);
+      }
+    }
+
+    async function markCompleted(id) {
+      try {
+        const { error } = await db.from('plans').update({ status: 'completed' }).eq('id', id);
+        if (error) throw error;
+        showMessage('Plan marked as completed!', 'success');
+        loadPlans();
+      } catch (err) {
+        showMessage(err.message, 'error');
+      }
+    }
+
+    function emptyState(title, sub) {
+      return `
+      <div class="empty-state">
+        <div class="empty-icon">📂</div>
+        <p class="empty-title">${title}</p>
+        <p class="empty-sub">${sub}</p>
+      </div>`;
+    }
+
+    function initTheme() {
+      if (localStorage.getItem('theme') === 'dark') {
+        document.body.classList.add('dark');
+        updateThemeUI(true);
+      }
+    }
+
+    function toggleTheme() {
+      const isDark = document.body.classList.toggle('dark');
+      localStorage.setItem('theme', isDark ? 'dark' : 'light');
+      updateThemeUI(isDark);
+    }
+
+    function updateThemeUI(isDark) {
+      const icon = document.getElementById('theme-icon');
+      const text = document.getElementById('theme-text');
+      if (icon) icon.textContent = isDark ? '☀️' : '🌙';
+      if (text) text.textContent = isDark ? 'Light Mode' : 'Dark Mode';
+    }
+  </script>
+</body>
+
+</html>

@@ -1,0 +1,1699 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ExpenseTrack — Dashboard</title>
+  <link rel="stylesheet" href="style.css" />
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js"></script>
+
+  <!-- PWA -->
+  <link rel="manifest" href="/manifest.json" />
+  <meta name="theme-color" content="#6366f1" />
+  <link rel="icon" type="image/svg+xml" href="/icon.svg" />
+  <link rel="apple-touch-icon" href="/icon.svg" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="ExpenseTrack" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <script src="/pwa-register.js" defer></script>
+</head>
+
+<body>
+
+  <div class="app-layout">
+
+    <!-- Mobile sidebar backdrop -->
+    <div class="sidebar-overlay" id="sidebar-overlay" onclick="closeSidebar()"></div>
+
+    <!-- ── Sidebar ──────────────────────────────────────────── -->
+    <nav class="sidebar" id="sidebar">
+
+      <!-- Logo -->
+      <div class="sidebar-logo">
+        <div class="logo-icon">💰</div>
+        <span class="logo-text">ExpenseTrack</span>
+      </div>
+
+      <!-- Navigation links -->
+      <div class="sidebar-nav">
+        <p class="sidebar-nav-label">Menu</p>
+
+        <a href="dashboard.html" class="sidebar-link active">
+          <!-- home icon -->
+          <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round"
+              d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
+          </svg>
+          Dashboard
+        </a>
+
+        <a href="plans.html" class="sidebar-link" id="sb-plans-link">
+          <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round"
+              d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+          </svg>
+          Work Plans
+        </a>
+
+        <a href="add-expense.html" class="sidebar-link" id="sb-add-link">
+          <!-- plus icon -->
+          <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4" />
+          </svg>
+          Add Expense
+        </a>
+
+        <a href="create-user.html" class="sidebar-link" id="sb-create-user-link">
+          <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round"
+              d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z" />
+          </svg>
+          Create User
+        </a>
+
+        <a href="manage-users.html" class="sidebar-link" id="sb-manage-users-link">
+          <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round"
+              d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" />
+          </svg>
+          Manage Users
+        </a>
+      </div>
+
+      <!-- User footer -->
+      <div class="sidebar-footer">
+        <div class="sidebar-user">
+          <div class="avatar" id="sb-avatar">?</div>
+          <div>
+            <div class="sidebar-user-email" id="sb-email">Loading…</div>
+            <div class="sidebar-user-role" id="sb-role">—</div>
+          </div>
+          <button class="sidebar-btn" onclick="toggleTheme()">
+            <span id="theme-icon">🌙</span>
+            <span id="theme-text">Dark Mode</span>
+          </button>
+          <button class="sidebar-btn" onclick="logout()">
+            <!-- logout icon -->
+            <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+              <path stroke-linecap="round" stroke-linejoin="round"
+                d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+            </svg>
+            Sign Out
+          </button>
+        </div>
+
+        <!-- Bulk Action Bar -->
+        <div id="bulk-bar" class="bulk-bar">
+          <span class="bulk-info" id="bulk-count-text">0 items selected</span>
+          <div style="display:flex; gap: 0.5rem">
+            <button class="btn btn-primary btn-sm" onclick="bulkStatusUpdate('approved')">Approve Selected</button>
+            <button class="btn btn-secondary btn-sm" onclick="bulkStatusUpdate('rejected')">Reject Selected</button>
+          </div>
+        </div>
+
+    </nav><!-- .sidebar -->
+
+    <!-- ── Main ─────────────────────────────────────────────── -->
+    <div class="app-main">
+
+      <!-- Top bar -->
+      <header class="topbar">
+        <button class="topbar-menu" onclick="toggleSidebar()" aria-label="Open menu">
+          <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 12h16M4 18h16" />
+          </svg>
+        </button>
+        <span class="topbar-title" id="topbar-title">Dashboard</span>
+        <div class="topbar-right" id="topbar-right"></div>
+      </header>
+
+      <!-- Page content (injected by JS) -->
+      <main class="page-content" id="main-content">
+        <div class="loading-state">
+          <div class="spinner"></div>
+          <span>Loading your dashboard…</span>
+        </div>
+      </main>
+
+    </div><!-- .app-main -->
+
+  </div><!-- .app-layout -->
+
+  <!-- ── Approval Modal ─────────────────────────────────────── -->
+  <div id="approval-modal" class="modal-overlay" style="display:none">
+    <div class="modal-card" style="max-width:520px;width:95vw">
+      <div class="modal-header">
+        <div>
+          <h3 style="margin:0" id="am-title">Review Expense</h3>
+          <p style="margin:.25rem 0 0;font-size:.82rem;color:var(--text-muted)" id="am-subtitle"></p>
+        </div>
+        <button class="modal-close" onclick="closeApprovalModal()">✕</button>
+      </div>
+      <div class="modal-body" style="display:grid;gap:1rem">
+        <!-- Expense summary card -->
+        <div style="background:var(--bg-page,#f9fafb);border-radius:12px;padding:1rem;border:1px solid var(--border);display:grid;grid-template-columns:1fr 1fr;gap:.75rem;font-size:.875rem">
+          <div><div style="font-size:.7rem;text-transform:uppercase;color:var(--text-muted);font-weight:700;margin-bottom:2px">Employee</div><strong id="am-emp"></strong></div>
+          <div><div style="font-size:.7rem;text-transform:uppercase;color:var(--text-muted);font-weight:700;margin-bottom:2px">Category</div><strong id="am-cat"></strong></div>
+          <div><div style="font-size:.7rem;text-transform:uppercase;color:var(--text-muted);font-weight:700;margin-bottom:2px">Submitted Amount</div><strong id="am-orig" style="color:var(--primary);font-size:1.1rem"></strong></div>
+          <div><div style="font-size:.7rem;text-transform:uppercase;color:var(--text-muted);font-weight:700;margin-bottom:2px">Date</div><strong id="am-date"></strong></div>
+        </div>
+        <input type="hidden" id="am-expense-id">
+        <!-- Receipt -->
+        <div id="am-receipt-row" style="display:none;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:10px;padding:.65rem 1rem;align-items:center;gap:.75rem">
+          <span style="font-size:.82rem;color:#065f46;font-weight:600">📎 Receipt attached</span>
+          <a id="am-receipt-link" href="javascript:void(0)" style="font-size:.82rem;font-weight:700;color:var(--primary);margin-left:auto">View Receipt →</a>
+        </div>
+        <!-- Approved amount -->
+        <div class="form-group" style="margin:0">
+          <label class="form-label">Approved Amount (₹)
+            <span style="font-size:.72rem;color:var(--text-muted);font-weight:500"> — edit if different from submitted</span>
+          </label>
+          <input type="number" class="form-input" id="am-amount" step="0.01" min="0" oninput="onAmountChange()">
+        </div>
+        <!-- Remark -->
+        <div class="form-group" style="margin:0">
+          <label class="form-label">Remark / Comment
+            <span id="am-remark-req" style="color:#dc2626;font-size:.72rem;display:none"> * required</span>
+          </label>
+          <textarea class="form-input" id="am-remark" rows="3" placeholder="Add a remark (required when changing amount or rejecting)…"></textarea>
+        </div>
+      </div>
+      <div class="modal-footer" style="gap:.75rem">
+        <button class="btn btn-secondary" onclick="closeApprovalModal()">Cancel</button>
+        <button class="btn btn-secondary" id="am-reject-btn"
+          style="background:#fef2f2;border:1px solid #fecaca;color:#dc2626;font-weight:700"
+          onclick="submitApprovalAction('rejected')">✕ Reject</button>
+        <button class="btn btn-primary" id="am-approve-btn"
+          onclick="submitApprovalAction('approved')">✓ Approve</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Custom Comment Modal (Static) -->
+  <div id="comment-modal" class="modal-overlay" style="display:none">
+    <div class="modal-card" style="max-width: 450px;">
+      <div class="modal-header">
+        <h3 id="modal-title">Admin Comment</h3>
+        <button class="modal-close" onclick="closeCommentModal()">✕</button>
+      </div>
+      <div class="modal-body">
+        <input type="hidden" id="modal-expense-id">
+        <div class="form-group">
+          <label class="form-label">Message / Feedback</label>
+          <textarea id="modal-comment-text" class="form-input" rows="4"
+            placeholder="Enter your feedback here..."></textarea>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" onclick="closeCommentModal()">Cancel</button>
+        <button class="btn btn-primary" onclick="saveModalComment()">Save Comment</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="app.js"></script>
+  <script>
+    let currentProfile = null;
+
+    // ─── Boot ─────────────────────────────────────────────────
+    (async () => {
+      const user = await requireAuth();
+      if (!user) return;
+
+      const profile = await getUserProfile();
+      if (!profile) {
+        showMessage('Could not load your profile. Please log in again.', 'error');
+        setTimeout(logout, 2000);
+        return;
+      }
+
+      currentProfile = profile;
+      populateSidebar(profile);
+      initTheme();
+      enforcePasswordChange(profile);
+
+      if (profile.role === 'admin' || profile.role === 'super_admin') {
+        const titleSuffix = profile.role === 'admin' && profile.department ? ` · ${profile.department}` : '';
+        document.getElementById('topbar-title').textContent =
+          profile.role === 'super_admin' ? 'Super Admin Panel' : `Manager Dashboard${titleSuffix}`;
+        renderAdminDashboard();
+      } else {
+        document.getElementById('topbar-title').textContent = 'My Expenses';
+        renderEmployeeDashboard();
+      }
+
+      setupRealtime();
+    })();
+
+    // ─── REAL-TIME ──────────────────────────────────────────────
+    let _rtDebounce = null;
+
+    function setupRealtime() {
+      db.channel('rt-dashboard-expenses')
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'expenses' }, () => {
+          clearTimeout(_rtDebounce);
+          _rtDebounce = setTimeout(async () => {
+            const isAdmin = currentProfile.role === 'admin' || currentProfile.role === 'super_admin';
+            try {
+              if (isAdmin) {
+                const companyId = currentProfile.role !== 'super_admin' ? (currentProfile.company_id || undefined) : undefined;
+                const expenses = deptFilter(await fetchExpenses({ companyId }));
+                allExpensesFetched = expenses;
+                updateAdminStats(expenses);
+                refreshListView();
+                renderAdminCharts(expenses);
+              } else {
+                const expenses = await fetchExpenses({ userId: currentProfile.id });
+                allExpensesFetched = expenses;
+                updateEmpStats(expenses);
+                refreshListView();
+              }
+            } catch (_) {}
+          }, 700);
+        })
+        .subscribe();
+    }
+
+    // ─── EMPLOYEE VIEW ──────────────────────────────────────────
+    function renderEmployeeDashboard() {
+      // Add "Add Expense" button to topbar on mobile
+      document.getElementById('topbar-right').innerHTML =
+        `<a href="add-expense.html" class="btn btn-primary btn-sm" style="border-radius:12px; padding: 0.6rem 1.25rem; font-weight:700">
+         <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5" style="width:14px;height:14px;margin-right:4px">
+           <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/>
+         </svg> Add
+       </a>`;
+
+      document.getElementById('main-content').innerHTML = `
+      <!-- Premium Header -->
+      <div style="background: linear-gradient(135deg, #1e1b4b 0%, #312e81 100%); margin: -2rem -2rem 2rem -2rem; padding: 3rem 2rem 5rem 2rem; border-radius: 0 0 40px 40px; color: white;">
+        <div style="max-width: 1200px; margin: 0 auto; display: flex; justify-content: space-between; align-items: center;">
+          <div>
+            <h1 style="font-size: 2.25rem; font-weight: 800; margin: 0; letter-spacing: -0.025em;">My Dashboard</h1>
+            <p style="opacity: 0.8; margin-top: 0.5rem; font-size: 1rem;">Track and manage your submitted expenses</p>
+          </div>
+          <a href="add-expense.html" class="btn btn-primary hide-mobile" style="background: white; color: #312e81; border: none; font-weight: 800; padding: 1rem 2rem; border-radius: 14px;">
+            <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5" style="width:16px;height:16px;margin-right:8px">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/>
+            </svg>
+            Submit New Expense
+          </a>
+        </div>
+      </div>
+
+      <!-- Stats Grid -->
+      <div style="max-width: 1200px; margin: -4rem auto 2rem auto; padding: 0 1rem; display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 1.5rem;">
+        <div class="stat-card" style="background: white; border-radius: 20px; padding: 1.75rem; box-shadow: 0 10px 25px rgba(0,0,0,0.05); display: flex; align-items: center; gap: 1.5rem; border: 1px solid rgba(0,0,0,0.03);">
+          <div style="width: 60px; height: 60px; background: rgba(99, 102, 241, 0.1); color: #6366f1; border-radius: 16px; display: flex; align-items: center; justify-content: center; font-size: 1.75rem;">📋</div>
+          <div>
+            <div style="font-size: 0.75rem; color: #6b7280; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em;">Total Records</div>
+            <div class="stat-value" id="s-count" style="font-size: 1.75rem; font-weight: 800; color: #111827; margin-top: 2px;">—</div>
+          </div>
+        </div>
+        <div class="stat-card" style="background: white; border-radius: 20px; padding: 1.75rem; box-shadow: 0 10px 25px rgba(0,0,0,0.05); display: flex; align-items: center; gap: 1.5rem; border: 1px solid rgba(0,0,0,0.03);">
+          <div style="width: 60px; height: 60px; background: rgba(139, 92, 246, 0.1); color: #8b5cf6; border-radius: 16px; display: flex; align-items: center; justify-content: center; font-size: 1.75rem;">💰</div>
+          <div>
+            <div style="font-size: 0.75rem; color: #6b7280; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em;">Total Amount</div>
+            <div class="stat-value" id="s-total" style="font-size: 1.75rem; font-weight: 800; color: #111827; margin-top: 2px;">—</div>
+          </div>
+        </div>
+        <div class="stat-card" style="background: white; border-radius: 20px; padding: 1.75rem; box-shadow: 0 10px 25px rgba(0,0,0,0.05); display: flex; align-items: center; gap: 1.5rem; border: 1px solid rgba(0,0,0,0.03);">
+          <div style="width: 60px; height: 60px; background: rgba(16, 185, 129, 0.1); color: #10b981; border-radius: 16px; display: flex; align-items: center; justify-content: center; font-size: 1.75rem;">📅</div>
+          <div>
+            <div style="font-size: 0.75rem; color: #6b7280; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em;">Current Month</div>
+            <div class="stat-value" id="s-month" style="font-size: 1.75rem; font-weight: 800; color: #111827; margin-top: 2px;">—</div>
+          </div>
+        </div>
+      </div>
+
+      <div style="max-width: 1200px; margin: 0 auto; padding: 0 1rem;">
+        <!-- Filter Tabs -->
+        <div class="filter-tabs p-2 mb-4" style="background: #f1f5f9; border-radius: 12px; display: flex; gap: 0.25rem; overflow-x: auto;">
+          <button class="filter-tab active" id="btn-f-all" onclick="setListFilter('all')" style="padding: 0.5rem 1rem; border-radius: 8px; font-weight: 700; flex: 1; min-width: 80px;">All</button>
+          <button class="filter-tab" id="btn-f-approved" onclick="setListFilter('approved')" style="padding: 0.5rem 1rem; border-radius: 8px; font-weight: 700; flex: 1; min-width: 80px;">Approved</button>
+          <button class="filter-tab" id="btn-f-pending" onclick="setListFilter('pending')" style="padding: 0.5rem 1rem; border-radius: 8px; font-weight: 700; flex: 1; min-width: 80px;">Pending</button>
+          <button class="filter-tab" id="btn-f-rejected" onclick="setListFilter('rejected')" style="padding: 0.5rem 1rem; border-radius: 8px; font-weight: 700; flex: 1; min-width: 80px;">Rejected</button>
+        </div>
+
+        <!-- Desktop table -->
+        <div class="show-desktop">
+          <div id="emp-table" style="background: white; border-radius: 24px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.02); border: 1px solid var(--border); overflow: hidden;">
+            <div class="loading-state"><div class="spinner"></div><span>Fetching expenses…</span></div>
+          </div>
+        </div>
+
+        <!-- Mobile cards -->
+        <div class="show-mobile" id="emp-cards">
+          <div class="loading-state"><div class="spinner"></div><span>Fetching expenses…</span></div>
+        </div>
+      </div>
+    `;
+
+      loadEmployeeExpenses();
+    }
+
+    let allExpensesFetched = [];
+    let currentListFilter = 'all';
+
+    async function loadEmployeeExpenses() {
+      try {
+        const expenses = await fetchExpenses({ userId: currentProfile.id });
+        allExpensesFetched = expenses;
+        updateEmpStats(expenses);
+        refreshListView();
+      } catch (err) {
+        showMessage('Failed to load expenses: ' + err.message, 'error');
+      }
+    }
+
+    function setListFilter(status) {
+      currentListFilter = status;
+      // Update button styles in both desktop and mobile if they exist
+      document.querySelectorAll('.filter-tab').forEach(btn => {
+        btn.classList.toggle('active', btn.id === `btn-f-${status}`);
+      });
+      refreshListView();
+    }
+
+    function refreshListView() {
+      const search = document.getElementById('f-user-search')?.value.toLowerCase().trim() || '';
+      let filtered = allExpensesFetched;
+
+      // Filter by status tab (rejected covers both l1_rejected and rejected)
+      if (currentListFilter === 'rejected') {
+        filtered = filtered.filter(e => e.status === 'rejected' || e.status === 'l1_rejected');
+      } else if (currentListFilter !== 'all') {
+        filtered = filtered.filter(e => e.status === currentListFilter);
+      }
+
+      const isAdmin = currentProfile.role === 'admin' || currentProfile.role === 'super_admin';
+
+      // Filter by search string (Admins only)
+      if (search && isAdmin) {
+        filtered = filtered.filter(e => e.users?.email.toLowerCase().includes(search));
+      }
+
+      if (isAdmin) {
+        renderAdminTable(filtered);
+        renderAdminCards(filtered);
+        renderAdminCharts(filtered);
+      } else {
+        renderEmpTable(filtered);
+        renderEmpCards(filtered);
+      }
+    }
+
+    function updateEmpStats(expenses) {
+      const now = new Date();
+      const approvedAndPending = expenses.filter(e => e.status !== 'rejected' && e.status !== 'l1_rejected');
+      const effectiveAmt = e => e.approved_amount != null ? +e.approved_amount : +e.amount;
+      const total = approvedAndPending.reduce((s, e) => s + effectiveAmt(e), 0);
+      const month = approvedAndPending
+        .filter(e => { const d = new Date(e.created_at); return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth(); })
+        .reduce((s, e) => s + effectiveAmt(e), 0);
+      document.getElementById('s-count').textContent = expenses.length;
+      document.getElementById('s-total').textContent = formatCurrency(total);
+      document.getElementById('s-month').textContent = formatCurrency(month);
+    }
+
+    function renderEmpTable(expenses) {
+      const el = document.getElementById('emp-table');
+      if (!expenses.length) {
+        el.innerHTML = emptyState('No expenses found', 'Try selecting a different filter.');
+        return;
+      }
+      const total = expenses.reduce((s, e) => s + +e.amount, 0);
+      el.innerHTML = `
+      <div class="table-card-header">
+        <div>
+          <span class="table-card-title">Expense History</span>
+          <span class="table-card-count">${expenses.length} record${expenses.length !== 1 ? 's' : ''}</span>
+        </div>
+        <div class="table-header-total">
+          Total: <strong>${formatCurrency(total)}</strong>
+        </div>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Date</th><th>Category</th><th>Description</th>
+              <th>Amount</th><th>Status</th><th>Receipt</th>
+            </tr>
+          </thead>
+          <tbody>${expenses.map(empRow).join('')}</tbody>
+        </table>
+      </div>`;
+    }
+
+    function renderEmpCards(expenses) {
+      const el = document.getElementById('emp-cards');
+      if (!expenses.length) {
+        el.innerHTML = emptyState('No expenses found', 'Try selecting a different filter.');
+        return;
+      }
+      const total = expenses.reduce((s, e) => s + +e.amount, 0);
+      el.innerHTML = `
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.875rem">
+        <span style="font-weight:700;font-size:.9375rem">Expense History</span>
+        <span style="font-size:.8125rem;color:var(--primary);font-weight:700">${formatCurrency(total)}</span>
+      </div>
+      ${expenses.map(empCard).join('')}`;
+    }
+
+    // ─── ADMIN VIEW ──────────────────────────────────────────────
+    function renderAdminDashboard() {
+      const today = new Date().toISOString().split('T')[0];
+
+      const isDeptAdmin = currentProfile.role === 'admin';
+      const deptLabel   = isDeptAdmin && currentProfile.department ? currentProfile.department : null;
+
+      document.getElementById('main-content').innerHTML = `
+      <!-- Page header -->
+      <div class="page-header">
+        <div class="page-title-block">
+          <h1>${isDeptAdmin ? 'Manager Dashboard' : 'Super Admin Panel'}</h1>
+          <p>${deptLabel
+              ? `Showing <strong>${escHtml(deptLabel)}</strong> department requests only`
+              : 'Overview of all company expenses'}</p>
+        </div>
+        ${deptLabel ? `<span style="background:#dbeafe;color:#1e40af;border-radius:10px;padding:.35rem .9rem;font-size:.78rem;font-weight:700;white-space:nowrap;align-self:flex-start">🏢 ${escHtml(deptLabel)}</span>` : ''}
+      </div>
+
+      <!-- Stats -->
+      <div class="stats-grid">
+        <div class="stat-card">
+          <div class="stat-top">
+            <span class="stat-label">Today's Total</span>
+            <div class="stat-icon ic-amber">☀️</div>
+          </div>
+          <div class="stat-value" id="s-today">—</div>
+          <div class="stat-sub">Submitted today</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-top">
+            <span class="stat-label">This Month</span>
+            <div class="stat-icon ic-green">📅</div>
+          </div>
+          <div class="stat-value" id="s-month">—</div>
+          <div class="stat-sub">Current month</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-top">
+            <span class="stat-label">Total Records</span>
+            <div class="stat-icon ic-indigo">📋</div>
+          </div>
+          <div class="stat-value" id="s-count">—</div>
+          <div class="stat-sub">All expenses</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-top">
+            <span class="stat-label">All-Time Total</span>
+            <div class="stat-icon ic-violet">💵</div>
+          </div>
+          <div class="stat-value" id="s-total">—</div>
+          <div class="stat-sub">Grand total</div>
+        </div>
+      </div>
+
+      <!-- Filter bar -->
+      <div class="filter-bar p-4 mb-6 shadow-sm rounded-xl grid gap-4 items-center" style="grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));">
+        <div class="form-group mb-0">
+          <label class="form-label" for="f-month">Month</label>
+          <input class="form-input" type="month" id="f-month" onchange="autoUpdateCycleFilter()" />
+        </div>
+        <div class="form-group mb-0">
+          <label class="form-label" for="f-cycle">Cycle</label>
+          <select class="form-select" id="f-cycle">
+            <option value="all">All Cycles</option>
+            <option value="1st - 15th">Cycle 1 (1st - 15th)</option>
+            <option value="16th - End">Cycle 2 (16th - End)</option>
+          </select>
+        </div>
+        <div class="form-group mb-0">
+          <label class="form-label" for="f-user-search">Search</label>
+          <input class="form-input" type="text" id="f-user-search" placeholder="Email..." oninput="refreshListView()" />
+        </div>
+        <div class="flex gap-2 items-center" style="align-self: end;">
+          <button class="btn btn-primary btn-sm flex-1" onclick="applyCycleFilter()">Filter</button>
+          <button class="btn btn-secondary btn-sm" onclick="clearFilter()">✕</button>
+        </div>
+        
+        <div class="flex gap-2 sm-w-full" style="align-self: end; justify-content: flex-end;">
+          <button class="btn btn-primary btn-sm" onclick="exportMonthToExcel()">Month Excel</button>
+          <button class="btn btn-secondary btn-sm" onclick="exportToCSV()" style="background: #0f172a; color: white; border: none;">CSV</button>
+        </div>
+      </div>
+
+      <!-- Analytics Section -->
+      <div class="charts-row" id="admin-charts-section" style="display:none">
+        <div class="card chart-container">
+          <p class="card-title">Spending by Category</p>
+          <div style="height: 250px; position: relative">
+            <canvas id="categoryChart"></canvas>
+          </div>
+        </div>
+        
+        <!-- Cycle Progress Card -->
+        <div class="card chart-container" id="cycle-progress-card" style="display:none">
+          <p class="card-title">Cycle Progress (Daily Tracking)</p>
+          <div id="progress-summary" style="margin-bottom: 1rem;"></div>
+          <div class="progress-bar-wrap" style="height: 12px; background: var(--bg-2); border-radius: 6px; overflow: hidden; margin-bottom: 1.5rem;">
+            <div id="progress-bar-fill" style="height: 100%; background: var(--primary); width: 0%; transition: width 0.5s ease;"></div>
+          </div>
+          <p class="form-label" style="margin-bottom: 0.5rem;">Daily Status Grid</p>
+          <div id="day-grid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(35px, 1fr)); gap: 0.5rem;"></div>
+        </div>
+      </div>
+
+      <!-- Filter Tabs -->
+      <div class="filter-tabs">
+        <button class="filter-tab active" id="btn-f-all"        onclick="setListFilter('all')">All</button>
+        <button class="filter-tab" id="btn-f-pending"           onclick="setListFilter('pending')">Pending</button>
+        <button class="filter-tab" id="btn-f-l1_approved"       onclick="setListFilter('l1_approved')">In Review</button>
+        <button class="filter-tab" id="btn-f-approved"          onclick="setListFilter('approved')">Approved</button>
+        <button class="filter-tab" id="btn-f-rejected"          onclick="setListFilter('rejected')">Rejected</button>
+      </div>
+
+      <!-- Desktop table -->
+      <div class="show-desktop">
+        <div class="table-card" id="admin-table">
+          <div class="loading-state"><div class="spinner"></div><span>Fetching all expenses…</span></div>
+        </div>
+      </div>
+
+      <!-- Mobile cards -->
+      <div class="show-mobile" id="admin-cards">
+        <div class="loading-state"><div class="spinner"></div><span>Fetching all expenses…</span></div>
+      </div>
+    `;
+
+      loadAdminExpenses();
+    }
+
+    // Filter to own department for Line Managers; super_admin sees all
+    function deptFilter(expenses) {
+      if (currentProfile.role !== 'admin') return expenses;
+      const myDept = (currentProfile.department || '').toLowerCase().trim();
+      if (!myDept) return expenses;
+      return expenses.filter(e =>
+        (e.users?.department || '').toLowerCase().trim() === myDept
+      );
+    }
+
+    async function loadAdminExpenses(from, to) {
+      try {
+        // super_admin sees all companies; admin scoped to their company
+        const companyId = currentProfile.role !== 'super_admin' ? (currentProfile.company_id || undefined) : undefined;
+        const raw = await fetchExpenses({ from, to, companyId });
+        const expenses = deptFilter(raw);
+        allExpensesFetched = expenses;
+        updateAdminStats(expenses);
+        refreshListView();
+        renderAdminCharts(expenses);
+      } catch (err) {
+        showMessage('Failed to load expenses: ' + err.message, 'error');
+      }
+    }
+
+    function updateAdminStats(expenses) {
+      const now = new Date();
+      const today = now.toISOString().split('T')[0];
+      const effAmt = e => e.approved_amount != null ? +e.approved_amount : +e.amount;
+
+      const active = expenses.filter(e => e.status !== 'rejected' && e.status !== 'l1_rejected');
+      const todayTotal = active
+        .filter(e => e.created_at.startsWith(today))
+        .reduce((s, e) => s + effAmt(e), 0);
+      const monthTotal = active
+        .filter(e => { const d = new Date(e.created_at); return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth(); })
+        .reduce((s, e) => s + effAmt(e), 0);
+      const allTotal = active.reduce((s, e) => s + effAmt(e), 0);
+
+      document.getElementById('s-today').textContent = formatCurrency(todayTotal);
+      document.getElementById('s-month').textContent = formatCurrency(monthTotal);
+      document.getElementById('s-count').textContent = expenses.length;
+      document.getElementById('s-total').textContent = formatCurrency(allTotal);
+    }
+
+    function renderAdminTable(expenses) {
+      const el = document.getElementById('admin-table');
+      if (!el) return; // Safety check
+
+      if (!expenses.length) {
+        el.innerHTML = emptyState('No expenses found', 'Try selecting a different filter.');
+        return;
+      }
+
+      // Grouping logic: by user and cycle
+      const groups = {};
+      expenses.forEach(e => {
+        const userId = e.user_id;
+        const date = new Date(e.created_at);
+        const monthYear = date.toLocaleString('default', { month: 'long', year: 'numeric' });
+        const cycleNum = date.getDate() <= 15 ? 1 : 2;
+        const cycleText = cycleNum === 1 ? "1st - 15th" : "16th - End";
+        const groupKey = `${userId}_${monthYear}_${cycleNum}`;
+
+        if (!groups[groupKey]) {
+          groups[groupKey] = {
+            user: e.users,
+            monthYear,
+            cycleText,
+            totalAmount: 0,
+            entries: [],
+            days: new Set(),
+            status: 'pending'
+          };
+        }
+        groups[groupKey].entries.push(e);
+        groups[groupKey].days.add(date.getDate());
+      });
+
+      // Compute correct group status and total after all entries are added
+      Object.values(groups).forEach(g => {
+        const statuses = g.entries.map(e => e.status);
+        if (statuses.every(s => s === 'approved')) {
+          g.status = 'approved';
+        } else if (statuses.every(s => s === 'rejected' || s === 'l1_rejected')) {
+          g.status = 'rejected';
+        } else if (statuses.some(s => s === 'l1_approved' || s === 'approved')) {
+          g.status = 'l1_approved';
+        } else if (statuses.some(s => s === 'rejected' || s === 'l1_rejected')) {
+          g.status = 'l1_rejected';
+        } else {
+          g.status = 'pending';
+        }
+        // Use approved_amount for total, exclude rejected
+        g.totalAmount = g.entries.reduce((sum, e) => {
+          if (e.status === 'rejected' || e.status === 'l1_rejected') return sum;
+          return sum + (e.approved_amount != null ? +e.approved_amount : +e.amount);
+        }, 0);
+      });
+
+      const total = expenses.reduce((s, e) => {
+        if (e.status === 'rejected' || e.status === 'l1_rejected') return s;
+        return s + (e.approved_amount != null ? +e.approved_amount : +e.amount);
+      }, 0);
+      el.innerHTML = `
+      <div class="table-card-header">
+        <div>
+          <span class="table-card-title">Expense Summaries</span>
+          <span class="table-card-count">${Object.keys(groups).length} group${Object.keys(groups).length !== 1 ? 's' : ''}</span>
+        </div>
+        <div class="table-header-total">
+          Total: <strong>${formatCurrency(total)}</strong>
+        </div>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Employee Details</th>
+              <th>Cycle Period</th>
+              <th>Total Amount</th>
+              <th>Days (Filled/Missing)</th>
+              <th>Status</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${Object.values(groups).map(g => {
+        const year = new Date(g.entries[0].created_at).getFullYear();
+        const month = new Date(g.entries[0].created_at).getMonth();
+        const startDay = g.cycleText.includes('1st') ? 1 : 16;
+        const endDay = g.cycleText.includes('1st') ? 15 : new Date(year, month + 1, 0).getDate();
+        const totalDaysInCycle = endDay - startDay + 1;
+        const filledCount = g.days.size;
+        const pendingCount = totalDaysInCycle - filledCount;
+        const safeKey = `${g.user.id}|${g.monthYear}|${g.cycleText}`;
+
+        return `
+                <tr class="summary-row">
+                  <td>
+                    <div style="font-weight:700; color:var(--text-1)">${escHtml(g.user.name || 'N/A')}</div>
+                    <div style="font-size:0.75rem; color:var(--text-3)">${escHtml(g.user.email)}</div>
+                  </td>
+                  <td><strong>${g.monthYear}</strong><br><small style="color:var(--primary)">${g.cycleText}</small></td>
+                  <td style="font-weight:700; color:var(--primary); font-size:1.1rem">${formatCurrency(g.totalAmount)}</td>
+                  <td>
+                    <div style="display:flex; align-items:center; gap:0.5rem">
+                      <span class="status-badge badge-approved" style="padding: 0.1rem 0.4rem; font-size:0.7rem">${filledCount} Filled</span>
+                      <span class="status-badge badge-pending" style="padding: 0.1rem 0.4rem; font-size:0.7rem">${pendingCount} Missing</span>
+                    </div>
+                  </td>
+                  <td>${statusBadge(g.status)}</td>
+                  <td>
+                    <button class="btn btn-primary btn-sm" onclick="toggleDetails('${safeKey}')">View Details</button>
+                  </td>
+                </tr>
+                <tr id="details-${safeKey}" style="display:none; background: var(--bg-1)">
+                  <td colspan="6" style="padding: 0">
+                    <div class="detailed-view-panel" style="padding: 1.5rem; border: 1px solid var(--border); border-top: 0; border-radius: 0 0 12px 12px; margin: 0 1rem 1rem 1rem; box-shadow: inset 0 2px 10px rgba(0,0,0,0.05)">
+                      
+                      <!-- Employee Info -->
+                      <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 1rem; margin-bottom: 1rem; background: var(--bg-2); padding: 1rem; border-radius: 8px;">
+                        ${[['Full Name', g.user.name],['Employee ID', g.user.emp_no],['Department', g.user.department],['Site Name', g.user.site_name],['Mobile', g.user.phone]].map(([l,v])=>`
+                        <div>
+                          <p style="font-size:.7rem;text-transform:uppercase;color:var(--text-3);margin-bottom:.2rem">${l}</p>
+                          <p style="font-weight:600">${escHtml(v||'—')}</p>
+                        </div>`).join('')}
+                      </div>
+
+                      <!-- Bank Details -->
+                      <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 1rem; margin-bottom: 1.5rem; background: #eff6ff; padding: 1rem; border-radius: 8px; border: 1px solid #bfdbfe;">
+                        <div style="grid-column:1/-1;font-size:.75rem;font-weight:700;color:#1e40af;text-transform:uppercase;margin-bottom:.25rem">🏦 Bank Details</div>
+                        ${[['Account Holder', g.user.bank_holder],['Bank Name', g.user.bank_name],['IFSC Code', g.user.bank_ifsc],['Account Number', g.user.bank_account ? '****'+g.user.bank_account.slice(-4) : null]].map(([l,v])=>`
+                        <div>
+                          <p style="font-size:.7rem;text-transform:uppercase;color:#3b82f6;margin-bottom:.2rem">${l}</p>
+                          <p style="font-weight:700;color:#1e3a8a">${escHtml(v||'Not Added')}</p>
+                        </div>`).join('')}
+                      </div>
+
+                      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 1rem;">
+                        <p style="font-weight:700; font-size:1.1rem">Cycle Breakdown</p>
+                        <div style="display:flex; gap:0.5rem">
+                          <button class="btn btn-primary btn-sm" onclick="approveEntireCycle('${safeKey}')">Approve Entire Cycle</button>
+                          <button class="btn btn-secondary btn-sm" onclick="exportCycleToExcel('${safeKey}')">Excel</button>
+                          <button class="btn btn-secondary btn-sm" onclick="exportCycleToCSV('${safeKey}')" style="background:#0f172a; color:white; border:none">CSV</button>
+                        </div>
+                      </div>
+
+                      <div class="table-wrap" style="background: white; border-radius: 8px; overflow: hidden; border: 1px solid var(--border)">
+                        <table style="width:100%; border-collapse: collapse;">
+                          <thead style="background: var(--bg-2)">
+                            <tr>
+                              <th style="padding:.75rem">Date</th>
+                              <th style="padding:.75rem">Category</th>
+                              <th style="padding:.75rem">Amount</th>
+                              <th style="padding:.75rem">Description</th>
+                              <th style="padding:.75rem">Approval</th>
+                              <th style="padding:.75rem;text-align:right">Actions</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            ${g.entries.map(e => {
+                              const approvedAmt = e.approved_amount != null ? e.approved_amount : e.amount;
+                              const amtChanged  = e.approved_amount != null && +e.approved_amount !== +e.amount;
+                              const l1Done = e.l1_status === 'approved' || e.l1_status === 'rejected';
+                              const l2Done = e.l2_status === 'approved' || e.l2_status === 'rejected';
+                              return `
+                              <tr style="border-bottom:1px solid var(--border)">
+                                <td style="padding:.75rem;white-space:nowrap">${new Date(e.created_at).toLocaleDateString('en-IN',{day:'2-digit',month:'short'})}</td>
+                                <td style="padding:.75rem">${catPill(e.category)}</td>
+                                <td style="padding:.75rem">
+                                  ${amtChanged ? `<div style="text-decoration:line-through;color:var(--text-muted);font-size:.8rem">${formatCurrency(e.amount)}</div>` : ''}
+                                  <div style="font-weight:700;color:var(--primary)">${formatCurrency(approvedAmt)}</div>
+                                  ${amtChanged ? `<div style="font-size:.7rem;color:#059669;font-weight:600">Adjusted</div>` : ''}
+                                </td>
+                                <td style="padding:.75rem">
+                                  ${e.description && e.description.startsWith('OTHER|') ? `
+                                    <div style="font-weight:700;color:var(--primary);font-size:.75rem;text-transform:uppercase;margin-bottom:.2rem">${escHtml(e.description.split('|')[1])}</div>
+                                    <div style="font-size:.85rem">${escHtml(e.description.split('|')[2]||'—')}</div>
+                                  ` : `<div style="font-size:.85rem">${escHtml(e.description||'—')}</div>`}
+                                  ${e.rejection_reason ? `<div style="margin-top:.4rem;padding:.4rem;background:var(--bg-3);border-radius:4px;font-size:.8rem;border-left:3px solid var(--red)"><strong>Reason:</strong> ${escHtml(e.rejection_reason)}</div>` : ''}
+                                </td>
+                                <td style="padding:.75rem">
+                                  ${approvalStepper(e)}
+                                  ${l1Done ? `<div style="font-size:.68rem;color:var(--text-muted);margin-top:.25rem">L1: ${escHtml(e.l1_by_name||'—')}${e.l1_remark?` — ${escHtml(e.l1_remark)}`:''}</div>` : ''}
+                                  ${l2Done ? `<div style="font-size:.68rem;color:var(--text-muted)">L2: ${escHtml(e.l2_by_name||'—')}${e.l2_remark?` — ${escHtml(e.l2_remark)}`:''}</div>` : ''}
+                                </td>
+                                <td style="padding:.75rem;text-align:right">
+                                  <div style="display:flex;gap:.35rem;justify-content:flex-end;flex-wrap:wrap">
+                                    <button class="btn btn-secondary btn-sm" style="padding:.25rem .5rem" onclick="openCommentModal('${e.id}')" title="Comment">💬</button>
+                                    ${(currentProfile.role==='admin' && e.status==='pending') ? `
+                                      <button class="btn btn-primary btn-sm" style="padding:.25rem .5rem;font-size:.75rem" onclick="openApprovalModal('${e.id}')">Review (L1)</button>
+                                    ` : ''}
+                                    ${(currentProfile.role==='super_admin' && e.status==='l1_approved') ? `
+                                      <button class="btn btn-primary btn-sm" style="padding:.25rem .5rem;font-size:.75rem;background:#7c3aed" onclick="openApprovalModal('${e.id}')">Final (L2)</button>
+                                    ` : ''}
+                                    ${(currentProfile.role==='super_admin' && e.status==='pending') ? `
+                                      <button class="btn btn-primary btn-sm" style="padding:.25rem .5rem;font-size:.75rem;background:#6b7280" onclick="openApprovalModal('${e.id}')" title="L1 not done — approving here auto-completes L1">Direct Approve</button>
+                                    ` : ''}
+                                    <button class="btn btn-secondary btn-sm" style="padding:.25rem .5rem;color:var(--red)" onclick="deleteExpense('${e.id}')" title="Delete">🗑️</button>
+                                  </div>
+                                </td>
+                              </tr>`;
+                            }).join('')}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  </td>
+                </tr>
+              `;
+      }).join('')}
+          </tbody>
+        </table>
+      </div>`;
+    }
+
+    function toggleDetails(safeKey) {
+      const el = document.getElementById(`details-${safeKey}`);
+      el.style.display = el.style.display === 'none' ? 'table-row' : 'none';
+    }
+
+    function renderAdminCards(expenses) {
+      const el = document.getElementById('admin-cards');
+      if (!el) return; // Safety check
+
+      if (!expenses.length) {
+        el.innerHTML = emptyState('No expenses found', 'Try selecting a different filter.');
+        return;
+      }
+      const total = expenses.reduce((s, e) => s + +e.amount, 0);
+      el.innerHTML = `
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.875rem">
+        <span style="font-weight:700;font-size:.9375rem">All Expenses</span>
+        <span style="font-size:.8125rem;color:var(--primary);font-weight:700">${formatCurrency(total)}</span>
+      </div>
+      ${expenses.map(adminCard).join('')}`;
+    }
+
+    async function applyCycleFilter() {
+      const monthVal = document.getElementById('f-month').value;
+      const cyclePart = document.getElementById('f-cycle').value;
+      const search = document.getElementById('f-user-search')?.value.toLowerCase().trim() || '';
+
+      let filtered = allExpensesFetched;
+
+      if (monthVal) {
+        const dateObj = new Date(monthVal);
+        const monthName = dateObj.toLocaleString('default', { month: 'long', year: 'numeric' });
+        filtered = filtered.filter(e => e.description && e.description.includes(monthName));
+      }
+
+      if (cyclePart !== 'all') {
+        filtered = filtered.filter(e => e.description && e.description.includes(cyclePart));
+      }
+
+      if (search) {
+        filtered = filtered.filter(e => e.users?.email.toLowerCase().includes(search));
+
+        // If we have a specific month, cycle AND a single employee searched, show progress
+        if (monthVal && cyclePart !== 'all') {
+          showCycleProgress(filtered, monthVal, cyclePart);
+        } else {
+          document.getElementById('cycle-progress-card').style.display = 'none';
+        }
+      } else {
+        document.getElementById('cycle-progress-card').style.display = 'none';
+      }
+
+      refreshListViewWithCustom(filtered);
+    }
+
+    function showCycleProgress(expenses, monthVal, cyclePart) {
+      const card = document.getElementById('cycle-progress-card');
+      const summary = document.getElementById('progress-summary');
+      const bar = document.getElementById('progress-bar-fill');
+      const grid = document.getElementById('day-grid');
+
+      card.style.display = 'block';
+
+      const dateObj = new Date(monthVal);
+      const year = dateObj.getFullYear();
+      const month = dateObj.getMonth();
+
+      let startDay, endDay;
+      if (cyclePart === '1st - 15th') {
+        startDay = 1; endDay = 15;
+      } else {
+        startDay = 16;
+        endDay = new Date(year, month + 1, 0).getDate();
+      }
+
+      const totalDays = endDay - startDay + 1;
+      const filledDays = new Set();
+
+      expenses.forEach(e => {
+        const d = new Date(e.created_at);
+        if (d.getDate() >= startDay && d.getDate() <= endDay) {
+          filledDays.add(d.getDate());
+        }
+      });
+
+      const count = filledDays.size;
+      const percent = (count / totalDays) * 100;
+
+      summary.innerHTML = `
+        <div style="display:flex; justify-content:space-between; align-items:center">
+          <span style="font-size: 1.25rem; font-weight: 700;">${count} / ${totalDays} Days Filled</span>
+          <span style="color: ${count === totalDays ? 'var(--green)' : 'var(--red)'}; font-weight: 600;">
+            ${totalDays - count} Missing
+          </span>
+        </div>
+      `;
+
+      bar.style.width = `${percent}%`;
+      bar.style.background = percent === 100 ? 'var(--green)' : 'var(--primary)';
+
+      let gridHtml = '';
+      for (let i = startDay; i <= endDay; i++) {
+        const isFilled = filledDays.has(i);
+        gridHtml += `
+          <div style="
+            aspect-ratio: 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 4px;
+            font-size: 0.75rem;
+            font-weight: 700;
+            background: ${isFilled ? 'var(--green)' : 'var(--bg-3)'};
+            color: ${isFilled ? '#fff' : 'var(--text-3)'};
+            border: 1px solid ${isFilled ? 'transparent' : 'var(--border)'};
+          " title="Day ${i}: ${isFilled ? 'Filled' : 'Missing'}">
+            ${i}
+          </div>
+        `;
+      }
+      grid.innerHTML = gridHtml;
+    }
+
+    function autoUpdateCycleFilter() {
+      applyCycleFilter();
+    }
+
+    function refreshListViewWithCustom(filteredData) {
+      const search = document.getElementById('f-user-search')?.value.toLowerCase().trim() || '';
+      let filtered = filteredData;
+
+      if (currentListFilter !== 'all') {
+        filtered = filtered.filter(e => e.status === currentListFilter);
+      }
+
+      const isAdmin = currentProfile.role === 'admin' || currentProfile.role === 'super_admin';
+
+      if (search && isAdmin) {
+        filtered = filtered.filter(e => e.users?.email.toLowerCase().includes(search));
+      }
+
+      if (isAdmin) {
+        renderAdminTable(filtered);
+        renderAdminCards(filtered);
+      } else {
+        renderEmpTable(filtered);
+        renderEmpCards(filtered);
+      }
+    }
+
+    async function clearFilter() {
+      if (document.getElementById('f-month')) document.getElementById('f-month').value = '';
+      if (document.getElementById('f-cycle')) document.getElementById('f-cycle').value = 'all';
+      if (document.getElementById('f-user-search')) document.getElementById('f-user-search').value = '';
+      const spin = `<div class="loading-state"><div class="spinner"></div><span>Loading…</span></div>`;
+      document.getElementById('admin-table').innerHTML = spin;
+      document.getElementById('admin-cards').innerHTML = spin;
+      await loadAdminExpenses();
+    }
+
+    // ─── TEMPLATES ──────────────────────────────────────────────
+
+    function parseDescForDisplay(raw) {
+      if (!raw) return '—';
+      const p = raw.split('|');
+      const type = p[0];
+      if (type === 'TRAVEL') {
+        const from = escHtml(p[1] || ''), to = escHtml(p[2] || ''), site = escHtml(p[3] || ''), desc = escHtml(p[4] || '');
+        return [
+          `<span style="font-size:.7rem;font-weight:700;color:var(--primary);text-transform:uppercase">✈ Travel</span>`,
+          from && to ? `${from} → ${to}` : '',
+          site ? `📍 ${site}` : '',
+          desc || '',
+        ].filter(Boolean).join(' &nbsp;·&nbsp; ');
+      }
+      if (type === 'OTHER') {
+        const name = escHtml(p[1] || ''), site = escHtml(p[2] || ''), desc = escHtml(p[3] || '');
+        return [name ? `<strong>${name}</strong>` : '', site ? `📍 ${site}` : '', desc].filter(Boolean).join(' ');
+      }
+      if (type === 'ROOM_RENT') {
+        const site = escHtml(p[1] || ''), desc = escHtml(p[2] || '');
+        return [
+          `<span style="font-size:.7rem;font-weight:700;color:#7c3aed;text-transform:uppercase">🏠 Room Rent</span>`,
+          site ? `📍 ${site}` : '', desc,
+        ].filter(Boolean).join(' &nbsp;·&nbsp; ');
+      }
+      if (type === 'REGULAR') {
+        const site = escHtml(p[1] || ''), desc = escHtml(p[2] || '');
+        return [site ? `📍 ${site}` : '', desc].filter(Boolean).join(' · ') || '—';
+      }
+      return escHtml(raw);
+    }
+
+    function empRow(e) {
+      const approvedAmt = e.approved_amount != null ? e.approved_amount : e.amount;
+      const amtChanged = e.approved_amount != null && +e.approved_amount !== +e.amount;
+      return `<tr>
+      <td class="td-date">${formatDate(e.created_at)}</td>
+      <td>${catPill(e.category)}</td>
+      <td class="td-desc">
+        ${parseDescForDisplay(e.description)}
+        ${e.rejection_reason ? `<div style="color: var(--primary); font-size: 0.75rem; margin-top: 0.4rem; background: var(--bg-2); padding: 0.4rem; border-radius: 4px;"><strong>Admin Comment:</strong> ${escHtml(e.rejection_reason)}</div>` : ''}
+      </td>
+      <td class="td-amount">
+        ${amtChanged ? `<div style="text-decoration:line-through;color:var(--text-muted);font-size:.78rem">${formatCurrency(e.amount)}</div>` : ''}
+        ${formatCurrency(approvedAmt)}
+        ${amtChanged ? `<div style="font-size:.68rem;color:#059669;font-weight:600">Adjusted</div>` : ''}
+      </td>
+      <td>${statusBadge(e.status)}<div style="margin-top:4px">${approvalStepper(e)}</div></td>
+      <td>${e.receipt_url ? `<a class="receipt-link" href="javascript:void(0)" onclick="viewReceipt('${escHtml(e.receipt_url)}')">📎 View</a>` : '<span style="color:var(--text-3)">—</span>'}</td>
+    </tr>`;
+    }
+
+    function adminRow(e) {
+      const u = e.users || {};
+      const email = escHtml(u.email || 'Unknown');
+      const name = escHtml(u.name || '—');
+      const empNo = escHtml(u.emp_no || '—');
+      const site = escHtml(u.site_name || '—');
+      const dept = escHtml(u.department || '—');
+      const phone = escHtml(u.phone || '—');
+
+      const isHighAmount = +e.amount > 1500;
+      return `<tr class="expense-row" data-id="${e.id}">
+      <td><input type="checkbox" class="row-checkbox" value="${e.id}" onchange="updateBulkBar()"></td>
+      <td class="td-date">${formatDate(e.created_at)}</td>
+      <td class="td-email">
+        <div style="font-weight:600">${name} (${empNo})</div>
+        <div style="font-size:0.75rem; color:var(--text-2)">${email} | 📱 ${phone}</div>
+        <div style="font-size:0.75rem; color:var(--text-3)">${site} | ${dept}</div>
+      </td>
+      <td>${catPill(e.category)}</td>
+      <td class="td-desc">
+        ${parseDescForDisplay(e.description)}
+        ${e.rejection_reason ? `<div style="color: var(--primary); font-size: 0.75rem; margin-top: 0.25rem; background: var(--bg-2); padding: 0.25rem; border-radius: 4px;"><strong>Admin Comment:</strong> ${escHtml(e.rejection_reason)}</div>` : ''}
+      </td>
+      <td class="td-amount ${isHighAmount ? 'budget-flag' : ''}">${formatCurrency(e.amount)}</td>
+      <td>${statusBadge(e.status)}</td>
+      <td>${e.receipt_url ? `<a class="receipt-link" href="javascript:void(0)" onclick="viewReceipt('${escHtml(e.receipt_url)}')">📎 View</a>` : '<span style="color:var(--text-3)">—</span>'}</td>
+      <td>
+        ${e.status === 'pending' ? `
+          <button onclick="updateExpenseStatus('${e.id}', 'approved')" class="btn btn-primary btn-sm" style="padding: 0.2rem 0.5rem; font-size: 0.75rem; margin-bottom: 0.2rem; display:block; width: 100%;">Approve</button>
+          <button onclick="promptRejectExpense('${e.id}')" class="btn btn-secondary btn-sm" style="padding: 0.2rem 0.5rem; font-size: 0.75rem; margin-bottom: 0.2rem; display:block; width: 100%;">Reject</button>
+          <button onclick="promptAddComment('${e.id}')" class="btn btn-secondary btn-sm" style="padding: 0.2rem 0.5rem; font-size: 0.75rem; margin-bottom: 0.2rem; display:block; width: 100%;">Add Comment</button>
+          <button onclick="deleteExpense('${e.id}')" class="btn btn-secondary btn-sm" style="padding: 0.2rem 0.5rem; font-size: 0.75rem; display:block; width: 100%; color: var(--red);">Delete</button>
+        ` : `
+          <button onclick="promptAddComment('${e.id}')" class="btn btn-secondary btn-sm" style="padding: 0.2rem 0.5rem; font-size: 0.75rem; margin-bottom: 0.2rem; display:block; width: 100%;">Edit Comment</button>
+          <button onclick="deleteExpense('${e.id}')" class="btn btn-secondary btn-sm" style="padding: 0.2rem 0.5rem; font-size: 0.75rem; display:block; width: 100%; color: var(--red);">Delete</button>
+        `}
+      </td>
+    </tr>`;
+    }
+
+    function empCard(e) {
+      const approvedAmt = e.approved_amount != null ? e.approved_amount : e.amount;
+      const amtChanged = e.approved_amount != null && +e.approved_amount !== +e.amount;
+      return `
+    <div class="expense-card">
+      <div class="expense-card-top">
+        <div>
+          ${amtChanged ? `<div style="text-decoration:line-through;color:var(--text-muted);font-size:.78rem">${formatCurrency(e.amount)}</div>` : ''}
+          <span class="expense-card-amount ${+e.amount > 1500 ? 'budget-flag' : ''}">${formatCurrency(approvedAmt)}</span>
+          ${amtChanged ? `<div style="font-size:.68rem;color:#059669;font-weight:600">Adjusted</div>` : ''}
+        </div>
+        ${statusBadge(e.status)}
+      </div>
+      <div style="margin:.4rem 0">${approvalStepper(e)}</div>
+      <div class="expense-card-meta">
+        ${catPill(e.category)}
+        <span class="expense-card-date">${formatDate(e.created_at)}</span>
+      </div>
+      <div class="expense-card-meta" style="font-size: 0.7rem; color: var(--text-3); margin-top: 0.25rem">
+        🕒 Submitted: ${new Date(e.created_at).toLocaleString()}
+      </div>
+      <div class="expense-card-desc">${parseDescForDisplay(e.description)}</div>
+      ${e.rejection_reason ? `<div class="expense-card-desc" style="color: #dc2626; background: #fee2e2; padding: 0.5rem; border-radius: 4px; margin-top: 0.5rem;"><strong>Rejected:</strong> ${escHtml(e.rejection_reason)}</div>` : ''}
+      ${e.receipt_url ? `<div class="expense-card-footer"><a class="receipt-link" href="javascript:void(0)" onclick="viewReceipt('${escHtml(e.receipt_url)}')">📎 View Receipt</a></div>` : ''}
+    </div>`;
+    }
+
+    function adminCard(e) {
+      const u = e.users || {};
+      const email = escHtml(u.email || 'Unknown');
+      const name = escHtml(u.name || '—');
+      const empNo = escHtml(u.emp_no || '—');
+      const site = escHtml(u.site_name || '—');
+      const dept = escHtml(u.department || '—');
+      const phone = escHtml(u.phone || '—');
+
+      const approvedAmt = e.approved_amount != null ? e.approved_amount : e.amount;
+      const amtChanged = e.approved_amount != null && +e.approved_amount !== +e.amount;
+      const showL1Btn = currentProfile.role === 'admin' && e.status === 'pending';
+      const showL2Btn = currentProfile.role === 'super_admin' && (e.status === 'pending' || e.status === 'l1_approved');
+
+      return `
+    <div class="expense-card">
+      <div class="expense-card-top">
+        <div>
+          ${amtChanged ? `<div style="text-decoration:line-through;color:var(--text-muted);font-size:.78rem">${formatCurrency(e.amount)}</div>` : ''}
+          <span class="expense-card-amount ${+e.amount > 1500 ? 'budget-flag' : ''}">${formatCurrency(approvedAmt)}</span>
+          ${amtChanged ? `<div style="font-size:.68rem;color:#059669;font-weight:600">Adjusted</div>` : ''}
+        </div>
+        ${statusBadge(e.status)}
+      </div>
+      <div style="margin:.5rem 0">${approvalStepper(e)}</div>
+      <div class="expense-card-meta">
+        ${catPill(e.category)}
+        <span class="expense-card-date">${formatDate(e.created_at)}</span>
+      </div>
+      <div class="expense-card-meta" style="margin-top:.5rem; flex-direction: column; align-items: flex-start; gap: 0.2rem;">
+        <div style="font-weight:700; color:var(--text-1)">👤 ${name} (${empNo})</div>
+        <div style="font-size:.775rem; color:var(--text-2)">📧 ${email} | 📱 ${phone}</div>
+        <div style="font-size:.775rem; color:var(--text-3)">📍 ${site} | 🏢 ${dept}</div>
+      </div>
+      <div class="expense-card-meta" style="font-size: 0.7rem; color: var(--text-3); margin-top: 0.25rem">
+        🕒 Submitted: ${new Date(e.created_at).toLocaleString()}
+      </div>
+      <div class="expense-card-desc">${parseDescForDisplay(e.description)}</div>
+      ${e.rejection_reason ? `<div class="expense-card-desc" style="color: var(--primary); background: var(--bg-2); padding: 0.5rem; border-radius: 4px; margin-top: 0.5rem; border-left: 3px solid var(--primary);"><strong>Admin Comment:</strong> ${escHtml(e.rejection_reason)}</div>` : ''}
+      ${e.l1_remark ? `<div class="expense-card-desc" style="background:#eff6ff;padding:.4rem;border-radius:4px;margin-top:.25rem;font-size:.78rem;border-left:3px solid #3b82f6"><strong>L1 Remark:</strong> ${escHtml(e.l1_remark)}</div>` : ''}
+      ${e.l2_remark ? `<div class="expense-card-desc" style="background:#f0fdf4;padding:.4rem;border-radius:4px;margin-top:.25rem;font-size:.78rem;border-left:3px solid #22c55e"><strong>L2 Remark:</strong> ${escHtml(e.l2_remark)}</div>` : ''}
+      ${e.receipt_url ? `<div class="expense-card-footer"><a class="receipt-link" href="javascript:void(0)" onclick="viewReceipt('${escHtml(e.receipt_url)}')">📎 View Receipt</a></div>` : ''}
+      <div class="expense-card-footer" style="display:grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; margin-top: 0.5rem; border-top: 1px solid var(--border); padding-top: 0.5rem;">
+        ${showL1Btn ? `<button onclick="openApprovalModal('${e.id}')" class="btn btn-primary btn-sm" style="grid-column:1/-1">Review (L1)</button>` : ''}
+        ${showL2Btn ? `<button onclick="openApprovalModal('${e.id}')" class="btn btn-primary btn-sm" style="grid-column:1/-1;background:#7c3aed">Final Approval (L2)</button>` : ''}
+        <button onclick="openCommentModal('${e.id}')" class="btn btn-secondary btn-sm">💬 Comment</button>
+        <button onclick="deleteExpense('${e.id}')" class="btn btn-secondary btn-sm" style="color:var(--red)">Delete</button>
+      </div>
+    </div>`;
+    }
+
+    function openCommentModal(id) {
+      const expense = allExpensesFetched.find(e => e.id === id);
+      document.getElementById('modal-expense-id').value = id;
+      document.getElementById('modal-comment-text').value = expense ? (expense.rejection_reason || '') : '';
+      document.getElementById('comment-modal').style.display = 'flex';
+    }
+
+    function closeCommentModal() {
+      document.getElementById('comment-modal').style.display = 'none';
+    }
+
+    async function saveModalComment() {
+      const id = document.getElementById('modal-expense-id').value;
+      const text = document.getElementById('modal-comment-text').value.trim();
+      const expense = allExpensesFetched.find(e => e.id === id);
+
+      await updateExpenseStatus(id, expense.status, text);
+      closeCommentModal();
+    }
+
+    // ─── APPROVAL MODAL FUNCTIONS ───────────────────────────────
+
+    function openApprovalModal(expenseId) {
+      const e = allExpensesFetched.find(x => x.id === expenseId);
+      if (!e) return;
+
+      document.getElementById('am-expense-id').value = expenseId;
+      document.getElementById('am-emp').textContent = e.users?.name || e.users?.email || '—';
+      document.getElementById('am-cat').textContent = e.category || '—';
+      document.getElementById('am-orig').textContent = formatCurrency(e.amount);
+      document.getElementById('am-date').textContent = formatDate(e.created_at);
+      document.getElementById('am-amount').value = e.approved_amount != null ? e.approved_amount : e.amount;
+      document.getElementById('am-remark').value = '';
+      document.getElementById('am-remark-req').style.display = 'none';
+
+      const receiptRow  = document.getElementById('am-receipt-row');
+      const receiptLink = document.getElementById('am-receipt-link');
+      if (e.receipt_url) {
+        receiptRow.style.display = 'flex';
+        receiptLink.onclick = () => viewReceipt(e.receipt_url);
+      } else {
+        receiptRow.style.display = 'none';
+      }
+
+      const isL1 = currentProfile.role === 'admin';
+      document.getElementById('am-title').textContent = isL1 ? 'Manager Review (L1)' : 'Final Approval (L2)';
+      document.getElementById('am-subtitle').textContent = isL1
+        ? 'L1 review — approval forwards claim to Super Admin for final sign-off'
+        : e.status === 'l1_approved'
+          ? 'L1 already approved — this is the final sign-off'
+          : '⚠️ L1 pending — approving here will auto-complete L1 and finalise';
+
+      document.getElementById('approval-modal').style.display = 'flex';
+    }
+
+    function closeApprovalModal() {
+      document.getElementById('approval-modal').style.display = 'none';
+    }
+
+    function onAmountChange() {
+      const expenseId = document.getElementById('am-expense-id').value;
+      const e = allExpensesFetched.find(x => x.id === expenseId);
+      if (!e) return;
+      const orig = +e.amount;
+      const current = parseFloat(document.getElementById('am-amount').value) || 0;
+      document.getElementById('am-remark-req').style.display = current !== orig ? 'inline' : 'none';
+    }
+
+    async function submitApprovalAction(action) {
+      const expenseId = document.getElementById('am-expense-id').value;
+      const approvedAmount = parseFloat(document.getElementById('am-amount').value);
+      const remark = document.getElementById('am-remark').value.trim();
+      const e = allExpensesFetched.find(x => x.id === expenseId);
+      if (!e) return;
+
+      if (action === 'rejected' && !remark) {
+        showMessage('A remark is required when rejecting.', 'error');
+        return;
+      }
+      const amtChanged = !isNaN(approvedAmount) && approvedAmount !== +e.amount;
+      if (amtChanged && !remark) {
+        showMessage('A remark is required when changing the approved amount.', 'error');
+        return;
+      }
+
+      const btnId = action === 'approved' ? 'am-approve-btn' : 'am-reject-btn';
+      const btn = document.getElementById(btnId);
+      setLoading(btn, true);
+
+      try {
+        const { data: { session } } = await db.auth.getSession();
+        const token = session?.access_token;
+        if (!token) throw new Error('Not authenticated');
+
+        const payload = { expense_id: expenseId, action, remark: remark || null };
+        if (amtChanged) payload.approved_amount = approvedAmount;
+
+        const res = await fetch('/api/approve-expense', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+          body: JSON.stringify(payload)
+        });
+
+        const text = await res.text();
+        let data;
+        try { data = JSON.parse(text); } catch { throw new Error('Server error: ' + text.substring(0, 120)); }
+        if (!res.ok) throw new Error(data.error || 'Approval failed');
+
+        showMessage(`Expense ${action === 'approved' ? 'approved' : 'rejected'} successfully!`, 'success');
+        closeApprovalModal();
+        await loadAdminExpenses();
+      } catch (err) {
+        showMessage(err.message, 'error');
+      } finally {
+        setLoading(btn, false);
+      }
+    }
+
+    async function approveEntireCycle(safeKey) {
+      const [userId, monthYear, cycleText] = safeKey.split('|');
+      const isL1 = currentProfile.role === 'admin';
+      const isL2 = currentProfile.role === 'super_admin';
+
+      const toApprove = allExpensesFetched.filter(e => {
+        const date = new Date(e.created_at);
+        const mY = date.toLocaleString('default', { month: 'long', year: 'numeric' });
+        const cNum = date.getDate() <= 15 ? 1 : 2;
+        const cT = cNum === 1 ? "1st - 15th" : "16th - End";
+        if (!(e.user_id === userId && mY === monthYear && cT === cycleText)) return false;
+        if (isL1) return e.status === 'pending';
+        if (isL2) return e.status === 'pending' || e.status === 'l1_approved';
+        return false;
+      });
+
+      if (!toApprove.length) {
+        showMessage('No eligible expenses to approve in this cycle.', 'info');
+        return;
+      }
+
+      if (!confirm(`Approve all ${toApprove.length} expenses in this cycle?`)) return;
+
+      try {
+        const { data: { session } } = await db.auth.getSession();
+        const token = session?.access_token;
+        if (!token) throw new Error('Not authenticated');
+
+        let successCount = 0;
+        for (const e of toApprove) {
+          const res = await fetch('/api/approve-expense', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+            body: JSON.stringify({ expense_id: e.id, action: 'approved', remark: 'Bulk cycle approval' })
+          });
+          if (res.ok) successCount++;
+        }
+
+        showMessage(`Successfully approved ${successCount} of ${toApprove.length} expenses!`, 'success');
+        await loadAdminExpenses();
+      } catch (err) {
+        showMessage(err.message, 'error');
+      }
+    }
+
+    async function deleteExpense(id) {
+      if (!confirm("Are you sure you want to delete this expense?")) return;
+      try {
+        const { error } = await db.from('expenses').delete().eq('id', id);
+        if (error) throw error;
+        showMessage('Expense deleted!', 'success');
+        await loadAdminExpenses();
+      } catch (err) {
+        showMessage(err.message, 'error');
+      }
+    }
+
+    async function promptRejectExpense(id) {
+      const reason = prompt("Please enter a reason for rejecting this expense:");
+      if (reason === null) return; // User cancelled
+      if (!reason.trim()) {
+        showMessage("A rejection reason is required for rejection.", "error");
+        return;
+      }
+      await updateExpenseStatus(id, 'rejected', reason.trim());
+    }
+
+    async function updateExpenseStatus(id, status, reason = null) {
+      try {
+        const updateData = { status };
+        if (reason) updateData.rejection_reason = reason;
+
+        const { error } = await db
+          .from('expenses')
+          .update(updateData)
+          .eq('id', id);
+
+        if (error) throw error;
+
+        // Send notification
+        const expense = allExpensesFetched.find(e => e.id === id);
+        if (expense && expense.users?.email) {
+          notifyUser(expense.users.email, status, reason);
+        }
+
+        showMessage(`Expense ${status} successfully.`, 'success');
+
+        // Reload admin expenses to update the view
+        const from = document.getElementById('f-from')?.value || undefined;
+        const to = document.getElementById('f-to')?.value || undefined;
+        await loadAdminExpenses(from, to);
+      } catch (err) {
+        showMessage(err.message || 'Failed to update status.', 'error');
+      }
+    }
+
+    function emptyState(title, sub) {
+      return `
+    <div class="empty-state">
+      <div class="empty-art">📭</div>
+      <div class="empty-title">${title}</div>
+      <div class="empty-sub">${sub}</div>
+    </div>`;
+    }
+
+    // ─── ANALYTICS & EXPORT ─────────────────────────────────────
+    let categoryChartInstance = null;
+
+    function renderAdminCharts(expenses) {
+      const active = expenses.filter(e => e.status !== 'rejected');
+      if (!active.length) {
+        if (document.getElementById('admin-charts-section')) document.getElementById('admin-charts-section').style.display = 'none';
+        return;
+      }
+      if (document.getElementById('admin-charts-section')) document.getElementById('admin-charts-section').style.display = 'grid';
+
+      const catData = {};
+      active.forEach(e => { catData[e.category] = (catData[e.category] || 0) + +e.amount; });
+
+      const ctxCat = document.getElementById('categoryChart')?.getContext('2d');
+      if (!ctxCat) return;
+      if (categoryChartInstance) categoryChartInstance.destroy();
+      categoryChartInstance = new Chart(ctxCat, {
+        type: 'doughnut',
+        data: {
+          labels: Object.keys(catData),
+          datasets: [{
+            data: Object.values(catData),
+            backgroundColor: ['#6366f1', '#8b5cf6', '#f59e0b', '#22c55e', '#ef4444', '#ec4899'],
+            borderWidth: 0
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: { legend: { position: 'bottom', labels: { usePointStyle: true, padding: 20 } } }
+        }
+      });
+    }
+
+    /** Unified helper to trigger a browser download with a specific filename */
+    function triggerDownload(blob, filename) {
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      setTimeout(() => URL.revokeObjectURL(url), 100);
+      showMessage(`Download started: ${filename} 📊`, 'success');
+    }
+
+    /** Internal helper to perform Excel generation from a list of expenses */
+    function performExcelExport(expenses, filename = 'Export.xlsx') {
+      if (typeof XLSX === 'undefined') {
+        return showMessage('Excel library not loaded. Please refresh and try again.', 'error');
+      }
+      if (!expenses.length) return showMessage('No data to export', 'error');
+
+      const safeFilename = filename.replace(/[^a-z0-9.]/gi, '_');
+      if (!safeFilename.endsWith('.xlsx')) filename += '.xlsx';
+
+      // Define clear headers
+      const headers = [
+        "Date", "Cycle", "Submitted At", "Name", "Emp No", "Mobile",
+        "Department", "Site", "Category", "From (Travel)", "To (Travel)",
+        "Description", "Submitted Amount", "Approved Amount", "Status",
+        "Bank Holder", "Bank Name", "Bank IFSC", "Bank Account",
+        "L1 Approver", "L1 Date", "L1 Remark",
+        "L2 Approver", "L2 Date", "L2 Remark", "Admin Comment"
+      ];
+
+      // Map data to rows
+      const rows = expenses.map(e => {
+        const u = e.users || {};
+        const parts = (e.description || '').split('|');
+        const type = parts[0];
+        let d = e.description, s = u.site_name || '—', f = '—', t = '—';
+        if (type === 'TRAVEL') { f = parts[1]; t = parts[2]; s = parts[3]; d = parts[4]; }
+        else if (type === 'OTHER') { d = `(${parts[1]}) ${parts[3]}`; s = parts[2]; }
+        else if (type === 'REGULAR') { s = parts[1]; d = parts[2]; }
+
+        const date = new Date(e.created_at);
+        const cycle = date.getDate() <= 15 ? "1st - 15th" : "16th - End";
+        const approvedAmt = e.approved_amount != null ? e.approved_amount : e.amount;
+        const bankAcct = u.bank_account ? '****' + u.bank_account.slice(-4) : '—';
+
+        return [
+          formatDate(e.created_at), cycle, date.toLocaleString(),
+          u.name || '—', u.emp_no || '—', u.phone || '—', u.department || '—',
+          s, e.category, f, t, d, e.amount, approvedAmt, e.status,
+          u.bank_holder || '—', u.bank_name || '—', u.bank_ifsc || '—', bankAcct,
+          e.l1_by_name || '—', e.l1_at ? new Date(e.l1_at).toLocaleString() : '—', e.l1_remark || '—',
+          e.l2_by_name || '—', e.l2_at ? new Date(e.l2_at).toLocaleString() : '—', e.l2_remark || '—',
+          e.rejection_reason || ''
+        ];
+      });
+
+      const ws = XLSX.utils.aoa_to_sheet([headers, ...rows]);
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, "Expenses");
+
+      try {
+        // Generate buffer and create Blob
+        const wbout = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+        const blob = new Blob([wbout], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+        triggerDownload(blob, safeFilename.endsWith('.xlsx') ? safeFilename : safeFilename + '.xlsx');
+      } catch (err) {
+        console.error('Excel Export Error:', err);
+        showMessage('Failed to generate Excel file.', 'error');
+      }
+    }
+
+    /** Export exactly what's currently in allExpensesFetched (honoring UI filters) */
+    function exportToExcel() {
+      const search = document.getElementById('f-user-search')?.value.toLowerCase().trim() || '';
+      let filtered = allExpensesFetched;
+
+      if (currentListFilter !== 'all') {
+        filtered = filtered.filter(e => e.status === currentListFilter);
+      }
+      if (search && (currentProfile.role === 'admin' || currentProfile.role === 'super_admin')) {
+        filtered = filtered.filter(e => e.users?.email.toLowerCase().includes(search));
+      }
+
+      const timestamp = new Date().toISOString().split('T')[0];
+      performExcelExport(filtered, `ExpenseReport_Filtered_${timestamp}.xlsx`);
+    }
+
+    /** Export a specific user's specific cycle */
+    function exportCycleToExcel(safeKey) {
+      const [userId, monthYear, cycleText] = safeKey.split('|');
+      const filtered = allExpensesFetched.filter(e => {
+        const date = new Date(e.created_at);
+        const mY = date.toLocaleString('default', { month: 'long', year: 'numeric' });
+        const cNum = date.getDate() <= 15 ? 1 : 2;
+        const cT = cNum === 1 ? "1st - 15th" : "16th - End";
+        return e.user_id === userId && mY === monthYear && cT === cycleText;
+      });
+
+      const name = filtered[0]?.users?.name || 'User';
+      performExcelExport(filtered, `ExpenseReport_${name}_${monthYear}_${cycleText}.xlsx`);
+    }
+
+    /** Export all data for the currently selected month in the filter */
+    function exportMonthToExcel() {
+      const monthVal = document.getElementById('f-month').value;
+      if (!monthVal) return showMessage('Please select a month first to use Month Export.', 'error');
+
+      const dateObj = new Date(monthVal);
+      const monthName = dateObj.toLocaleString('default', { month: 'long', year: 'numeric' });
+
+      const filtered = allExpensesFetched.filter(e => e.description && e.description.includes(monthName));
+      performExcelExport(filtered, `ExpenseReport_FullMonth_${monthName}.xlsx`);
+    }
+
+    // ─── CSV EXPORT (ULTRA ROBUST) ──────────────────────────────
+
+    function performCSVExport(expenses, filename = 'Export.csv') {
+      if (!expenses.length) return showMessage('No data to export', 'error');
+      const safeFilename = filename.replace(/[^a-z0-9.]/gi, '_');
+      const finalFilename = safeFilename.endsWith('.csv') ? safeFilename : safeFilename + '.csv';
+
+      const headers = [
+        "Date", "Cycle", "Submitted At", "Name", "Emp No", "Mobile",
+        "Department", "Site", "Category", "From", "To",
+        "Description", "Submitted Amount", "Approved Amount", "Status",
+        "Bank Holder", "Bank Name", "Bank IFSC", "Bank Account",
+        "L1 Approver", "L1 Date", "L1 Remark",
+        "L2 Approver", "L2 Date", "L2 Remark", "Admin Comment"
+      ];
+
+      const rows = expenses.map(e => {
+        const u = e.users || {};
+        const parts = (e.description || '').split('|');
+        const type = parts[0];
+        let d = e.description, s = u.site_name || '—', f = '—', t = '—';
+        if (type === 'TRAVEL') { f = parts[1]; t = parts[2]; s = parts[3]; d = parts[4]; }
+        else if (type === 'OTHER') { d = `(${parts[1]}) ${parts[3]}`; s = parts[2]; }
+        else if (type === 'REGULAR') { s = parts[1]; d = parts[2]; }
+        const date = new Date(e.created_at);
+        const cycle = date.getDate() <= 15 ? "1st - 15th" : "16th - End";
+        const approvedAmt = e.approved_amount != null ? e.approved_amount : e.amount;
+        const bankAcct = u.bank_account ? '****' + u.bank_account.slice(-4) : '—';
+        const clean = str => `"${String(str || '').replace(/"/g, '""')}"`;
+        return [
+          formatDate(e.created_at), cycle, date.toLocaleString(),
+          u.name || '—', u.emp_no || '—', u.phone || '—', u.department || '—',
+          s, e.category, f, t, d, e.amount, approvedAmt, e.status,
+          u.bank_holder || '—', u.bank_name || '—', u.bank_ifsc || '—', bankAcct,
+          e.l1_by_name || '—', e.l1_at ? new Date(e.l1_at).toLocaleString() : '—', e.l1_remark || '—',
+          e.l2_by_name || '—', e.l2_at ? new Date(e.l2_at).toLocaleString() : '—', e.l2_remark || '—',
+          e.rejection_reason || ''
+        ].map(clean).join(',');
+      });
+
+      const csvContent = headers.join(',') + "\n" + rows.join('\n');
+      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+      triggerDownload(blob, finalFilename);
+    }
+
+    function exportToCSV() {
+      const search = document.getElementById('f-user-search')?.value.toLowerCase().trim() || '';
+      let filtered = allExpensesFetched;
+      if (currentListFilter !== 'all') filtered = filtered.filter(e => e.status === currentListFilter);
+      if (search) filtered = filtered.filter(e => e.users?.email.toLowerCase().includes(search));
+
+      const ts = new Date().toISOString().split('T')[0];
+      performCSVExport(filtered, `ExpenseReport_${ts}.csv`);
+    }
+
+    function exportCycleToCSV(safeKey) {
+      const [userId, monthYear, cycleText] = safeKey.split('|');
+      const filtered = allExpensesFetched.filter(e => {
+        const date = new Date(e.created_at);
+        const mY = date.toLocaleString('default', { month: 'long', year: 'numeric' });
+        const cNum = date.getDate() <= 15 ? 1 : 2;
+        const cT = cNum === 1 ? "1st - 15th" : "16th - End";
+        return e.user_id === userId && mY === monthYear && cT === cycleText;
+      });
+      const name = filtered[0]?.users?.name || 'User';
+      performCSVExport(filtered, `CycleReport_${name}_${monthYear}.csv`);
+    }
+
+    // ─── THEME & BULK HELPERS ───────────────────────────────────
+    function initTheme() {
+      if (localStorage.getItem('theme') === 'dark') {
+        document.body.classList.add('dark');
+        updateThemeUI(true);
+      }
+    }
+
+    function toggleTheme() {
+      const isDark = document.body.classList.toggle('dark');
+      localStorage.setItem('theme', isDark ? 'dark' : 'light');
+      updateThemeUI(isDark);
+    }
+
+    function updateThemeUI(isDark) {
+      document.getElementById('theme-icon').textContent = isDark ? '☀️' : '🌙';
+      document.getElementById('theme-text').textContent = isDark ? 'Light Mode' : 'Dark Mode';
+    }
+
+    function toggleAllCheckboxes(master) {
+      document.querySelectorAll('.row-checkbox').forEach(cb => {
+        cb.checked = master.checked;
+      });
+      updateBulkBar();
+    }
+
+    function updateBulkBar() {
+      const checked = document.querySelectorAll('.row-checkbox:checked');
+      const bar = document.getElementById('bulk-bar');
+      const text = document.getElementById('bulk-count-text');
+
+      if (checked.length > 0) {
+        bar.classList.add('active');
+        text.textContent = `${checked.length} item${checked.length > 1 ? 's' : ''} selected`;
+      } else {
+        bar.classList.remove('active');
+      }
+    }
+
+    async function bulkStatusUpdate(status) {
+      const checked = document.querySelectorAll('.row-checkbox:checked');
+      const ids = Array.from(checked).map(cb => cb.value);
+
+      let reason = null;
+      if (status === 'rejected') {
+        reason = prompt("Please enter a reason for rejection (applied to all selected):");
+        if (reason === null) return;
+      }
+
+      if (!confirm(`Are you sure you want to ${status} ${ids.length} expenses?`)) return;
+
+      try {
+        const { error } = await db
+          .from('expenses')
+          .update({ status, rejection_reason: reason })
+          .in('id', ids);
+
+        if (error) throw error;
+
+        showMessage(`Successfully ${status} ${ids.length} items.`, 'success');
+        document.getElementById('select-all').checked = false;
+        updateBulkBar();
+        loadAdminExpenses();
+      } catch (err) {
+        showMessage(err.message, 'error');
+      }
+    }
+  </script>
+</body>
+
+</html>

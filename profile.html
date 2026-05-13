@@ -1,0 +1,404 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ExpenseTrack — My Profile</title>
+  <link rel="stylesheet" href="style.css" />
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap"
+    rel="stylesheet">
+
+  <!-- PWA -->
+  <link rel="manifest" href="/manifest.json" />
+  <meta name="theme-color" content="#6366f1" />
+  <link rel="icon" type="image/svg+xml" href="/icon.svg" />
+  <link rel="apple-touch-icon" href="/icon.svg" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="ExpenseTrack" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <script src="/pwa-register.js" defer></script>
+  <style>
+    :root {
+      --primary: #6366f1;
+      --primary-dark: #4f46e5;
+      --primary-soft: rgba(99, 102, 241, 0.1);
+      --bg-page: #f8fafc;
+      --card-bg: #ffffff;
+      --text-main: #0f172a;
+      --text-muted: #64748b;
+      --border: #e2e8f0;
+      --radius-xl: 32px;
+      --radius-lg: 24px;
+    }
+
+    body {
+      font-family: 'Plus Jakarta Sans', sans-serif;
+      background: var(--bg-page);
+      color: var(--text-main);
+      margin: 0;
+    }
+
+    .profile-container {
+      max-width: 800px;
+      margin: 2rem auto;
+      padding: 0 1.5rem;
+    }
+
+    /* Hero Profile Section */
+    .profile-hero {
+      background: white;
+      border-radius: var(--radius-xl);
+      overflow: hidden;
+      box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.05);
+      border: 1px solid var(--border);
+      position: relative;
+    }
+
+    .hero-banner {
+      height: 160px;
+      background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%);
+      position: relative;
+    }
+
+    .hero-banner::after {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: url('https://www.transparenttextures.com/patterns/cubes.png');
+      opacity: 0.1;
+    }
+
+    .hero-content {
+      padding: 0 2rem 2.5rem;
+      text-align: center;
+      margin-top: -60px;
+    }
+
+    .profile-avatar-wrapper {
+      position: relative;
+      display: inline-block;
+    }
+
+    .profile-avatar {
+      width: 120px;
+      height: 120px;
+      background: white;
+      border-radius: 40px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 3rem;
+      font-weight: 800;
+      color: var(--primary);
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+      border: 6px solid white;
+    }
+
+    .profile-name {
+      margin: 1.5rem 0 0.5rem;
+      font-size: 1.75rem;
+      font-weight: 800;
+      letter-spacing: -0.02em;
+    }
+
+    .profile-role-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      background: var(--primary-soft);
+      color: var(--primary);
+      padding: 0.4rem 1rem;
+      border-radius: 100px;
+      font-size: 0.85rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    /* Information Grid */
+    .info-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 1.25rem;
+      margin-top: 2rem;
+    }
+
+    .info-card {
+      background: white;
+      padding: 1.5rem;
+      border-radius: var(--radius-lg);
+      border: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      gap: 0.75rem;
+      transition: transform 0.2s;
+    }
+
+    .info-card:hover {
+      transform: translateY(-4px);
+      border-color: var(--primary);
+    }
+
+    .info-card .ico {
+      width: 44px;
+      height: 44px;
+      background: #f1f5f9;
+      border-radius: 14px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.4rem;
+    }
+
+    .info-card .label {
+      font-size: 0.75rem;
+      color: var(--text-muted);
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    .info-card .val {
+      font-size: 1.1rem;
+      font-weight: 700;
+      color: var(--text-main);
+    }
+
+    @media (max-width: 768px) {
+      .profile-container {
+        width: 100%;
+        max-width: 100%;
+        margin: 0;
+        padding: 1rem;
+        box-sizing: border-box;
+      }
+
+      .hero-content {
+        padding: 0 1rem 1.5rem;
+      }
+
+      .profile-name {
+        font-size: 1.35rem;
+      }
+
+      .info-grid {
+        grid-template-columns: 1fr 1fr;
+        gap: 0.75rem;
+      }
+
+      .hero-banner {
+        height: 120px;
+      }
+    }
+
+    @media (max-width: 480px) {
+      .info-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    /* Navigation Back */
+    .back-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      color: var(--text-muted);
+      text-decoration: none;
+      font-weight: 600;
+      margin-bottom: 1.5rem;
+      transition: color 0.2s;
+    }
+
+    .back-btn:hover {
+      color: var(--primary);
+    }
+  </style>
+</head>
+
+<body>
+
+  <div class="app-layout">
+    <div class="sidebar-overlay" id="sidebar-overlay" onclick="closeSidebar()"></div>
+
+    <!-- Sidebar (Reusing standard sidebar) -->
+    <nav class="sidebar" id="sidebar">
+      <div class="sidebar-logo">
+        <div class="logo-icon">💰</div>
+        <span class="logo-text">ExpenseTrack</span>
+      </div>
+      <div class="sidebar-nav">
+        <p class="sidebar-nav-label">Main Menu</p>
+        <a href="dashboard.html" class="sidebar-link">
+          <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round"
+              d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
+          </svg>
+          Overview
+        </a>
+        <a href="add-expense.html" class="sidebar-link">
+          <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round"
+              d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+          </svg>
+          Daily Tracking
+        </a>
+        <a href="profile.html" class="sidebar-link active">
+          <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round"
+              d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+          </svg>
+          My Profile
+        </a>
+      </div>
+      <div class="sidebar-footer">
+        <button class="sidebar-btn" onclick="logout()">Sign Out</button>
+      </div>
+    </nav>
+
+    <div class="app-main">
+      <div class="profile-container">
+        <a href="add-expense.html" class="back-btn">
+          <svg style="width:20px;height:20px" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+          </svg>
+          Back to Dashboard
+        </a>
+
+        <div class="profile-hero">
+          <div class="hero-banner"></div>
+          <div class="hero-content">
+            <div class="profile-avatar-wrapper">
+              <div class="profile-avatar" id="p-avatar">?</div>
+            </div>
+            <h1 class="profile-name" id="p-name">Loading Profile...</h1>
+            <div class="profile-role-badge" id="p-role">Employee</div>
+            <p style="color:var(--text-muted); margin-top:0.75rem; font-weight:600" id="p-email">—</p>
+          </div>
+        </div>
+
+        <div class="info-grid">
+          <div class="info-card">
+            <div class="ico">🆔</div>
+            <span class="label">Employee ID</span>
+            <span class="val" id="p-id">—</span>
+          </div>
+          <div class="info-card">
+            <div class="ico">📱</div>
+            <span class="label">Mobile Number</span>
+            <span class="val" id="p-mobile">—</span>
+          </div>
+          <div class="info-card">
+            <div class="ico">🏢</div>
+            <span class="label">Department</span>
+            <span class="val" id="p-dept">—</span>
+          </div>
+          <div class="info-card">
+            <div class="ico">📍</div>
+            <span class="label">Site Name</span>
+            <span class="val" id="p-site">—</span>
+          </div>
+        </div>
+
+        <!-- ── Bank Details ───────────────────────────────── -->
+        <div style="margin-top: 2rem; background: white; border-radius: var(--radius-lg); border: 1px solid var(--border); overflow: hidden; box-shadow: 0 4px 16px rgba(0,0,0,0.04);">
+          <div style="padding: 1.25rem 1.5rem; background: linear-gradient(135deg,#1e1b4b,#312e81); color: white; display:flex; justify-content:space-between; align-items:center;">
+            <div>
+              <div style="font-weight:800; font-size:1rem;">🏦 Bank Details</div>
+              <div style="font-size:0.8rem; opacity:0.8; margin-top:2px;">Used for salary & reimbursement transfers</div>
+            </div>
+            <span id="bank-saved-badge" style="display:none; background:rgba(16,185,129,0.2); color:#6ee7b7; border-radius:20px; padding:3px 10px; font-size:0.75rem; font-weight:700;">Saved ✓</span>
+          </div>
+          <form id="bank-form" onsubmit="saveBankDetails(event)" style="padding: 1.5rem; display:grid; gap:1rem;">
+            <div style="display:grid; grid-template-columns: 1fr 1fr; gap:1rem;">
+              <div class="form-group" style="margin:0">
+                <label class="form-label">Account Holder Name</label>
+                <input class="form-input" type="text" id="bank-holder" placeholder="As per bank records" />
+              </div>
+              <div class="form-group" style="margin:0">
+                <label class="form-label">Bank Name</label>
+                <input class="form-input" type="text" id="bank-name" placeholder="e.g. State Bank of India" />
+              </div>
+            </div>
+            <div style="display:grid; grid-template-columns: 1fr 1fr; gap:1rem;">
+              <div class="form-group" style="margin:0">
+                <label class="form-label">IFSC Code</label>
+                <input class="form-input" type="text" id="bank-ifsc" placeholder="e.g. SBIN0001234" style="text-transform:uppercase" />
+              </div>
+              <div class="form-group" style="margin:0">
+                <label class="form-label">Account Number</label>
+                <input class="form-input" type="text" id="bank-account" placeholder="Your account number" />
+              </div>
+            </div>
+            <button class="btn btn-primary" type="submit" id="bank-save-btn" style="border-radius:12px; padding:0.875rem; font-weight:700;">
+              Save Bank Details
+            </button>
+          </form>
+        </div>
+
+        <div style="margin-top: 2rem; text-align: center;">
+          <button class="btn btn-secondary" onclick="logout()" style="padding: 1rem 2.5rem; border-radius: 14px;">Sign
+            Out of Account</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="app.js"></script>
+  <script>
+    let profileId = null;
+
+    (async () => {
+      const user = await requireAuth();
+      if (!user) return;
+      const p = await getUserProfile();
+      if (!p) return;
+
+      profileId = p.id;
+
+      document.getElementById('p-avatar').textContent = (p.name?.[0] || '?').toUpperCase();
+      document.getElementById('p-name').textContent = p.name;
+      document.getElementById('p-role').textContent = p.role;
+      document.getElementById('p-email').textContent = p.email;
+      document.getElementById('p-id').textContent = p.emp_no;
+      document.getElementById('p-mobile').textContent = p.phone || 'Not Provided';
+      document.getElementById('p-dept').textContent = p.department || 'Not Assigned';
+      document.getElementById('p-site').textContent = p.site_name || 'Not Assigned';
+
+      // Pre-fill bank details if already saved
+      if (p.bank_holder) document.getElementById('bank-holder').value = p.bank_holder;
+      if (p.bank_name)   document.getElementById('bank-name').value   = p.bank_name;
+      if (p.bank_ifsc)   document.getElementById('bank-ifsc').value   = p.bank_ifsc;
+      if (p.bank_account) document.getElementById('bank-account').value = p.bank_account;
+      if (p.bank_holder) document.getElementById('bank-saved-badge').style.display = 'inline';
+
+      populateSidebar(p);
+    })();
+
+    async function saveBankDetails(e) {
+      e.preventDefault();
+      if (!profileId) return;
+      const btn = document.getElementById('bank-save-btn');
+      setLoading(btn, true);
+      try {
+        const { error } = await db.from('users').update({
+          bank_holder:  document.getElementById('bank-holder').value.trim(),
+          bank_name:    document.getElementById('bank-name').value.trim(),
+          bank_ifsc:    document.getElementById('bank-ifsc').value.trim().toUpperCase(),
+          bank_account: document.getElementById('bank-account').value.trim(),
+        }).eq('id', profileId);
+        if (error) throw error;
+        document.getElementById('bank-saved-badge').style.display = 'inline';
+        showMessage('Bank details saved successfully!', 'success');
+      } catch (err) {
+        showMessage('Failed to save bank details: ' + err.message, 'error');
+      } finally {
+        setLoading(btn, false);
+      }
+    }
+  </script>
+</body>
+
+</html>

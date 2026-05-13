@@ -1,0 +1,1239 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ExpenseTrack — Daily Tracking</title>
+  <link rel="stylesheet" href="style.css" />
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap"
+    rel="stylesheet">
+
+  <!-- PWA -->
+  <link rel="manifest" href="/manifest.json" />
+  <meta name="theme-color" content="#6366f1" />
+  <link rel="icon" type="image/svg+xml" href="/icon.svg" />
+  <link rel="apple-touch-icon" href="/icon.svg" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="ExpenseTrack" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <script src="/pwa-register.js" defer></script>
+  <style>
+    :root {
+      --primary: #6366f1;
+      --primary-dark: #4f46e5;
+      --primary-soft: rgba(99, 102, 241, 0.1);
+      --success: #10b981;
+      --success-soft: rgba(16, 185, 129, 0.1);
+      --warning: #f59e0b;
+      --danger: #ef4444;
+      --bg-page: #f9fafb;
+      --card-bg: #ffffff;
+      --text-main: #111827;
+      --text-muted: #6b7280;
+      --radius-lg: 24px;
+      --radius-md: 16px;
+      --radius-sm: 12px;
+    }
+
+    body {
+      font-family: 'Plus Jakarta Sans', sans-serif;
+      background-color: var(--bg-page);
+      color: var(--text-main);
+      -webkit-font-smoothing: antialiased;
+    }
+
+    /* Layout & Header */
+    .app-main {
+      padding: 0;
+      background: var(--bg-page);
+    }
+
+    .hero-section {
+      background: linear-gradient(135deg, #1e1b4b 0%, #312e81 100%);
+      padding: var(--s-6) var(--s-4) var(--s-8) var(--s-4);
+      color: white;
+      border-radius: 0 0 32px 32px;
+      position: relative;
+    }
+
+    .hero-container {
+      max-width: 1200px;
+      margin: 0 auto;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .hero-text h1 {
+      font-size: 2rem;
+      font-weight: 800;
+      margin: 0;
+      letter-spacing: -0.025em;
+    }
+
+    .hero-text p {
+      opacity: 0.8;
+      margin-top: 0.25rem;
+      font-size: 0.95rem;
+    }
+
+    /* Stats Overview */
+    .stats-row {
+      max-width: 1200px;
+      margin: -2rem auto 1.5rem;
+      padding: 0 var(--s-4);
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: var(--s-3);
+    }
+
+    .stat-card {
+      background: var(--card-bg);
+      padding: 1.5rem;
+      border-radius: var(--radius-md);
+      box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.05);
+      border: 1px solid rgba(0, 0, 0, 0.03);
+      display: flex;
+      align-items: center;
+      gap: 1.25rem;
+    }
+
+    .stat-icon {
+      width: 54px;
+      height: 54px;
+      border-radius: var(--radius-sm);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.5rem;
+    }
+
+    .stat-info .label {
+      font-size: 0.8rem;
+      color: var(--text-muted);
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    .stat-info .val {
+      font-size: 1.5rem;
+      font-weight: 800;
+      color: var(--text-main);
+      margin-top: 0.1rem;
+    }
+
+    /* Filters Bar */
+    .filter-bar {
+      max-width: 1200px;
+      margin: 2.5rem auto 1.5rem;
+      padding: 0 1.5rem;
+      display: flex;
+      gap: 1rem;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+
+    @media (max-width: 640px) {
+      .filter-bar {
+        gap: 0.75rem;
+        margin-top: 1.5rem;
+      }
+    }
+
+    .input-group {
+      background: white;
+      padding: 0.4rem 1rem;
+      border-radius: 14px;
+      border: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      box-shadow: var(--shadow-sm);
+      flex: 1;
+      min-width: 150px;
+    }
+
+    @media (max-width: 480px) {
+      .input-group {
+        width: 100%;
+        flex: none;
+      }
+    }
+
+    .input-group label {
+      font-size: 0.75rem;
+      font-weight: 700;
+      color: var(--text-muted);
+      white-space: nowrap;
+    }
+
+    .clean-input {
+      border: none;
+      font-family: inherit;
+      font-weight: 600;
+      color: var(--text-main);
+      font-size: 0.95rem;
+      outline: none;
+      background: transparent;
+      width: 100%;
+    }
+
+    /* Day Tiles Grid */
+    .days-container {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 1.5rem;
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+      gap: 1.25rem;
+    }
+
+    @media (max-width: 600px) {
+      .days-container {
+        grid-template-columns: 1fr;
+        padding: 1rem;
+      }
+    }
+
+    .day-card {
+      background: white;
+      border-radius: var(--radius-md);
+      padding: 1.5rem;
+      border: 1px solid var(--border);
+      transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+      cursor: pointer;
+      display: flex;
+      flex-direction: column;
+      gap: 1rem;
+      position: relative;
+    }
+
+    .day-card:hover {
+      transform: translateY(-4px);
+      box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.05);
+      border-color: var(--primary);
+    }
+
+    .day-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+    }
+
+    .day-badge {
+      padding: 0.6rem;
+      background: #f3f4f6;
+      border-radius: 12px;
+      text-align: center;
+      min-width: 52px;
+    }
+
+    .day-badge .d {
+      font-size: 1.25rem;
+      font-weight: 800;
+      color: var(--text-main);
+      display: block;
+    }
+
+    .day-badge .m {
+      font-size: 0.7rem;
+      color: var(--text-muted);
+      font-weight: 700;
+      text-transform: uppercase;
+    }
+
+    .day-title h3 {
+      margin: 0;
+      font-size: 1.1rem;
+      font-weight: 700;
+    }
+
+    .day-title p {
+      margin: 0.25rem 0 0;
+      font-size: 0.85rem;
+      color: var(--text-muted);
+    }
+
+    .status-pill {
+      font-size: 0.7rem;
+      font-weight: 700;
+      padding: 0.35rem 0.75rem;
+      border-radius: 20px;
+      text-transform: uppercase;
+    }
+
+    .status-pill.filled {
+      background: var(--success-soft);
+      color: var(--success);
+    }
+
+    .status-pill.missing {
+      background: #f3f4f6;
+      color: var(--text-muted);
+    }
+
+    /* Approval status badges on day cards */
+    .approval-pill {
+      font-size: 0.65rem;
+      font-weight: 700;
+      padding: 0.25rem 0.65rem;
+      border-radius: 20px;
+      text-transform: uppercase;
+      letter-spacing: 0.03em;
+    }
+    .approval-pill.ap-approved  { background: #d1fae5; color: #065f46; }
+    .approval-pill.ap-rejected  { background: #fee2e2; color: #991b1b; }
+    .approval-pill.ap-in_review { background: #dbeafe; color: #1e3a8a; }
+    .approval-pill.ap-pending   { background: #fff7ed; color: #92400e; }
+
+    .day-footer {
+      margin-top: auto;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding-top: 1rem;
+      border-top: 1px solid #f3f4f6;
+    }
+
+    .day-amount {
+      font-size: 1.3rem;
+      font-weight: 800;
+      color: var(--text-main);
+    }
+
+    .day-entries {
+      font-size: 0.75rem;
+      color: var(--text-muted);
+      font-weight: 600;
+    }
+
+    /* Completion Hero */
+    .completion-banner {
+      grid-column: 1 / -1;
+      background: linear-gradient(135deg, #065f46 0%, #10b981 100%);
+      color: white;
+      padding: 3rem 2rem;
+      border-radius: var(--radius-lg);
+      text-align: center;
+      box-shadow: 0 25px 50px -12px rgba(16, 185, 129, 0.25);
+      margin-bottom: 2rem;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .completion-banner::after {
+      content: '🎉';
+      position: absolute;
+      font-size: 10rem;
+      right: -2rem;
+      bottom: -2rem;
+      opacity: 0.1;
+      transform: rotate(-15deg);
+    }
+
+    /* Multi-row Drawer */
+    .drawer {
+      position: fixed;
+      top: 0;
+      right: 0;
+      bottom: 0;
+      width: 500px;
+      max-width: 100%;
+      background: white;
+      z-index: 1000;
+      transform: translateX(100%);
+      transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+      display: flex;
+      flex-direction: column;
+      box-shadow: -10px 0 30px rgba(0, 0, 0, 0.1);
+    }
+
+    .drawer.open {
+      transform: translateX(0);
+    }
+
+    .drawer-header {
+      padding: var(--s-4);
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .drawer-body {
+      padding: var(--s-4);
+      flex: 1;
+      overflow-y: auto;
+    }
+
+    .expense-row-card {
+      background: #f9fafb;
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      padding: 1.25rem;
+      margin-bottom: 1.25rem;
+      position: relative;
+    }
+
+    .row-grid-responsive {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1rem;
+      margin-bottom: 1rem;
+    }
+
+    @media (max-width: 480px) {
+      .row-grid-responsive {
+        grid-template-columns: 1fr;
+        gap: 0.75rem;
+      }
+    }
+
+    .row-del {
+      position: absolute;
+      top: -10px;
+      right: -10px;
+      width: 28px;
+      height: 28px;
+      background: var(--danger);
+      color: white;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 0.8rem;
+      border: 3px solid white;
+      cursor: pointer;
+      box-shadow: var(--shadow-sm);
+    }
+
+    .sticky-footer {
+      padding: var(--s-3) var(--s-4);
+      background: white;
+      border-top: 1px solid var(--border);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: var(--s-3);
+      box-shadow: 0 -4px 12px rgba(0, 0, 0, 0.05);
+    }
+
+    @media (max-width: 400px) {
+      .sticky-footer {
+        flex-direction: column;
+        align-items: stretch;
+        padding: 1rem;
+        text-align: center;
+      }
+
+      .btn-premium {
+        width: 100%;
+        justify-content: center;
+      }
+    }
+
+    .btn-premium {
+      background: var(--primary);
+      color: white;
+      padding: 1rem 2rem;
+      border-radius: 14px;
+      font-weight: 700;
+      border: none;
+      cursor: pointer;
+      transition: all 0.2s;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    .btn-premium:hover {
+      background: var(--primary-dark);
+      transform: translateY(-2px);
+      box-shadow: 0 10px 15px -3px rgba(99, 102, 241, 0.3);
+    }
+
+    @media (max-width: 640px) {
+      .hero-section {
+        padding-top: 2rem;
+        padding-bottom: 5rem;
+        border-radius: 0 0 30px 30px;
+      }
+
+      .hero-text h1 {
+        font-size: 1.75rem;
+      }
+
+      .days-container {
+        grid-template-columns: 1fr;
+      }
+
+      .hero-container {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 1rem;
+      }
+    }
+    .row-travel-group { display: none; }
+    .site-ac-list { display:none; position:absolute; z-index:999; top:100%; left:0; right:0;
+      background:#fff; border:1px solid var(--border); border-radius:10px;
+      max-height:210px; overflow-y:auto; box-shadow:0 4px 18px rgba(0,0,0,.13); margin-top:2px; }
+    .site-ac-item { padding:.5rem .8rem; cursor:pointer; font-size:.83rem;
+      border-bottom:1px solid #f0f0f0; transition:background .1s; }
+    .site-ac-item:last-child { border-bottom:none; }
+    .site-ac-item:hover, .site-ac-item.ac-focus { background:var(--bg-secondary, #f0f4ff); }
+    .site-ac-code { font-weight:700; color:var(--primary,#4f46e5); }
+    .site-ac-name { color:var(--text-2,#374151); }
+  </style>
+</head>
+
+<body>
+
+  <div class="app-layout">
+    <div class="sidebar-overlay" id="sidebar-overlay" onclick="closeSidebar()"></div>
+
+    <!-- Sidebar -->
+    <nav class="sidebar" id="sidebar">
+      <div class="sidebar-logo">
+        <div class="logo-icon">💰</div>
+        <span class="logo-text">ExpenseTrack</span>
+      </div>
+      <div class="sidebar-nav">
+        <p class="sidebar-nav-label">Main Menu</p>
+        <a href="dashboard.html" class="sidebar-link">
+          <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round"
+              d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
+          </svg>
+          Overview
+        </a>
+        <a href="add-expense.html" class="sidebar-link active">
+          <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round"
+              d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+          </svg>
+          Daily Tracking
+        </a>
+        <a href="profile.html" class="sidebar-link">
+          <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round"
+              d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+          </svg>
+          My Profile
+        </a>
+      </div>
+      <div class="sidebar-footer">
+        <div class="sidebar-user">
+          <div class="avatar" id="sb-avatar">?</div>
+          <div>
+            <div class="sidebar-user-email" id="sb-email">Loading…</div>
+            <div class="sidebar-user-role" id="sb-role">—</div>
+          </div>
+        </div>
+        <button class="sidebar-btn" onclick="logout()">Sign Out</button>
+      </div>
+    </nav>
+
+    <!-- Main Content -->
+    <div class="app-main">
+      <div class="hero-section">
+        <div class="hero-container">
+          <div class="hero-text">
+            <h1>My Expenses</h1>
+            <p id="hero-subtitle">Review and add your daily business spending.</p>
+          </div>
+          <div class="topbar-right">
+            <button class="topbar-menu" onclick="toggleSidebar()"
+              style="background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); padding: 0.5rem; border-radius: 10px; color: white;">☰</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="stats-row">
+        <div class="stat-card">
+          <div class="stat-icon" style="background: var(--primary-soft); color: var(--primary);">💰</div>
+          <div class="stat-info">
+            <div class="label">Cycle Total</div>
+            <div class="val" id="stat-cycle-total">₹0.00</div>
+          </div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-icon" style="background: var(--success-soft); color: var(--success);">📅</div>
+          <div class="stat-info">
+            <div class="label">Progress</div>
+            <div class="val" id="stat-progress">0 / 0 Days</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="filter-bar">
+        <div class="input-group">
+          <label>Month</label>
+          <input type="month" id="sheet-month" class="clean-input" onchange="renderSheet()">
+        </div>
+        <div class="input-group">
+          <label>Cycle</label>
+          <select id="sheet-cycle" class="clean-input" onchange="renderSheet()">
+            <option value="1">Cycle 1 (1st - 15th)</option>
+            <option value="2">Cycle 2 (16th - End)</option>
+          </select>
+        </div>
+      </div>
+
+      <div id="sheet-container" class="days-container">
+        <!-- Days Grid Injected Here -->
+      </div>
+    </div>
+  </div>
+
+  <!-- Premium Entry Drawer -->
+  <div class="sidebar-overlay" id="drawer-overlay" onclick="closeEntryPanel()" style="z-index: 999;"></div>
+  <div class="drawer" id="entry-panel">
+    <div class="drawer-header">
+      <div>
+        <h2 style="margin:0; font-size:1.4rem">Daily Entries</h2>
+        <p id="entry-subtitle" style="color:var(--text-muted); font-size:0.9rem; margin-top:0.2rem"></p>
+      </div>
+      <button class="btn btn-secondary btn-sm" onclick="closeEntryPanel()"
+        style="border-radius: 50%; width: 40px; height: 40px; display: flex; align-items: center; justify-content: center;">✕</button>
+    </div>
+
+    <div class="drawer-body">
+      <form id="entry-form" onsubmit="saveDailyEntries(event)">
+        <input type="hidden" id="entry-date">
+        <div id="rows-container"></div>
+        <button type="button" class="btn btn-secondary btn-block"
+          style="border: 2px dashed var(--border); background: transparent; padding: 1.25rem; border-radius: 16px; color: var(--text-muted); font-weight: 600;"
+          onclick="addRow()">
+          + Add Another Expense
+        </button>
+      </form>
+    </div>
+
+    <div class="sticky-footer">
+      <div>
+        <p style="font-size:0.7rem; color:var(--text-muted); margin:0; text-transform: uppercase; font-weight: 700;">
+          Total for Day</p>
+        <p id="panel-day-total" style="font-size:1.6rem; font-weight:800; color: var(--primary); margin:0">₹0.00</p>
+      </div>
+      <button type="submit" form="entry-form" id="save-btn" class="btn-premium">
+        <svg style="width:20px;height:20px" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="3">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" />
+        </svg>
+        Save Day
+      </button>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="app.js"></script>
+  <script>
+    let currentUser = null;
+    let expensesForMonth = [];
+
+    // Configurable per-category expense limits (null = no limit)
+    const CATEGORY_LIMITS = {
+      'Travel':    null,
+      'Regular':   null,
+      'Other':     null,
+      'Room Rent': 700
+    };
+
+    const SITE_DATA = [
+      {code:'LOC0001',name:'Sindhu'},{code:'LOC0002',name:'Budhro Ki Dhani'},
+      {code:'LOC0003',name:'Bidasar'},{code:'LOC0004',name:'Nadiya Tal'},
+      {code:'LOC0005',name:'Udwala'},{code:'LOC0006',name:'Ratnania Johra'},
+      {code:'LOC0007',name:'Jamola'},{code:'LOC0008',name:'Kherla Nagar'},
+      {code:'LOC0009',name:'Birmana Tal'},{code:'LOC0010',name:'Ghantel'},
+      {code:'LOC0011',name:'Keshloi Tal'},{code:'LOC0012',name:'Kunpalsar'},
+      {code:'LOC0013',name:'Ramdevra-ii'},{code:'LOC0014',name:'Sandwa'},
+      {code:'LOC0015',name:'Badsar'},{code:'LOC0016',name:'Dhirasar'},
+      {code:'LOC0017',name:'Raimalwara'},{code:'LOC0018',name:'Muknasar'},
+      {code:'LOC0019',name:'Mukam'},{code:'LOC0020',name:'Ankhisar-i'},
+      {code:'LOC0021',name:'Ankhisar-ii'},{code:'LOC0022',name:'Purnada Tall'},
+      {code:'LOC0023',name:'Chitawa'},{code:'LOC0024',name:'Rajaldesar'},
+      {code:'LOC0025',name:'Raisar'},{code:'LOC0026',name:'Kakra-i (a)'},
+      {code:'LOC0027',name:'Kakra-ii (a+b)'},{code:'LOC0028',name:'Kishnasar'},
+      {code:'LOC0029',name:'Jogniya Ka Bala'},{code:'LOC0030',name:'Surpura-i'},
+      {code:'LOC0031',name:'Surpura-ii'},{code:'LOC0032',name:'Dhingsari'},
+      {code:'LOC0033',name:'Sowa'},{code:'LOC0034',name:'Berasar'},
+      {code:'LOC0035',name:'Himmatsar'},{code:'LOC0036',name:'Khunkhuna'},
+      {code:'LOC0037',name:'Lalasar-1'},{code:'LOC0038',name:'Pilania Pau'},
+      {code:'LOC0039',name:'Bachasar-i & Ii'},{code:'LOC0040',name:'Choti Serva'},
+      {code:'LOC0041',name:'Rohisa'},{code:'LOC0042',name:'Gopasariya-1'},
+      {code:'LOC0043',name:'Satra- 1&2'},{code:'LOC0045',name:'Ramdevra-i'},
+      {code:'LOC0046',name:'Gajroopdesar-i'},{code:'LOC0047',name:'Raniwada'},
+      {code:'LOC0048',name:'Malpura'},{code:'LOC0049',name:'Chittod'},
+      {code:'LOC0050',name:'Nagaur Dairy'},{code:'LOC0051',name:'Mnit'},
+      {code:'LOC0052',name:'Bhartpur'},{code:'LOC0053',name:'Sau Delhi'},
+      {code:'LOC0054',name:'Jagatpura Rooftop'},{code:'LOC0055',name:'Vki Warehouse'},
+      {code:'LOC0056',name:'Office'},{code:'LOC0057',name:'3rd Party Site'},
+      {code:'LOC0058',name:'Khakholi'},{code:'LOC0059',name:'Pahel & Haspurkalan'},
+      {code:'LOC0060',name:'Gajroopdesar-ii'},{code:'LOC0061',name:'Jhareli II'},
+      {code:'LOC0062',name:'Bamboo'},{code:'LOC0063',name:'Godawanti Tal'},
+      {code:'LOC0064',name:'Neral Railway Station'},{code:'LOC0065',name:'Mira Road Railway Station'},
+      {code:'LOC0098',name:'Ghatoo'},{code:'LOC0099',name:'Hiyadesar'},
+      {code:'LOC0101',name:'Jegla'},{code:'LOC0103',name:'Gopasariya-2'},
+      {code:'LOC0104',name:'Somalsar'},{code:'LOC0105',name:'Surawas'},
+      {code:'LOC0113',name:'Thaiyat'},{code:'LOC0114',name:'Ajoliya Ka Khera'},
+      {code:'LOC0115',name:'Devliya Kallan'},{code:'LOC0116',name:'Sarna'},
+      {code:'LOC0118',name:'Ghewariya'},{code:'LOC0119',name:'Lalasar-2'},
+      {code:'LOC0127',name:'Jetpur'},{code:'LOC0128',name:'Manyana'},
+      {code:'LOC0129',name:'Sadu'},{code:'LOC0130',name:'Ramdevra-1 Dungargarh'},
+      {code:'LOC0131',name:'Ramdevra-2 Dungargarh'},{code:'LOC0132',name:'Jetpura'},
+      {code:'LOC0133',name:'Dausar'},{code:'LOC0140',name:'Subhi'},
+      {code:'LOC0141',name:'Dr. Hari Singh Gour Vishwavidyalaya'},{code:'LOC0142',name:'Tender'},
+      {code:'LOC0143',name:'MES MHOW'},{code:'LOC0144',name:'GUVNL Vasedi BESS'},
+      {code:'LOC0145',name:'REMCL Shikhar'},{code:'LOC0146',name:'REMCL Srijan'},
+      {code:'LOC0147',name:'ITI (Rajasthan)'},{code:'LOC0148',name:'Ramgarh Gas Thermal Power Station (RGTPP)'},
+      {code:'LOC0149',name:'NTPC Faridabad'}
+    ];
+
+    (async () => {
+      const user = await requireAuth();
+      if (!user) return;
+      const profile = await getUserProfile();
+      currentUser = profile;
+      populateSidebar(profile);
+
+      const now = new Date();
+      document.getElementById('sheet-month').value = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+      await renderSheet();
+
+      // Real-time: refresh sheet when manager approves/rejects any of this user's expenses
+      db.channel(`rt-expenses-${currentUser.id}`)
+        .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'expenses', filter: `user_id=eq.${currentUser.id}` }, async () => {
+          if (!document.getElementById('entry-panel').classList.contains('open')) {
+            await renderSheet();
+          }
+        })
+        .subscribe();
+    })();
+
+
+    async function renderSheet() {
+      const monthVal = document.getElementById('sheet-month').value;
+      const cycle = document.getElementById('sheet-cycle').value;
+      if (!monthVal) return;
+
+      const [year, month] = monthVal.split('-').map(Number);
+      const startOfMonth = new Date(year, month - 1, 1).toISOString();
+      const endOfMonth = new Date(year, month, 0, 23, 59, 59).toISOString();
+
+      const { data } = await db.from('expenses')
+        .select('*')
+        .eq('user_id', currentUser.id)
+        .gte('created_at', startOfMonth)
+        .lte('created_at', endOfMonth);
+
+      expensesForMonth = data || [];
+
+      let startDay, endDay;
+      if (cycle === '1') {
+        startDay = 1; endDay = 15;
+      } else {
+        startDay = 16;
+        endDay = new Date(year, month, 0).getDate();
+      }
+
+      const container = document.getElementById('sheet-container');
+      const filledDays = new Set();
+      const totalDays = endDay - startDay + 1;
+
+      let cycleTotal = 0;
+      expensesForMonth.forEach(e => {
+        const d = new Date(e.created_at);
+        if (d.getDate() >= startDay && d.getDate() <= endDay) {
+          filledDays.add(d.toDateString());
+          if (e.status !== 'rejected' && e.status !== 'l1_rejected') {
+            cycleTotal += e.approved_amount != null ? +e.approved_amount : +e.amount;
+          }
+        }
+      });
+
+      document.getElementById('stat-cycle-total').textContent = formatCurrency(cycleTotal);
+      document.getElementById('stat-progress').textContent = `${filledDays.size} / ${totalDays} Days`;
+
+      container.innerHTML = '';
+
+      // Auto Cycle Logic: If cycle complete, show celebration AND then show list or allow jumping to next
+      if (filledDays.size === totalDays) {
+        const monthName = new Date(year, month - 1, 1).toLocaleString('default', { month: 'long', year: 'numeric' });
+        const banner = document.createElement('div');
+        banner.className = 'completion-banner';
+        banner.innerHTML = `
+        <h2 style="font-size: 2rem; font-weight: 800; margin: 0">Cycle ${cycle} Fully Logged!</h2>
+        <p style="opacity: 0.9; margin: 0.5rem 0 2rem">You have successfully filled all ${totalDays} days for this period.</p>
+        <div style="display:flex; gap:1rem; justify-content:center; flex-wrap:wrap">
+          ${cycle === '1' ?
+            `<button class="btn btn-secondary" style="background:white; color:var(--success); font-weight:800; border:none; padding: 1rem 2rem; border-radius:12px; cursor:pointer" onclick="jumpToCycle(2)">Start Cycle 2 →</button>` :
+            `<button class="btn btn-secondary" style="background:white; color:var(--success); font-weight:800; border:none; padding: 1rem 2rem; border-radius:12px; cursor:pointer" onclick="jumpToNextMonth()">Next Month →</button>`
+          }
+          <button class="btn btn-secondary" style="background: rgba(255,255,255,0.2); color:white; border: 1px solid rgba(255,255,255,0.4); padding: 1rem 2rem; border-radius:12px; cursor:pointer" onclick="this.parentElement.parentElement.remove()">Review Entries</button>
+        </div>
+      `;
+        container.appendChild(banner);
+      }
+
+      renderDaysList(year, month, startDay, endDay);
+    }
+
+    function jumpToCycle(c) {
+      document.getElementById('sheet-cycle').value = String(c);
+      renderSheet();
+    }
+
+    function jumpToNextMonth() {
+      const mInput = document.getElementById('sheet-month');
+      const [y, m] = mInput.value.split('-').map(Number);
+      let ny = y, nm = m + 1;
+      if (nm > 12) { nm = 1; ny++; }
+      mInput.value = `${ny}-${String(nm).padStart(2, '0')}`;
+      document.getElementById('sheet-cycle').value = '1';
+      renderSheet();
+    }
+
+    function getDayApprovalStatus(expenses) {
+      if (!expenses.length) return null;
+      const statuses = expenses.map(e => e.status);
+      if (statuses.every(s => s === 'approved')) return 'approved';
+      if (statuses.every(s => s === 'rejected' || s === 'l1_rejected')) return 'rejected';
+      if (statuses.some(s => s === 'rejected' || s === 'l1_rejected')) return 'rejected';
+      if (statuses.some(s => s === 'l1_approved')) return 'in_review';
+      return 'pending';
+    }
+
+    const APPROVAL_LABELS = {
+      approved:  '✓ Approved',
+      rejected:  '✕ Rejected',
+      in_review: '● In Review',
+      pending:   '○ Pending'
+    };
+
+    function renderDaysList(year, month, startDay, endDay) {
+      const container = document.getElementById('sheet-container');
+
+      for (let i = startDay; i <= endDay; i++) {
+        const dayDate = new Date(year, month - 1, i);
+        const dayStr = dayDate.toDateString();
+        const dayExpenses = expensesForMonth.filter(e => new Date(e.created_at).toDateString() === dayStr);
+        const isFilled = dayExpenses.length > 0;
+
+        const card = document.createElement('div');
+        card.className = `day-card ${isFilled ? 'filled' : 'missing'}`;
+        card.onclick = () => openEntryPanel(dayDate.toISOString());
+
+        let originalTotal = 0;
+        let effectiveTotal = 0;
+        dayExpenses.forEach(exp => {
+          if (exp.status !== 'rejected' && exp.status !== 'l1_rejected') {
+            originalTotal += +exp.amount;
+            effectiveTotal += exp.approved_amount != null ? +exp.approved_amount : +exp.amount;
+          }
+        });
+        const amtAdjusted = isFilled && (effectiveTotal !== originalTotal);
+
+        const approvalStatus = getDayApprovalStatus(dayExpenses);
+        const monthShort = dayDate.toLocaleString('default', { month: 'short' });
+        const weekday = dayDate.toLocaleDateString('en-US', { weekday: 'long' });
+
+        let subtitleText = 'Ready for entries';
+        if (isFilled) {
+          if (approvalStatus === 'approved') subtitleText = 'Approved by manager';
+          else if (approvalStatus === 'rejected') subtitleText = 'Rejected — tap to resubmit';
+          else if (approvalStatus === 'in_review') subtitleText = 'Under manager review';
+          else subtitleText = 'Awaiting approval';
+        }
+
+        card.innerHTML = `
+        <div class="day-header">
+          <div class="day-badge">
+            <span class="d">${i}</span>
+            <span class="m">${monthShort}</span>
+          </div>
+          <div style="display:flex;flex-direction:column;align-items:flex-end;gap:5px">
+            <span class="status-pill ${isFilled ? 'filled' : 'missing'}">
+              ${isFilled ? 'Filled' : 'Missing'}
+            </span>
+            ${approvalStatus ? `<span class="approval-pill ap-${approvalStatus}">${APPROVAL_LABELS[approvalStatus]}</span>` : ''}
+          </div>
+        </div>
+        <div class="day-title">
+          <h3>${weekday}</h3>
+          <p>${subtitleText}</p>
+        </div>
+        <div class="day-footer">
+          <div>
+            ${amtAdjusted ? `<div style="text-decoration:line-through;color:#9ca3af;font-size:.78rem">${formatCurrency(originalTotal)}</div>` : ''}
+            <div class="day-amount">${isFilled ? formatCurrency(effectiveTotal) : '—'}</div>
+            ${amtAdjusted ? `<div style="font-size:.65rem;color:#059669;font-weight:700">Adjusted</div>` : ''}
+          </div>
+          <div class="day-entries">${dayExpenses.length} entr${dayExpenses.length === 1 ? 'y' : 'ies'}</div>
+        </div>
+      `;
+        container.appendChild(card);
+      }
+    }
+
+    function addRow(data = {}, locked = false) {
+      const container = document.getElementById('rows-container');
+      const rowId = 'row-' + Date.now() + Math.random().toString(36).substr(2, 5);
+      const isOther = data.category === 'Other';
+      const isTravel = data.category === 'Travel';
+
+      const card = document.createElement('div');
+      card.className = 'expense-row-card p-4 mb-4 rounded-xl shadow-sm';
+      card.id = rowId;
+      card.style.background = '#f8fafc';
+      card.style.border = '1px solid var(--border)';
+
+      card.innerHTML = `
+      <div class="flex justify-between items-center mb-3">
+        <span class="font-bold text-xs" style="color:var(--text-3); text-transform:uppercase; letter-spacing:0.05em">Entry Details</span>
+        <button type="button" class="btn btn-ghost btn-sm p-0" style="color:var(--red); min-height:0; width:24px; height:24px" onclick="removeRow('${rowId}')">✕</button>
+      </div>
+
+      <div class="grid gap-3 mb-3" style="grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));">
+        <div class="form-group mb-0">
+          <label class="form-label">Amount (₹)</label>
+          <input type="number" class="form-input font-bold" step="0.01" value="${data.amount || ''}" required
+            oninput="validateRow('${rowId}')" placeholder="0.00">
+        </div>
+        <div class="form-group mb-0">
+          <label class="form-label">Category</label>
+          <select class="form-select row-cat" required onchange="handleCategoryChange('${rowId}')">
+            <option value="Regular"   ${!data.category || data.category === 'Regular'   ? 'selected' : ''}>Regular</option>
+            <option value="Travel"    ${data.category === 'Travel'    ? 'selected' : ''}>Travel</option>
+            <option value="Other"     ${data.category === 'Other'     ? 'selected' : ''}>Other</option>
+            <option value="Room Rent" ${data.category === 'Room Rent' ? 'selected' : ''}>Room Rent</option>
+          </select>
+        </div>
+      </div>
+
+      <!-- Limit warning (non-Room-Rent categories) -->
+      <div class="row-limit-warning" style="display:none; background:#fff7ed; border:1px solid #fed7aa; border-radius:10px; padding:0.6rem 0.875rem; margin-bottom:0.75rem; font-size:0.82rem; color:#c2410c; font-weight:600;">
+        ⚠️ Amount exceeds the <span class="warning-limit-val"></span> limit for this category
+      </div>
+
+      <!-- Room Rent approval block -->
+      <div class="row-approval-block" style="display:none; background:#fef2f2; border:1.5px solid #fca5a5; border-radius:12px; padding:1rem; margin-bottom:0.75rem;">
+        <div style="color:#dc2626; font-weight:700; font-size:0.9rem; margin-bottom:0.4rem;">🔴 Approval Required</div>
+        <p style="color:#991b1b; font-size:0.82rem; line-height:1.5; margin:0;">
+          Room Rent above ₹700 requires manager approval. Please upload a proof document (bill / photo) below before submitting.
+        </p>
+      </div>
+
+      <div class="row-travel-group gap-3 mb-3" style="display: ${isTravel ? 'grid' : 'none'}; grid-template-columns: 1fr 1fr;">
+        <div class="form-group mb-0">
+          <label class="form-label">From</label>
+          <input type="text" class="form-input row-from" placeholder="Start location" value="${data.from || ''}">
+        </div>
+        <div class="form-group mb-0">
+          <label class="form-label">To</label>
+          <input type="text" class="form-input row-to" placeholder="End location" value="${data.to || ''}">
+        </div>
+      </div>
+
+      <div class="form-group mb-3 row-name-group" style="display: ${isOther ? 'block' : 'none'}">
+        <label class="form-label">Expense Name</label>
+        <input type="text" class="form-input row-name" placeholder="e.g. Courier" value="${data.name || ''}" ${isOther ? 'required' : ''}>
+      </div>
+
+      <div class="form-group mb-3">
+        <label class="form-label">Site Name</label>
+        <div class="site-ac-wrap" style="position:relative">
+          <input type="text" class="form-input row-site" placeholder="Search site name or code…"
+                 value="${escHtml(data.site || currentUser.site_name || '')}"
+                 autocomplete="off" required>
+          <div class="site-ac-list"></div>
+        </div>
+      </div>
+
+      <div class="form-group mb-3">
+        <label class="form-label">Description</label>
+        <input type="text" class="form-input row-desc" placeholder="Details..." value="${data.description || ''}">
+      </div>
+
+      <div class="form-group mb-0">
+        <label class="form-label receipt-label">Receipt (Optional)</label>
+        <div class="receipt-upload-box flex items-center gap-2 p-2 rounded-xl" style="position:relative; background:white; border:1px solid var(--border); overflow:hidden; transition: border-color 0.2s;">
+          <svg style="width:14px;height:14px;color:var(--text-3)" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z"/><path stroke-linecap="round" stroke-linejoin="round" d="M15 13a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+          <span class="file-name flex-1 text-xs truncate" style="color:var(--text-3)">${data.receipt_url ? 'Receipt Uploaded' : 'Upload Receipt'}</span>
+          ${data.receipt_url ? `<a href="javascript:void(0)" onclick="viewReceipt('${escHtml(data.receipt_url)}')" style="font-size:.75rem;font-weight:600;color:var(--primary);white-space:nowrap;padding:0 4px">📎 View</a>` : ''}
+          <input type="file" class="row-file" accept="image/*,application/pdf" style="position:absolute; inset:0; opacity:0; cursor:pointer" onchange="updateFileLabel(this)">
+          <input type="hidden" class="row-old-url" value="${data.receipt_url || ''}">
+        </div>
+      </div>
+    `;
+      container.appendChild(card);
+      handleCategoryChange(rowId);
+      if (locked) {
+        card.dataset.locked = 'true';
+        card.style.opacity = '0.82';
+        card.style.background = '#f8fafc';
+        card.querySelectorAll('input, select, textarea').forEach(el => el.disabled = true);
+        const delBtn = card.querySelector(`button[onclick="removeRow('${rowId}')"]`);
+        if (delBtn) delBtn.style.display = 'none';
+        const st = data.status || '';
+        const badge = document.createElement('span');
+        const styles = st === 'approved'    ? ['#d1fae5','#065f46','✓ Approved']
+                     : st === 'l1_approved' ? ['#dbeafe','#1e3a8a','● In Review']
+                     : st === 'rejected' || st === 'l1_rejected' ? ['#fee2e2','#991b1b','✕ Rejected']
+                     : ['#f3f4f6','#6b7280','○ Locked'];
+        badge.style.cssText = `display:inline-block;font-size:.65rem;font-weight:700;padding:.2rem .65rem;border-radius:20px;background:${styles[0]};color:${styles[1]}`;
+        badge.textContent = styles[2];
+        card.querySelector('.flex.justify-between.items-center.mb-3')?.append(badge);
+      }
+      calcPanelTotal();
+    }
+
+    function handleCategoryChange(rowId) {
+      const row = document.getElementById(rowId);
+      const cat = row.querySelector('.row-cat').value;
+      const isOther  = (cat === 'Other');
+      const isTravel = (cat === 'Travel');
+
+      row.querySelector('.row-name-group').style.display = isOther ? 'block' : 'none';
+      if (isOther) row.querySelector('.row-name').setAttribute('required', '');
+      else row.querySelector('.row-name').removeAttribute('required');
+
+      const travelGroup = row.querySelector('.row-travel-group');
+      travelGroup.style.display = isTravel ? 'grid' : 'none';
+      if (isTravel) {
+        row.querySelector('.row-from').setAttribute('required', '');
+        row.querySelector('.row-to').setAttribute('required', '');
+      } else {
+        row.querySelector('.row-from').removeAttribute('required');
+        row.querySelector('.row-to').removeAttribute('required');
+      }
+
+      validateRow(rowId);
+    }
+
+    function validateRow(rowId) {
+      const row = document.getElementById(rowId);
+      const cat    = row.querySelector('.row-cat').value;
+      const amount = parseFloat(row.querySelector('input[type="number"]').value) || 0;
+      const limit  = CATEGORY_LIMITS[cat] ?? null;
+
+      const limitWarning  = row.querySelector('.row-limit-warning');
+      const approvalBlock = row.querySelector('.row-approval-block');
+      const receiptLabel  = row.querySelector('.receipt-label');
+      const receiptBox    = row.querySelector('.receipt-upload-box');
+
+      // Reset to default state
+      limitWarning.style.display  = 'none';
+      approvalBlock.style.display = 'none';
+      receiptLabel.textContent    = 'Receipt (Optional)';
+      receiptLabel.style.color    = '';
+      receiptBox.style.borderColor = '';
+
+      if (limit !== null && amount > 0 && amount > limit) {
+        if (cat === 'Room Rent') {
+          approvalBlock.style.display  = 'block';
+          receiptLabel.textContent     = 'Proof / Document (Required for Approval) *';
+          receiptLabel.style.color     = '#dc2626';
+          receiptBox.style.borderColor = '#fca5a5';
+        } else {
+          row.querySelector('.warning-limit-val').textContent = formatCurrency(limit);
+          limitWarning.style.display = 'block';
+        }
+      }
+
+      calcPanelTotal();
+    }
+
+    function removeRow(rowId) {
+      if (document.querySelectorAll('.expense-row-card:not([data-locked])').length > 1) {
+        document.getElementById(rowId).remove();
+        calcPanelTotal();
+      }
+    }
+
+    function calcPanelTotal() {
+      let total = 0;
+      document.querySelectorAll('.expense-row-card:not([data-locked]) input[type="number"]').forEach(input => total += parseFloat(input.value) || 0);
+      document.getElementById('panel-day-total').textContent = formatCurrency(total);
+    }
+
+    function updateFileLabel(input) {
+      const box = input.closest('.receipt-upload-box');
+      const label = box.querySelector('.file-name');
+      if (input.files && input.files[0]) {
+        label.textContent = input.files[0].name;
+        label.style.color = 'var(--primary)';
+      }
+    }
+
+    function parseExpenseToRowData(exp) {
+      const parts = (exp.description || '').split('|');
+      const type = parts[0];
+      const row = { amount: exp.amount, category: exp.category, receipt_url: exp.receipt_url, status: exp.status };
+      if (type === 'TRAVEL')           { row.from = parts[1]||''; row.to = parts[2]||''; row.site = parts[3]||''; row.description = parts[4]||''; }
+      else if (type === 'OTHER')       { row.name = parts[1]||''; row.site = parts[2]||''; row.description = parts[3]||''; }
+      else if (type === 'ROOM_RENT' || type === 'REGULAR') { row.site = parts[1]||''; row.description = parts[2]||''; }
+      else                             { row.site = currentUser?.site_name||''; row.description = exp.description||''; }
+      return row;
+    }
+
+    function openEntryPanel(dateIso) {
+      const date = new Date(dateIso);
+      document.getElementById('entry-subtitle').textContent = date.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
+      document.getElementById('entry-date').value = dateIso;
+      const container = document.getElementById('rows-container');
+      container.innerHTML = '';
+
+      const dayStr = date.toDateString();
+      const dayExpenses = expensesForMonth.filter(e => new Date(e.created_at).toDateString() === dayStr);
+      const lockedExp  = dayExpenses.filter(e => e.status !== 'pending');
+      const editableExp = dayExpenses.filter(e => e.status === 'pending');
+
+      // Locked entries (approved / in-review / rejected) — shown read-only at top
+      if (lockedExp.length > 0) {
+        const notice = document.createElement('div');
+        notice.style.cssText = 'background:#eff6ff;border:1px solid #bfdbfe;border-radius:12px;padding:.75rem 1rem;margin-bottom:1rem;font-size:.82rem;color:#1e40af;font-weight:600';
+        notice.innerHTML = `🔒 ${lockedExp.length} entr${lockedExp.length > 1 ? 'ies' : 'y'} locked — reviewed by manager and cannot be edited.`;
+        container.appendChild(notice);
+        lockedExp.forEach(exp => addRow(parseExpenseToRowData(exp), true));
+      }
+
+      // Editable (pending) entries
+      editableExp.forEach(exp => addRow(parseExpenseToRowData(exp)));
+
+      // If no editable entries, add one empty row for a new submission
+      if (editableExp.length === 0) addRow();
+
+      document.getElementById('entry-panel').classList.add('open');
+      document.getElementById('drawer-overlay').classList.add('active');
+    }
+
+    function closeEntryPanel() {
+      document.getElementById('entry-panel').classList.remove('open');
+      document.getElementById('drawer-overlay').classList.remove('active');
+    }
+
+    async function saveDailyEntries(e) {
+      e.preventDefault();
+      const btn = document.getElementById('save-btn');
+      setLoading(btn, true);
+      const dateIso = document.getElementById('entry-date').value;
+      const rowElements = document.querySelectorAll('.expense-row-card:not([data-locked])');
+      const newEntries = [];
+
+      for (const row of rowElements) {
+        const amount = parseFloat(row.querySelector('input[type="number"]').value);
+        const category = row.querySelector('.row-cat').value;
+        const site = row.querySelector('.row-site').value.trim();
+        const desc = row.querySelector('.row-desc').value.trim();
+        const fileInput = row.querySelector('.row-file');
+        const oldUrl = row.querySelector('.row-old-url').value;
+
+        let receipt_url = oldUrl;
+        if (fileInput.files && fileInput.files[0]) {
+          receipt_url = await uploadReceipt(fileInput.files[0], currentUser.id);
+        }
+
+        // Room Rent above limit requires proof
+        if (category === 'Room Rent') {
+          const roomLimit = CATEGORY_LIMITS['Room Rent'];
+          if (amount > roomLimit) {
+            const hasFile = fileInput.files && fileInput.files[0];
+            const hasOldUrl = oldUrl && oldUrl.trim() !== '';
+            if (!hasFile && !hasOldUrl) {
+              setLoading(btn, false);
+              showMessage('Room Rent above ₹700 requires proof. Please upload a document before saving.', 'error');
+              return;
+            }
+          }
+        }
+
+        let finalDescription = '';
+        if (category === 'Travel') {
+          const from = row.querySelector('.row-from').value.trim();
+          const to = row.querySelector('.row-to').value.trim();
+          finalDescription = `TRAVEL|${from}|${to}|${site}|${desc}`;
+        } else if (category === 'Other') {
+          const name = row.querySelector('.row-name').value.trim();
+          finalDescription = `OTHER|${name}|${site}|${desc}`;
+        } else if (category === 'Room Rent') {
+          finalDescription = `ROOM_RENT|${site}|${desc}`;
+        } else {
+          finalDescription = `REGULAR|${site}|${desc}`;
+        }
+
+        newEntries.push({ user_id: currentUser.id, company_id: currentUser.company_id || null, amount, category, description: finalDescription, created_at: dateIso, status: 'pending', receipt_url });
+      }
+
+      try {
+        const startOfDay = new Date(dateIso).toISOString();
+        const endOfDay = new Date(new Date(dateIso).getTime() + 86399999).toISOString();
+        // Only delete pending entries — approved/reviewed entries are preserved
+        await db.from('expenses').delete()
+          .eq('user_id', currentUser.id)
+          .eq('status', 'pending')
+          .gte('created_at', startOfDay)
+          .lte('created_at', endOfDay);
+        if (newEntries.length > 0) await db.from('expenses').insert(newEntries);
+        showMessage('Entries updated successfully! ✨', 'success');
+        closeEntryPanel();
+        await renderSheet();
+      } catch (err) { showMessage(err.message, 'error'); }
+      finally { setLoading(btn, false); }
+    }
+
+    // ── Site autocomplete ─────────────────────────────────
+    function siteAcShow(inp) {
+      const q = inp.value.trim().toLowerCase();
+      const list = inp.nextElementSibling;
+      if (!q) { list.style.display = 'none'; return; }
+      const hits = SITE_DATA.filter(s =>
+        s.name.toLowerCase().startsWith(q) || s.code.toLowerCase().startsWith(q)
+      ).slice(0, 10);
+      if (!hits.length) { list.style.display = 'none'; return; }
+      list.innerHTML = hits.map(s =>
+        `<div class="site-ac-item" data-val="${escHtml(s.name + ' — ' + s.code)}">
+          <span class="site-ac-name">${escHtml(s.name)}</span>
+          <span class="site-ac-code"> — ${escHtml(s.code)}</span>
+        </div>`
+      ).join('');
+      list.style.display = 'block';
+    }
+
+    document.addEventListener('input', function(e) {
+      if (e.target.classList.contains('row-site')) siteAcShow(e.target);
+    });
+
+    document.addEventListener('keydown', function(e) {
+      if (!e.target.classList.contains('row-site')) return;
+      const list = e.target.nextElementSibling;
+      if (list.style.display === 'none') return;
+      const items = list.querySelectorAll('.site-ac-item');
+      const focused = list.querySelector('.ac-focus');
+      let idx = focused ? [...items].indexOf(focused) : -1;
+      if (e.key === 'ArrowDown') { e.preventDefault(); idx = Math.min(idx + 1, items.length - 1); }
+      else if (e.key === 'ArrowUp') { e.preventDefault(); idx = Math.max(idx - 1, 0); }
+      else if (e.key === 'Enter' && focused) { e.preventDefault(); focused.click(); return; }
+      else if (e.key === 'Escape') { list.style.display = 'none'; return; }
+      else return;
+      focused?.classList.remove('ac-focus');
+      items[idx]?.classList.add('ac-focus');
+      items[idx]?.scrollIntoView({ block: 'nearest' });
+    });
+
+    document.addEventListener('click', function(e) {
+      const item = e.target.closest('.site-ac-item');
+      if (item) {
+        const wrap = item.closest('.site-ac-wrap');
+        const inp = wrap.querySelector('.row-site');
+        inp.value = item.dataset.val;
+        wrap.querySelector('.site-ac-list').style.display = 'none';
+        return;
+      }
+      document.querySelectorAll('.site-ac-list').forEach(l => l.style.display = 'none');
+    });
+  </script>
+</body>
+
+</html>

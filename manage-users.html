@@ -1,0 +1,710 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ExpenseTrack — Manage Users</title>
+  <link rel="stylesheet" href="style.css" />
+  <link rel="manifest" href="/manifest.json" />
+  <meta name="theme-color" content="#6366f1" />
+  <link rel="icon" type="image/svg+xml" href="/icon.svg" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <script src="/pwa-register.js" defer></script>
+</head>
+<body>
+<div class="app-layout">
+
+  <div class="sidebar-overlay" id="sidebar-overlay" onclick="closeSidebar()"></div>
+
+  <!-- ── Sidebar ── -->
+  <nav class="sidebar" id="sidebar">
+    <div class="sidebar-logo">
+      <div class="logo-icon">💰</div>
+      <span class="logo-text">ExpenseTrack</span>
+    </div>
+    <div class="sidebar-nav">
+      <p class="sidebar-nav-label">Menu</p>
+      <a href="dashboard.html" class="sidebar-link">
+        <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
+        </svg>
+        Dashboard
+      </a>
+      <a href="plans.html" class="sidebar-link" id="sb-plans-link">
+        <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+        </svg>
+        Work Plans
+      </a>
+      <a href="add-expense.html" class="sidebar-link" id="sb-add-link">
+        <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4" />
+        </svg>
+        Add Expense
+      </a>
+      <a href="profile.html" class="sidebar-link">
+        <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+        </svg>
+        My Profile
+      </a>
+      <a href="create-user.html" class="sidebar-link" id="sb-create-user-link">
+        <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z" />
+        </svg>
+        Create User
+      </a>
+      <a href="manage-users.html" class="sidebar-link active" id="sb-manage-users-link">
+        <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" />
+        </svg>
+        Manage Users
+      </a>
+    </div>
+    <div class="sidebar-footer">
+      <div class="sidebar-user">
+        <div class="avatar" id="sb-avatar">?</div>
+        <div>
+          <div class="sidebar-user-email" id="sb-email">Loading…</div>
+          <div class="sidebar-user-role" id="sb-role">—</div>
+        </div>
+      </div>
+      <button class="sidebar-btn" onclick="toggleTheme()">
+        <span id="theme-icon">🌙</span>
+        <span id="theme-text">Dark Mode</span>
+      </button>
+      <button class="sidebar-btn" onclick="logout()">
+        <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+        </svg>
+        Sign Out
+      </button>
+    </div>
+  </nav>
+
+  <!-- ── Main ── -->
+  <div class="app-main">
+    <header class="topbar">
+      <button class="topbar-menu" onclick="toggleSidebar()" aria-label="Open menu">
+        <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 12h16M4 18h16" />
+        </svg>
+      </button>
+      <span class="topbar-title">Manage Users</span>
+    </header>
+
+    <main class="page-content">
+
+      <div class="page-header">
+        <div class="page-title-block">
+          <h1>Manage Users</h1>
+          <p>Search, view details, and reset passwords for all users.</p>
+        </div>
+      </div>
+
+      <!-- Search + dept filter row -->
+      <div style="display:flex;gap:.75rem;flex-wrap:wrap;margin-bottom:1.5rem;max-width:800px">
+        <div style="flex:1;min-width:220px;position:relative">
+          <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"
+               style="position:absolute;left:.75rem;top:50%;transform:translateY(-50%);width:18px;height:18px;color:var(--text-muted);pointer-events:none">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
+          </svg>
+          <input id="search-input" class="form-input" type="text"
+                 placeholder="Search by name, email, employee no, or mobile…"
+                 oninput="filterUsers()"
+                 style="padding-left:2.5rem;border-radius:14px;font-size:.95rem" />
+        </div>
+        <select id="dept-filter" class="form-select" onchange="filterUsers()"
+                style="min-width:180px;border-radius:14px;font-size:.9rem">
+          <option value="">All Departments</option>
+        </select>
+      </div>
+
+      <!-- Stats row -->
+      <div id="stats-row" style="display:flex;gap:.75rem;flex-wrap:wrap;margin-bottom:1.5rem"></div>
+
+      <!-- User grid -->
+      <div id="user-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:1rem">
+        <div style="grid-column:1/-1;text-align:center;padding:3rem;color:var(--text-muted)">
+          <div class="spinner" style="margin:0 auto 1rem"></div>
+          Loading users…
+        </div>
+      </div>
+
+    </main>
+  </div>
+</div>
+
+<!-- ── User Detail Modal ── -->
+<div id="user-modal" class="modal-overlay" style="display:none" onclick="handleModalBackdrop(event)">
+  <div class="modal-card" style="max-width:560px;width:95vw;max-height:90vh;overflow-y:auto" onclick="event.stopPropagation()">
+
+    <div class="modal-header">
+      <div style="display:flex;align-items:center;gap:1rem">
+        <div id="modal-avatar"
+             style="width:52px;height:52px;border-radius:16px;display:flex;align-items:center;justify-content:center;font-size:1.4rem;font-weight:800;flex-shrink:0">
+          ?
+        </div>
+        <div>
+          <h3 style="margin:0" id="modal-name">—</h3>
+          <p style="margin:.15rem 0 0;font-size:.8rem;color:var(--text-muted)" id="modal-role-label">—</p>
+        </div>
+      </div>
+      <button class="modal-close" onclick="closeModal()">✕</button>
+    </div>
+
+    <div class="modal-body" style="display:grid;gap:1rem">
+
+      <!-- Info grid -->
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:.75rem;font-size:.875rem">
+        <div class="detail-cell">
+          <div class="detail-label">Email</div>
+          <div class="detail-val" id="modal-email">—</div>
+        </div>
+        <div class="detail-cell">
+          <div class="detail-label">Employee No</div>
+          <div class="detail-val" id="modal-empno">—</div>
+        </div>
+        <div class="detail-cell">
+          <div class="detail-label">Mobile</div>
+          <div class="detail-val" id="modal-phone">—</div>
+        </div>
+        <div class="detail-cell">
+          <div class="detail-label">Department</div>
+          <div class="detail-val" id="modal-dept-badge">—</div>
+        </div>
+        <div class="detail-cell">
+          <div class="detail-label">Site Name</div>
+          <div class="detail-val" id="modal-site">—</div>
+        </div>
+        <div class="detail-cell">
+          <div class="detail-label">Company</div>
+          <div class="detail-val" id="modal-company">—</div>
+        </div>
+      </div>
+
+      <!-- Bank details -->
+      <div id="modal-bank-section"
+           style="background:var(--bg-page,#f9fafb);border-radius:12px;padding:1rem;border:1px solid var(--border)">
+        <div style="font-weight:700;font-size:.8rem;text-transform:uppercase;color:var(--text-muted);margin-bottom:.75rem">
+          🏦 Bank Details
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:.6rem;font-size:.85rem">
+          <div class="detail-cell">
+            <div class="detail-label">Account Holder</div>
+            <div class="detail-val" id="modal-bank-holder">—</div>
+          </div>
+          <div class="detail-cell">
+            <div class="detail-label">Bank Name</div>
+            <div class="detail-val" id="modal-bank-name">—</div>
+          </div>
+          <div class="detail-cell">
+            <div class="detail-label">IFSC Code</div>
+            <div class="detail-val" id="modal-bank-ifsc">—</div>
+          </div>
+          <div class="detail-cell">
+            <div class="detail-label">Account No</div>
+            <div class="detail-val" id="modal-bank-account">—</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Edit User -->
+      <div style="border:1px solid var(--border);border-radius:12px;overflow:hidden;margin-bottom:.75rem">
+        <div style="padding:.75rem 1rem;background:var(--bg-page,#f9fafb);font-weight:700;font-size:.85rem;cursor:pointer;display:flex;justify-content:space-between;align-items:center"
+             onclick="toggleEditSection()">
+          <span>✏️ Edit User Details</span>
+          <svg id="edit-chevron" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"
+               style="width:16px;height:16px;transition:transform .2s">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/>
+          </svg>
+        </div>
+        <div id="edit-section" style="display:none;flex-direction:column;gap:.75rem;padding:1rem">
+          <input type="hidden" id="edit-user-id" />
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:.75rem">
+            <div class="form-group" style="margin:0">
+              <label class="form-label">Full Name</label>
+              <input class="form-input" type="text" id="edit-name" placeholder="Full Name" />
+            </div>
+            <div class="form-group" style="margin:0">
+              <label class="form-label">Employee No</label>
+              <input class="form-input" type="text" id="edit-empno" placeholder="EMP001" />
+            </div>
+            <div class="form-group" style="margin:0">
+              <label class="form-label">Mobile No</label>
+              <input class="form-input" type="tel" id="edit-phone" placeholder="9876543210" />
+            </div>
+            <div class="form-group" style="margin:0">
+              <label class="form-label">Site Name</label>
+              <input class="form-input" type="text" id="edit-site" placeholder="Site Alpha" />
+            </div>
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:.75rem">
+            <div class="form-group" style="margin:0">
+              <label class="form-label">Department</label>
+              <select class="form-select" id="edit-dept">
+                <option value="">Select…</option>
+              </select>
+            </div>
+            <div class="form-group" style="margin:0" id="edit-role-group">
+              <label class="form-label">Role</label>
+              <select class="form-select" id="edit-role">
+                <option value="employee">Employee</option>
+                <option value="admin">Manager (L1)</option>
+                <option value="super_admin">Super Admin (L2)</option>
+              </select>
+            </div>
+          </div>
+          <div class="form-group" style="margin:0;display:none" id="edit-company-group">
+            <label class="form-label">Company / Project</label>
+            <select class="form-select" id="edit-company">
+              <option value="">— No company —</option>
+            </select>
+          </div>
+          <button class="btn btn-primary" id="edit-save-btn" onclick="saveUserEdit()" style="border-radius:10px">
+            Save Changes
+          </button>
+        </div>
+      </div>
+
+      <!-- Change password -->
+      <div style="border:1px solid var(--border);border-radius:12px;overflow:hidden">
+        <div style="padding:.75rem 1rem;background:var(--bg-page,#f9fafb);font-weight:700;font-size:.85rem;cursor:pointer;display:flex;justify-content:space-between;align-items:center"
+             onclick="togglePwSection()">
+          <span>🔑 Change Password</span>
+          <svg id="pw-chevron" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"
+               style="width:16px;height:16px;transition:transform .2s">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/>
+          </svg>
+        </div>
+        <div id="pw-section" style="display:none;padding:1rem;display:none;flex-direction:column;gap:.75rem">
+          <input type="hidden" id="pw-user-id" />
+          <div class="form-group" style="margin:0">
+            <label class="form-label">New Password</label>
+            <input class="form-input" type="password" id="pw-new" placeholder="Min. 6 characters" />
+          </div>
+          <div class="form-group" style="margin:0">
+            <label class="form-label">Confirm Password</label>
+            <input class="form-input" type="password" id="pw-confirm" placeholder="Re-enter new password" />
+          </div>
+          <button class="btn btn-primary" id="pw-save-btn" onclick="savePassword()" style="border-radius:10px">
+            Update Password
+          </button>
+        </div>
+      </div>
+
+    </div>
+
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal()">Close</button>
+    </div>
+  </div>
+</div>
+
+<style>
+  .detail-cell { display:flex; flex-direction:column; gap:2px; }
+  .detail-label { font-size:.68rem; font-weight:700; text-transform:uppercase; letter-spacing:.04em; color:var(--text-muted); }
+  .detail-val   { font-weight:600; font-size:.9rem; color:var(--text-main); word-break:break-all; }
+
+  .user-card {
+    background: var(--card-bg, #fff);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 1rem 1.25rem;
+    cursor: pointer;
+    transition: box-shadow .15s, transform .15s, border-color .15s;
+    display: flex;
+    align-items: center;
+    gap: .875rem;
+  }
+  .user-card:hover {
+    box-shadow: 0 6px 20px rgba(0,0,0,.08);
+    transform: translateY(-2px);
+    border-color: var(--primary);
+  }
+  .user-card-avatar {
+    width: 46px; height: 46px; border-radius: 14px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 1.15rem; font-weight: 800; flex-shrink: 0;
+  }
+  .user-card-info { flex: 1; min-width: 0; }
+  .user-card-name { font-weight: 700; font-size: .95rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .user-card-sub  { font-size: .72rem; color: var(--text-muted); margin-top: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .user-card-badge {
+    border-radius: 8px; padding: 2px 8px; font-size: .65rem; font-weight: 700; white-space: nowrap; flex-shrink: 0;
+  }
+
+  .stat-chip {
+    background: var(--card-bg, #fff);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: .5rem 1rem;
+    font-size: .8rem;
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    gap: .4rem;
+    cursor: pointer;
+    transition: border-color .15s, box-shadow .15s, background .15s;
+    user-select: none;
+  }
+  .stat-chip:hover { border-color: var(--primary); box-shadow: 0 2px 8px rgba(99,102,241,.15); }
+  .stat-chip.active { background: var(--primary); color: #fff; border-color: var(--primary); }
+  .stat-chip.active span { color: #fff !important; }
+</style>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="app.js"></script>
+<script>
+  let currentProfile = null;
+  let allUsers = [];
+  let allCompanies = [];
+  let selectedUser = null;
+  let pwOpen = false;
+  let editOpen = false;
+  let activeFilter = null; // null = all, 'employee'|'admin'|'super_admin'
+
+  const ROLE_LABEL = { employee: 'Employee', admin: 'Manager (L1)', super_admin: 'Super Admin (L2)' };
+  const ROLE_COLOR = { employee: '#6366f1', admin: '#0891b2', super_admin: '#7c3aed' };
+
+  // ── Boot ──────────────────────────────────────────────────
+  (async () => {
+    const user = await requireAuth();
+    if (!user) return;
+    const profile = await getUserProfile();
+    if (!profile) { showMessage('Could not load profile.', 'error'); setTimeout(logout, 2000); return; }
+    currentProfile = profile;
+    populateSidebar(profile);
+    initTheme();
+    if (profile.role !== 'admin' && profile.role !== 'super_admin') {
+      window.location.href = 'dashboard.html';
+      return;
+    }
+
+    // Populate department filter dropdown
+    const deptSel = document.getElementById('dept-filter');
+    DEPARTMENTS.forEach(d => {
+      const opt = document.createElement('option');
+      opt.value = d.toLowerCase(); opt.textContent = d;
+      deptSel.appendChild(opt);
+    });
+
+    await loadUsers();
+    if (profile.role === 'super_admin') await loadCompanies();
+  })();
+
+  // ── Companies ─────────────────────────────────────────────
+  async function loadCompanies() {
+    try {
+      const { data: { session } } = await db.auth.getSession();
+      const res = await fetch('/api/list-companies', {
+        headers: { 'Authorization': 'Bearer ' + session.access_token }
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+      allCompanies = data.companies || [];
+      const sel = document.getElementById('edit-company');
+      sel.innerHTML = '<option value="">— No company —</option>';
+      allCompanies.forEach(c => {
+        const opt = document.createElement('option');
+        opt.value = c.id;
+        opt.textContent = `${c.name} (${c.code})`;
+        sel.appendChild(opt);
+      });
+    } catch (err) {
+      console.warn('Could not load companies:', err.message);
+    }
+  }
+
+  // ── Load & render ─────────────────────────────────────────
+  async function loadUsers() {
+    try {
+      const { data: { session } } = await db.auth.getSession();
+      const res = await fetch('/api/list-users', {
+        headers: { 'Authorization': 'Bearer ' + session.access_token }
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+      allUsers = data.users || [];
+      renderStats();
+      renderGrid(allUsers);
+    } catch (err) {
+      document.getElementById('user-grid').innerHTML =
+        `<div style="grid-column:1/-1;text-align:center;padding:3rem;color:#dc2626">${escHtml(err.message)}</div>`;
+    }
+  }
+
+  function renderStats() {
+    const counts = { employee: 0, admin: 0, super_admin: 0 };
+    allUsers.forEach(u => { if (counts[u.role] !== undefined) counts[u.role]++; });
+    document.getElementById('stats-row').innerHTML = `
+      <div class="stat-chip ${activeFilter === 'employee' ? 'active' : ''}" onclick="setFilter('employee')">
+        <span style="color:${ROLE_COLOR.employee}">●</span> ${counts.employee} Employee${counts.employee !== 1 ? 's' : ''}
+      </div>
+      <div class="stat-chip ${activeFilter === 'admin' ? 'active' : ''}" onclick="setFilter('admin')">
+        <span style="color:${ROLE_COLOR.admin}">●</span> ${counts.admin} Manager${counts.admin !== 1 ? 's' : ''}
+      </div>
+      <div class="stat-chip ${activeFilter === 'super_admin' ? 'active' : ''}" onclick="setFilter('super_admin')">
+        <span style="color:${ROLE_COLOR.super_admin}">●</span> ${counts.super_admin} Super Admin${counts.super_admin !== 1 ? 's' : ''}
+      </div>
+      <div class="stat-chip ${activeFilter === null ? 'active' : ''}" onclick="setFilter(null)">
+        👥 ${allUsers.length} Total
+      </div>
+    `;
+  }
+
+  function setFilter(role) {
+    activeFilter = (activeFilter === role) ? null : role;
+    if (role === null) document.getElementById('dept-filter').value = ''; // Total chip clears dept filter too
+    renderStats();
+    applyFilters();
+  }
+
+  function applyFilters() {
+    const q    = document.getElementById('search-input').value.toLowerCase().trim();
+    const dept = document.getElementById('dept-filter').value.toLowerCase().trim();
+    let filtered = allUsers;
+    if (activeFilter) filtered = filtered.filter(u => u.role === activeFilter);
+    if (dept) filtered = filtered.filter(u => (u.department || '').toLowerCase().trim() === dept);
+    if (q) filtered = filtered.filter(u =>
+      (u.name || '').toLowerCase().includes(q) ||
+      (u.email || '').toLowerCase().includes(q) ||
+      (u.emp_no || '').toLowerCase().includes(q) ||
+      (u.phone || '').includes(q) ||
+      (u.site_name || '').toLowerCase().includes(q) ||
+      (u.department || '').toLowerCase().includes(q)
+    );
+    renderGrid(filtered);
+  }
+
+  function renderGrid(users) {
+    const grid = document.getElementById('user-grid');
+    if (!users.length) {
+      grid.innerHTML = `<div style="grid-column:1/-1;text-align:center;padding:3rem;color:var(--text-muted)">No users found.</div>`;
+      return;
+    }
+    grid.innerHTML = users.map(u => {
+      const color = ROLE_COLOR[u.role] || '#6366f1';
+      const initial = (u.name?.[0] || u.email?.[0] || '?').toUpperCase();
+      return `
+        <div class="user-card" onclick="openModal('${u.id}')">
+          <div class="user-card-avatar" style="background:${color}18;color:${color}">${initial}</div>
+          <div class="user-card-info">
+            <div class="user-card-name">${escHtml(u.name || '—')}</div>
+            <div class="user-card-sub">📧 ${escHtml(u.email)}</div>
+            <div class="user-card-sub">
+              ${u.emp_no ? `🆔 ${escHtml(u.emp_no)}` : ''}
+              ${u.phone ? ` &nbsp;📱 ${escHtml(u.phone)}` : ''}
+            </div>
+            ${u.site_name || u.department ? `<div class="user-card-sub">📍 ${escHtml(u.site_name || '')}${u.site_name && u.department ? ' · ' : ''}${escHtml(u.department || '')}</div>` : ''}
+          </div>
+          <span class="user-card-badge" style="background:${color}18;color:${color}">${ROLE_LABEL[u.role] || u.role}</span>
+        </div>`;
+    }).join('');
+  }
+
+  // ── Search ────────────────────────────────────────────────
+  function filterUsers() { applyFilters(); }
+
+  // ── Modal ─────────────────────────────────────────────────
+  function openModal(userId) {
+    const u = allUsers.find(x => x.id === userId);
+    if (!u) return;
+    selectedUser = u;
+
+    const color = ROLE_COLOR[u.role] || '#6366f1';
+    const initial = (u.name?.[0] || u.email?.[0] || '?').toUpperCase();
+
+    const av = document.getElementById('modal-avatar');
+    av.textContent = initial;
+    av.style.background = color + '20';
+    av.style.color = color;
+
+    document.getElementById('modal-name').textContent = u.name || u.email;
+    document.getElementById('modal-role-label').innerHTML =
+      `<span style="background:${color}18;color:${color};border-radius:6px;padding:2px 8px;font-size:.72rem;font-weight:700">${ROLE_LABEL[u.role] || u.role}</span>`;
+    document.getElementById('modal-email').textContent = u.email || '—';
+    document.getElementById('modal-empno').textContent = u.emp_no || '—';
+    document.getElementById('modal-phone').textContent = u.phone || '—';
+    document.getElementById('modal-site').textContent = u.site_name || '—';
+    const deptBadge = document.getElementById('modal-dept-badge');
+    if (u.department) {
+      deptBadge.innerHTML = `<span style="background:#dbeafe;color:#1e40af;border-radius:6px;padding:2px 8px;font-size:.78rem;font-weight:700">🏢 ${escHtml(u.department)}</span>`;
+    } else {
+      deptBadge.textContent = '—';
+    }
+
+    document.getElementById('modal-bank-holder').textContent  = u.bank_holder  || '—';
+    document.getElementById('modal-bank-name').textContent    = u.bank_name    || '—';
+    document.getElementById('modal-bank-ifsc').textContent    = u.bank_ifsc    || '—';
+    document.getElementById('modal-bank-account').textContent = u.bank_account || '—';
+
+    // Company display
+    const compEl = document.getElementById('modal-company');
+    if (u.company_id && allCompanies.length) {
+      const comp = allCompanies.find(c => c.id === u.company_id);
+      compEl.textContent = comp ? `${comp.name} (${comp.code})` : u.company_id;
+    } else {
+      compEl.textContent = '—';
+    }
+
+    // Password section
+    document.getElementById('pw-user-id').value = u.id;
+    document.getElementById('pw-new').value = '';
+    document.getElementById('pw-confirm').value = '';
+    if (pwOpen)   { pwOpen   = false; document.getElementById('pw-section').style.display   = 'none'; document.getElementById('pw-chevron').style.transform   = ''; }
+
+    // Edit section — pre-fill fields
+    document.getElementById('edit-user-id').value  = u.id;
+    document.getElementById('edit-name').value     = u.name       || '';
+    document.getElementById('edit-empno').value    = u.emp_no     || '';
+    document.getElementById('edit-phone').value    = u.phone      || '';
+    document.getElementById('edit-site').value     = u.site_name  || '';
+
+    // Populate dept dropdown if not already done
+    const deptSel = document.getElementById('edit-dept');
+    if (deptSel.options.length <= 1) {
+      DEPARTMENTS.forEach(d => {
+        const opt = document.createElement('option');
+        opt.value = d; opt.textContent = d;
+        deptSel.appendChild(opt);
+      });
+    }
+    deptSel.value = u.department || '';
+
+    // Role + Company — only super_admin can change these
+    const roleGroup = document.getElementById('edit-role-group');
+    const companyGroup = document.getElementById('edit-company-group');
+    if (currentProfile.role === 'super_admin') {
+      roleGroup.style.display = 'block';
+      document.getElementById('edit-role').value = u.role || 'employee';
+      companyGroup.style.display = 'block';
+      document.getElementById('edit-company').value = u.company_id || '';
+    } else {
+      roleGroup.style.display = 'none';
+      companyGroup.style.display = 'none';
+    }
+
+    if (editOpen) { editOpen = false; document.getElementById('edit-section').style.display = 'none'; document.getElementById('edit-chevron').style.transform = ''; }
+
+    document.getElementById('user-modal').style.display = 'flex';
+  }
+
+  function closeModal() {
+    document.getElementById('user-modal').style.display = 'none';
+    selectedUser = null;
+  }
+
+  function handleModalBackdrop(e) {
+    if (e.target === document.getElementById('user-modal')) closeModal();
+  }
+
+  function toggleEditSection() {
+    editOpen = !editOpen;
+    const sec = document.getElementById('edit-section');
+    sec.style.display = editOpen ? 'flex' : 'none';
+    document.getElementById('edit-chevron').style.transform = editOpen ? 'rotate(180deg)' : '';
+    if (editOpen) document.getElementById('edit-name').focus();
+  }
+
+  async function saveUserEdit() {
+    const userId = document.getElementById('edit-user-id').value;
+    const btn    = document.getElementById('edit-save-btn');
+    const payload = {
+      userId,
+      name:       document.getElementById('edit-name').value.trim(),
+      emp_no:     document.getElementById('edit-empno').value.trim(),
+      phone:      document.getElementById('edit-phone').value.trim(),
+      site_name:  document.getElementById('edit-site').value.trim(),
+      department: document.getElementById('edit-dept').value,
+      role:       document.getElementById('edit-role').value,
+    };
+    if (currentProfile.role === 'super_admin') {
+      payload.company_id = document.getElementById('edit-company').value || null;
+    }
+
+    setLoading(btn, true);
+    try {
+      const { data: { session } } = await db.auth.getSession();
+      const res = await fetch('/api/update-user', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + session.access_token },
+        body: JSON.stringify(payload)
+      });
+      const text = await res.text();
+      let data; try { data = JSON.parse(text); } catch { throw new Error(text); }
+      if (!res.ok) throw new Error(data.error || 'Update failed');
+
+      // Patch local cache so grid updates immediately
+      const idx = allUsers.findIndex(u => u.id === userId);
+      if (idx !== -1) {
+        allUsers[idx] = { ...allUsers[idx], ...payload };
+        renderStats();
+        applyFilters();
+      }
+      showMessage('User updated successfully!', 'success');
+      // Refresh modal display with updated data
+      openModal(userId);
+    } catch (err) {
+      showMessage(err.message, 'error');
+    } finally {
+      setLoading(btn, false);
+    }
+  }
+
+  function togglePwSection() {
+    pwOpen = !pwOpen;
+    const sec = document.getElementById('pw-section');
+    sec.style.display = pwOpen ? 'flex' : 'none';
+    document.getElementById('pw-chevron').style.transform = pwOpen ? 'rotate(180deg)' : '';
+    if (pwOpen) document.getElementById('pw-new').focus();
+  }
+
+  // ── Save Password ─────────────────────────────────────────
+  async function savePassword() {
+    const userId = document.getElementById('pw-user-id').value;
+    const newPw  = document.getElementById('pw-new').value;
+    const confirm = document.getElementById('pw-confirm').value;
+    const btn    = document.getElementById('pw-save-btn');
+
+    if (!newPw || newPw.length < 6) { showMessage('Password must be at least 6 characters.', 'error'); return; }
+    if (newPw !== confirm) { showMessage('Passwords do not match.', 'error'); return; }
+
+    setLoading(btn, true);
+    try {
+      const { data: { session } } = await db.auth.getSession();
+      const res = await fetch('/api/update-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + session.access_token },
+        body: JSON.stringify({ userId, newPassword: newPw })
+      });
+      const text = await res.text();
+      let data;
+      try { data = JSON.parse(text); } catch { throw new Error(text); }
+      if (!res.ok) throw new Error(data.error || 'Failed to update password');
+      showMessage('Password updated successfully!', 'success');
+      document.getElementById('pw-new').value = '';
+      document.getElementById('pw-confirm').value = '';
+    } catch (err) {
+      showMessage(err.message, 'error');
+    } finally {
+      setLoading(btn, false);
+    }
+  }
+
+  // ── Theme ─────────────────────────────────────────────────
+  function initTheme() {
+    if (localStorage.getItem('theme') === 'dark') { document.body.classList.add('dark'); updateThemeUI(true); }
+  }
+  function toggleTheme() {
+    const isDark = document.body.classList.toggle('dark');
+    localStorage.setItem('theme', isDark ? 'dark' : 'light');
+    updateThemeUI(isDark);
+  }
+  function updateThemeUI(isDark) {
+    document.getElementById('theme-icon').textContent = isDark ? '☀️' : '🌙';
+    document.getElementById('theme-text').textContent = isDark ? 'Light Mode' : 'Dark Mode';
+  }
+</script>
+</body>
+</html>

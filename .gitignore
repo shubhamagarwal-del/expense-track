@@ -1,0 +1,24 @@
+# Environment variables (sensitive — never commit)
+.env
+.env.*
+
+# Claude Code internal files
+.claude/
+
+# One-time migration/setup scripts (may contain credentials)
+migration/*.js
+check_*.mjs
+create_*.mjs
+create_admin.mjs
+create_super_admin.mjs
+
+# Dependencies
+node_modules/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+npm-debug.log*
