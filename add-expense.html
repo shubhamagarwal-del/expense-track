@@ -1054,7 +1054,7 @@
 
     function calcPanelTotal() {
       let total = 0;
-      document.querySelectorAll('.expense-row-card:not([data-locked]) input[type="number"]').forEach(input => total += parseFloat(input.value) || 0);
+      document.querySelectorAll('.expense-row-card input[type="number"]').forEach(input => total += parseFloat(input.value) || 0);
       document.getElementById('panel-day-total').textContent = formatCurrency(total);
     }
 

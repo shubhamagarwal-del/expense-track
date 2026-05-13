@@ -695,6 +695,15 @@
         }, 0);
       });
 
+      // Sort groups: group with the most recently created/updated entry first
+      const sortedGroups = Object.values(groups).sort((a, b) => {
+        const latestA = Math.max(...a.entries.map(e => new Date(e.created_at).getTime()));
+        const latestB = Math.max(...b.entries.map(e => new Date(e.created_at).getTime()));
+        return latestB - latestA;
+      });
+      // Sort entries within each group newest-first
+      sortedGroups.forEach(g => g.entries.sort((a, b) => new Date(b.created_at) - new Date(a.created_at)));
+
       const total = expenses.reduce((s, e) => {
         if (e.status === 'rejected' || e.status === 'l1_rejected') return s;
         return s + (e.approved_amount != null ? +e.approved_amount : +e.amount);
@@ -703,7 +712,7 @@
       <div class="table-card-header">
         <div>
           <span class="table-card-title">Expense Summaries</span>
-          <span class="table-card-count">${Object.keys(groups).length} group${Object.keys(groups).length !== 1 ? 's' : ''}</span>
+          <span class="table-card-count">${sortedGroups.length} group${sortedGroups.length !== 1 ? 's' : ''}</span>
         </div>
         <div class="table-header-total">
           Total: <strong>${formatCurrency(total)}</strong>
@@ -722,7 +731,7 @@
             </tr>
           </thead>
           <tbody>
-            ${Object.values(groups).map(g => {
+            ${sortedGroups.map(g => {
         const year = new Date(g.entries[0].created_at).getFullYear();
         const month = new Date(g.entries[0].created_at).getMonth();
         const startDay = g.cycleText.includes('1st') ? 1 : 16;
