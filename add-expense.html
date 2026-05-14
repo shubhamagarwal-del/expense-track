@@ -632,6 +632,7 @@
   <script>
     let currentUser = null;
     let expensesForMonth = [];
+    let currentDayPendingIds = [];  // IDs of all pending entries loaded when panel was opened
 
     // Configurable per-category expense limits (null = no limit)
     const CATEGORY_LIMITS = {
@@ -1149,6 +1150,9 @@
         lockedExp.forEach(exp => addRow(parseExpenseToRowData(exp), true));
       }
 
+      // Snapshot all pending IDs for this day — used by saveDailyEntries to delete exactly these
+      currentDayPendingIds = editableExp.map(e => e.id).filter(Boolean);
+
       // Editable (pending) entries
       editableExp.forEach(exp => addRow(parseExpenseToRowData(exp)));
 
@@ -1171,11 +1175,6 @@
       const dateIso = document.getElementById('entry-date').value;
       const rowElements = document.querySelectorAll('.expense-row-card:not([data-locked])');
       const newEntries = [];
-
-      // Collect IDs of existing pending entries so we can delete exactly those rows
-      const toDeleteIds = [...rowElements]
-        .map(el => el.dataset.expenseId)
-        .filter(Boolean);
 
       for (const row of rowElements) {
         const amount = parseFloat(row.querySelector('.row-amount').value);
@@ -1233,10 +1232,23 @@
       }
 
       try {
-        // Delete only the specific existing pending rows we loaded — prevents duplicates
-        if (toDeleteIds.length > 0) {
-          await db.from('expenses').delete().in('id', toDeleteIds);
+        const startOfDay = new Date(dateIso).toISOString();
+        const endOfDay   = new Date(new Date(dateIso).getTime() + 86399999).toISOString();
+
+        // Pass 1 — delete by UUID (works even if created_at was overridden server-side)
+        if (currentDayPendingIds.length > 0) {
+          await db.from('expenses').delete()
+            .in('id', currentDayPendingIds)
+            .eq('user_id', currentUser.id)
+            .eq('status', 'pending');
         }
+        // Pass 2 — date-range delete as safety net (catches any orphan pending rows for this day)
+        await db.from('expenses').delete()
+          .eq('user_id', currentUser.id)
+          .eq('status', 'pending')
+          .gte('created_at', startOfDay)
+          .lte('created_at', endOfDay);
+
         if (newEntries.length > 0) await db.from('expenses').insert(newEntries);
         showMessage('Entries updated successfully! ✨', 'success');
         closeEntryPanel();
