@@ -637,10 +637,8 @@
     // Configurable per-category expense limits (null = no limit)
     const CATEGORY_LIMITS = {
       'Regular':   null,
-      'Bus':       null,
-      'Taxi':      null,
-      'Bike':      null,
       'Travel':    null,
+      'Food':      null,
       'Other':     null,
       'Room Rent': 700
     };
@@ -708,7 +706,7 @@
 
       // Real-time: refresh sheet when manager approves/rejects any of this user's expenses
       db.channel(`rt-expenses-${currentUser.id}`)
-        .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'expenses', filter: `user_id=eq.${currentUser.id}` }, async () => {
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'expenses', filter: `user_id=eq.${currentUser.id}` }, async () => {
           if (!document.getElementById('entry-panel').classList.contains('open')) {
             await renderSheet();
           }
@@ -884,9 +882,14 @@
     function addRow(data = {}, locked = false) {
       const container = document.getElementById('rows-container');
       const rowId = 'row-' + Date.now() + Math.random().toString(36).substr(2, 5);
-      const isOther  = data.category === 'Other';
-      const isFromTo = (data.category === 'Travel' || data.category === 'Bus' || data.category === 'Taxi');
-      const isBike   = data.category === 'Bike';
+      // Normalize legacy standalone categories → Travel
+      const rawCat = data.category || 'Regular';
+      const normalCat  = (rawCat === 'Bus' || rawCat === 'Taxi' || rawCat === 'Bike') ? 'Travel' : rawCat;
+      const travelType = data.travelType || (rawCat === 'Bus' ? 'Bus' : rawCat === 'Taxi' ? 'Taxi' : rawCat === 'Bike' ? 'Bike' : 'Bus');
+      const isTravel = normalCat === 'Travel';
+      const isBike   = isTravel && travelType === 'Bike';
+      const isOther  = normalCat === 'Other';
+      const isFromTo = isTravel;  // all travel types show From/To
 
       const card = document.createElement('div');
       card.className = 'expense-row-card p-4 mb-4 rounded-xl shadow-sm';
@@ -909,15 +912,25 @@
         <div class="form-group mb-0">
           <label class="form-label">Category</label>
           <select class="form-select row-cat" required onchange="handleCategoryChange('${rowId}')">
-            <option value="Regular"   ${!data.category || data.category === 'Regular'   ? 'selected' : ''}>Regular</option>
-            <option value="Bus"       ${data.category === 'Bus'       ? 'selected' : ''}>Bus</option>
-            <option value="Taxi"      ${data.category === 'Taxi'      ? 'selected' : ''}>Taxi</option>
-            <option value="Bike"      ${data.category === 'Bike'      ? 'selected' : ''}>Bike</option>
-            <option value="Travel"    ${data.category === 'Travel'    ? 'selected' : ''}>Travel</option>
-            <option value="Other"     ${data.category === 'Other'     ? 'selected' : ''}>Other</option>
-            <option value="Room Rent" ${data.category === 'Room Rent' ? 'selected' : ''}>Room Rent</option>
+            <option value="Regular"   ${normalCat === 'Regular'   ? 'selected' : ''}>Regular</option>
+            <option value="Travel"    ${normalCat === 'Travel'    ? 'selected' : ''}>Travel</option>
+            <option value="Food"      ${normalCat === 'Food'      ? 'selected' : ''}>Food</option>
+            <option value="Other"     ${normalCat === 'Other'     ? 'selected' : ''}>Other</option>
+            <option value="Room Rent" ${normalCat === 'Room Rent' ? 'selected' : ''}>Room Rent</option>
           </select>
         </div>
+      </div>
+
+      <!-- Travel type sub-select -->
+      <div class="row-travel-type-group form-group mb-3" style="display: ${isTravel ? 'block' : 'none'}">
+        <label class="form-label">Travel Type</label>
+        <select class="form-select row-travel-type" onchange="handleTravelTypeChange('${rowId}')">
+          <option value="Bus"    ${travelType === 'Bus'    ? 'selected' : ''}>🚌 Bus</option>
+          <option value="Taxi"   ${travelType === 'Taxi'   ? 'selected' : ''}>🚕 Taxi</option>
+          <option value="Train"  ${travelType === 'Train'  ? 'selected' : ''}>🚆 Train</option>
+          <option value="Flight" ${travelType === 'Flight' ? 'selected' : ''}>✈️ Flight</option>
+          <option value="Bike"   ${travelType === 'Bike'   ? 'selected' : ''}>🏍️ Bike</option>
+        </select>
       </div>
 
       <!-- Limit warning (non-Room-Rent categories) -->
@@ -1017,36 +1030,53 @@
     function handleCategoryChange(rowId) {
       const row = document.getElementById(rowId);
       const cat = row.querySelector('.row-cat').value;
+      const isTravel = (cat === 'Travel');
       const isOther  = (cat === 'Other');
-      const isFromTo = (cat === 'Travel' || cat === 'Bus' || cat === 'Taxi');
-      const isBike   = (cat === 'Bike');
 
       row.querySelector('.row-name-group').style.display = isOther ? 'block' : 'none';
       if (isOther) row.querySelector('.row-name').setAttribute('required', '');
       else row.querySelector('.row-name').removeAttribute('required');
 
-      const travelGroup = row.querySelector('.row-travel-group');
-      travelGroup.style.display = isFromTo ? 'grid' : 'none';
-      if (isFromTo) {
-        row.querySelector('.row-from').setAttribute('required', '');
-        row.querySelector('.row-to').setAttribute('required', '');
+      row.querySelector('.row-travel-type-group').style.display = isTravel ? 'block' : 'none';
+
+      if (isTravel) {
+        handleTravelTypeChange(rowId);
       } else {
+        row.querySelector('.row-travel-group').style.display = 'none';
+        row.querySelector('.row-bike-group').style.display = 'none';
         row.querySelector('.row-from').removeAttribute('required');
         row.querySelector('.row-to').removeAttribute('required');
-      }
-
-      row.querySelector('.row-bike-group').style.display = isBike ? 'grid' : 'none';
-      const amountInput = row.querySelector('.row-amount');
-      if (isBike) {
-        amountInput.setAttribute('readonly', '');
-        amountInput.style.cssText += ';background:#f3f4f6;color:var(--text-muted)';
-      } else {
+        const amountInput = row.querySelector('.row-amount');
         amountInput.removeAttribute('readonly');
         amountInput.style.background = '';
         amountInput.style.color = '';
       }
 
       validateRow(rowId);
+    }
+
+    function handleTravelTypeChange(rowId) {
+      const row = document.getElementById(rowId);
+      const travelType = row.querySelector('.row-travel-type').value;
+      const isBike = (travelType === 'Bike');
+
+      // All travel types show From → To
+      row.querySelector('.row-travel-group').style.display = 'grid';
+      row.querySelector('.row-from').setAttribute('required', '');
+      row.querySelector('.row-to').setAttribute('required', '');
+
+      // KM group only for Bike
+      row.querySelector('.row-bike-group').style.display = isBike ? 'grid' : 'none';
+      const amountInput = row.querySelector('.row-amount');
+      if (isBike) {
+        amountInput.setAttribute('readonly', '');
+        amountInput.style.cssText += ';background:#f3f4f6;color:var(--text-muted)';
+        calcBikeAmount(rowId);
+      } else {
+        amountInput.removeAttribute('readonly');
+        amountInput.style.background = '';
+        amountInput.style.color = '';
+      }
     }
 
     function calcBikeAmount(rowId) {
@@ -1115,10 +1145,30 @@
       const parts = (exp.description || '').split('|');
       const type = parts[0];
       const row = { id: exp.id, amount: exp.amount, category: exp.category, receipt_url: exp.receipt_url, status: exp.status };
-      if (type === 'TRAVEL' || type === 'BUS' || type === 'TAXI') {
+
+      if (type === 'TRAVEL_BUS' || type === 'TRAVEL_TAXI' || type === 'TRAVEL_TRAIN' || type === 'TRAVEL_FLIGHT') {
+        row.category  = 'Travel';
+        const sub = type.replace('TRAVEL_', '');
+        row.travelType = sub.charAt(0) + sub.slice(1).toLowerCase();
+        row.from = parts[1]||''; row.to = parts[2]||''; row.site = parts[3]||''; row.description = parts[4]||'';
+      } else if (type === 'TRAVEL_BIKE') {
+        row.category  = 'Travel';
+        row.travelType = 'Bike';
+        row.km   = parts[1]||''; row.from = parts[2]||''; row.to = parts[3]||'';
+        row.site = parts[4]||''; row.description = parts[5]||'';
+      } else if (type === 'FOOD') {
+        row.category = 'Food';
+        row.site = parts[1]||''; row.description = parts[2]||'';
+      // Legacy formats — kept for backward compatibility
+      } else if (type === 'TRAVEL' || type === 'BUS' || type === 'TAXI') {
+        row.category  = 'Travel';
+        row.travelType = type === 'BUS' ? 'Bus' : type === 'TAXI' ? 'Taxi' : 'Bus';
         row.from = parts[1]||''; row.to = parts[2]||''; row.site = parts[3]||''; row.description = parts[4]||'';
       } else if (type === 'BIKE') {
-        row.km = parts[1]||''; row.site = parts[2]||''; row.description = parts[3]||'';
+        row.category  = 'Travel';
+        row.travelType = 'Bike';
+        row.km = parts[1]||''; row.from = ''; row.to = '';
+        row.site = parts[2]||''; row.description = parts[3]||'';
       } else if (type === 'OTHER') {
         row.name = parts[1]||''; row.site = parts[2]||''; row.description = parts[3]||'';
       } else if (type === 'ROOM_RENT' || type === 'REGULAR') {
@@ -1205,20 +1255,17 @@
 
         let finalDescription = '';
         if (category === 'Travel') {
+          const travelType = row.querySelector('.row-travel-type').value;
           const from = row.querySelector('.row-from').value.trim();
-          const to = row.querySelector('.row-to').value.trim();
-          finalDescription = `TRAVEL|${from}|${to}|${site}|${desc}`;
-        } else if (category === 'Bus') {
-          const from = row.querySelector('.row-from').value.trim();
-          const to = row.querySelector('.row-to').value.trim();
-          finalDescription = `BUS|${from}|${to}|${site}|${desc}`;
-        } else if (category === 'Taxi') {
-          const from = row.querySelector('.row-from').value.trim();
-          const to = row.querySelector('.row-to').value.trim();
-          finalDescription = `TAXI|${from}|${to}|${site}|${desc}`;
-        } else if (category === 'Bike') {
-          const km = row.querySelector('.row-km').value.trim();
-          finalDescription = `BIKE|${km}|${site}|${desc}`;
+          const to   = row.querySelector('.row-to').value.trim();
+          if (travelType === 'Bike') {
+            const km = row.querySelector('.row-km').value.trim();
+            finalDescription = `TRAVEL_BIKE|${km}|${from}|${to}|${site}|${desc}`;
+          } else {
+            finalDescription = `TRAVEL_${travelType.toUpperCase()}|${from}|${to}|${site}|${desc}`;
+          }
+        } else if (category === 'Food') {
+          finalDescription = `FOOD|${site}|${desc}`;
         } else if (category === 'Other') {
           const name = row.querySelector('.row-name').value.trim();
           finalDescription = `OTHER|${name}|${site}|${desc}`;

@@ -885,14 +885,16 @@ tbody tr:hover { background: #fafbff; }
   white-space: nowrap;
 }
 .cp-Regular   { background: #f3f4f6; color: #374151; }
+.cp-Travel    { background: #dbeafe; color: #1d4ed8; }
+.cp-Food      { background: #dcfce7; color: #15803d; }
+.cp-Other     { background: #f3e8ff; color: #6d28d9; }
+.cp-Room-Rent { background: #fce7f3; color: #9d174d; }
+/* Legacy / sub-type pills */
 .cp-Bus       { background: #e0f2fe; color: #0369a1; }
 .cp-Taxi      { background: #fef3c7; color: #b45309; }
 .cp-Bike      { background: #d1fae5; color: #059669; }
-.cp-Travel    { background: #dbeafe; color: #1d4ed8; }
-.cp-Food      { background: #dcfce7; color: #15803d; }
-.cp-Office    { background: #fef3c7; color: #b45309; }
-.cp-Other     { background: #f3e8ff; color: #6d28d9; }
-.cp-Room-Rent { background: #fce7f3; color: #9d174d; }
+.cp-Train     { background: #ede9fe; color: #6d28d9; }
+.cp-Flight    { background: #fef3c7; color: #92400e; }
 
 /* Status badge */
 .status-badge {
@@ -1030,6 +1032,34 @@ tbody tr:hover { background: #fafbff; }
 /* ╔══════════════════════════════════════════════════════════╗
    ║  EMPTY & LOADING STATES                                 ║
    ╚══════════════════════════════════════════════════════════╝ */
+
+/* ── Skeleton loaders ─────────────────────────────────── */
+@keyframes shimmer {
+  0%   { background-position: -600px 0; }
+  100% { background-position:  600px 0; }
+}
+.skeleton {
+  background: linear-gradient(90deg, #f0f0f0 25%, #e8e8e8 50%, #f0f0f0 75%);
+  background-size: 600px 100%;
+  animation: shimmer 1.4s infinite linear;
+  border-radius: 8px;
+}
+.skeleton-card {
+  border-radius: 16px; height: 170px;
+  background: linear-gradient(90deg, #f0f0f0 25%, #e8e8e8 50%, #f0f0f0 75%);
+  background-size: 600px 100%;
+  animation: shimmer 1.4s infinite linear;
+}
+.skeleton-line { height: 12px; margin-bottom: 8px; border-radius: 6px; }
+.skeleton-line.wide  { width: 80%; }
+.skeleton-line.mid   { width: 55%; }
+.skeleton-line.short { width: 35%; }
+/* ── Smooth fade-in for loaded content ───────────────── */
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.fade-in { animation: fadeIn .25s ease both; }
 
 .empty-state {
   display: flex; flex-direction: column;

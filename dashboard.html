@@ -1027,55 +1027,79 @@
       if (!raw) return '—';
       const p = raw.split('|');
       const type = p[0];
-      if (type === 'TRAVEL') {
-        const from = escHtml(p[1] || ''), to = escHtml(p[2] || ''), site = escHtml(p[3] || ''), desc = escHtml(p[4] || '');
+
+      const TRAVEL_ICONS = { TRAVEL_BUS: '🚌 Bus', TRAVEL_TAXI: '🚕 Taxi', TRAVEL_TRAIN: '🚆 Train', TRAVEL_FLIGHT: '✈️ Flight' };
+      const TRAVEL_COLORS = { TRAVEL_BUS: '#0369a1', TRAVEL_TAXI: '#b45309', TRAVEL_TRAIN: '#6d28d9', TRAVEL_FLIGHT: '#92400e' };
+      if (TRAVEL_ICONS[type]) {
+        const from = escHtml(p[1]||''), to = escHtml(p[2]||''), site = escHtml(p[3]||''), desc = escHtml(p[4]||'');
         return [
-          `<span style="font-size:.7rem;font-weight:700;color:var(--primary);text-transform:uppercase">✈ Travel</span>`,
+          `<span style="font-size:.7rem;font-weight:700;color:${TRAVEL_COLORS[type]};text-transform:uppercase">${TRAVEL_ICONS[type]}</span>`,
           from && to ? `${from} → ${to}` : '',
-          site ? `📍 ${site}` : '',
-          desc || '',
+          site ? `📍 ${site}` : '', desc,
+        ].filter(Boolean).join(' &nbsp;·&nbsp; ');
+      }
+      if (type === 'TRAVEL_BIKE') {
+        const km = escHtml(p[1]||''), from = escHtml(p[2]||''), to = escHtml(p[3]||''), site = escHtml(p[4]||''), desc = escHtml(p[5]||'');
+        return [
+          `<span style="font-size:.7rem;font-weight:700;color:#059669;text-transform:uppercase">🏍️ Bike</span>`,
+          km ? `${km} km` : '',
+          from && to ? `${from} → ${to}` : '',
+          site ? `📍 ${site}` : '', desc,
+        ].filter(Boolean).join(' &nbsp;·&nbsp; ');
+      }
+      if (type === 'FOOD') {
+        const site = escHtml(p[1]||''), desc = escHtml(p[2]||'');
+        return [
+          `<span style="font-size:.7rem;font-weight:700;color:#15803d;text-transform:uppercase">🍽️ Food</span>`,
+          site ? `📍 ${site}` : '', desc,
+        ].filter(Boolean).join(' &nbsp;·&nbsp; ');
+      }
+      // Legacy formats
+      if (type === 'TRAVEL') {
+        const from = escHtml(p[1]||''), to = escHtml(p[2]||''), site = escHtml(p[3]||''), desc = escHtml(p[4]||'');
+        return [
+          `<span style="font-size:.7rem;font-weight:700;color:var(--primary);text-transform:uppercase">🚌 Bus</span>`,
+          from && to ? `${from} → ${to}` : '',
+          site ? `📍 ${site}` : '', desc,
         ].filter(Boolean).join(' &nbsp;·&nbsp; ');
       }
       if (type === 'BUS') {
-        const from = escHtml(p[1] || ''), to = escHtml(p[2] || ''), site = escHtml(p[3] || ''), desc = escHtml(p[4] || '');
+        const from = escHtml(p[1]||''), to = escHtml(p[2]||''), site = escHtml(p[3]||''), desc = escHtml(p[4]||'');
         return [
           `<span style="font-size:.7rem;font-weight:700;color:#0369a1;text-transform:uppercase">🚌 Bus</span>`,
           from && to ? `${from} → ${to}` : '',
-          site ? `📍 ${site}` : '',
-          desc || '',
+          site ? `📍 ${site}` : '', desc,
         ].filter(Boolean).join(' &nbsp;·&nbsp; ');
       }
       if (type === 'TAXI') {
-        const from = escHtml(p[1] || ''), to = escHtml(p[2] || ''), site = escHtml(p[3] || ''), desc = escHtml(p[4] || '');
+        const from = escHtml(p[1]||''), to = escHtml(p[2]||''), site = escHtml(p[3]||''), desc = escHtml(p[4]||'');
         return [
           `<span style="font-size:.7rem;font-weight:700;color:#b45309;text-transform:uppercase">🚕 Taxi</span>`,
           from && to ? `${from} → ${to}` : '',
-          site ? `📍 ${site}` : '',
-          desc || '',
+          site ? `📍 ${site}` : '', desc,
         ].filter(Boolean).join(' &nbsp;·&nbsp; ');
       }
       if (type === 'BIKE') {
-        const km = escHtml(p[1] || ''), site = escHtml(p[2] || ''), desc = escHtml(p[3] || '');
+        const km = escHtml(p[1]||''), site = escHtml(p[2]||''), desc = escHtml(p[3]||'');
         return [
-          `<span style="font-size:.7rem;font-weight:700;color:#059669;text-transform:uppercase">🏍 Bike</span>`,
+          `<span style="font-size:.7rem;font-weight:700;color:#059669;text-transform:uppercase">🏍️ Bike</span>`,
           km ? `${km} km` : '',
-          site ? `📍 ${site}` : '',
-          desc || '',
+          site ? `📍 ${site}` : '', desc,
         ].filter(Boolean).join(' &nbsp;·&nbsp; ');
       }
       if (type === 'OTHER') {
-        const name = escHtml(p[1] || ''), site = escHtml(p[2] || ''), desc = escHtml(p[3] || '');
+        const name = escHtml(p[1]||''), site = escHtml(p[2]||''), desc = escHtml(p[3]||'');
         return [name ? `<strong>${name}</strong>` : '', site ? `📍 ${site}` : '', desc].filter(Boolean).join(' ');
       }
       if (type === 'ROOM_RENT') {
-        const site = escHtml(p[1] || ''), desc = escHtml(p[2] || '');
+        const site = escHtml(p[1]||''), desc = escHtml(p[2]||'');
         return [
           `<span style="font-size:.7rem;font-weight:700;color:#7c3aed;text-transform:uppercase">🏠 Room Rent</span>`,
           site ? `📍 ${site}` : '', desc,
         ].filter(Boolean).join(' &nbsp;·&nbsp; ');
       }
       if (type === 'REGULAR') {
-        const site = escHtml(p[1] || ''), desc = escHtml(p[2] || '');
+        const site = escHtml(p[1]||''), desc = escHtml(p[2]||'');
         return [site ? `📍 ${site}` : '', desc].filter(Boolean).join(' · ') || '—';
       }
       return escHtml(raw);
