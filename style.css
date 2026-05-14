@@ -884,10 +884,15 @@ tbody tr:hover { background: #fafbff; }
   font-size: .75rem; font-weight: 600;
   white-space: nowrap;
 }
-.cp-Travel { background: #dbeafe; color: #1d4ed8; }
-.cp-Food   { background: #dcfce7; color: #15803d; }
-.cp-Office { background: #fef3c7; color: #b45309; }
-.cp-Other  { background: #f3e8ff; color: #6d28d9; }
+.cp-Regular   { background: #f3f4f6; color: #374151; }
+.cp-Bus       { background: #e0f2fe; color: #0369a1; }
+.cp-Taxi      { background: #fef3c7; color: #b45309; }
+.cp-Bike      { background: #d1fae5; color: #059669; }
+.cp-Travel    { background: #dbeafe; color: #1d4ed8; }
+.cp-Food      { background: #dcfce7; color: #15803d; }
+.cp-Office    { background: #fef3c7; color: #b45309; }
+.cp-Other     { background: #f3e8ff; color: #6d28d9; }
+.cp-Room-Rent { background: #fce7f3; color: #9d174d; }
 
 /* Status badge */
 .status-badge {

@@ -201,7 +201,8 @@ function approvalStepper(e) {
 
 /** Return a styled category pill HTML string. */
 function catPill(category) {
-  return `<span class="cat-pill cp-${category}">${category}</span>`;
+  const cls = category.replace(/\s+/g, '-');
+  return `<span class="cat-pill cp-${cls}">${category}</span>`;
 }
 
 // ── SIDEBAR ───────────────────────────────────────────────

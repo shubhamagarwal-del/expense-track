@@ -1036,6 +1036,33 @@
           desc || '',
         ].filter(Boolean).join(' &nbsp;·&nbsp; ');
       }
+      if (type === 'BUS') {
+        const from = escHtml(p[1] || ''), to = escHtml(p[2] || ''), site = escHtml(p[3] || ''), desc = escHtml(p[4] || '');
+        return [
+          `<span style="font-size:.7rem;font-weight:700;color:#0369a1;text-transform:uppercase">🚌 Bus</span>`,
+          from && to ? `${from} → ${to}` : '',
+          site ? `📍 ${site}` : '',
+          desc || '',
+        ].filter(Boolean).join(' &nbsp;·&nbsp; ');
+      }
+      if (type === 'TAXI') {
+        const from = escHtml(p[1] || ''), to = escHtml(p[2] || ''), site = escHtml(p[3] || ''), desc = escHtml(p[4] || '');
+        return [
+          `<span style="font-size:.7rem;font-weight:700;color:#b45309;text-transform:uppercase">🚕 Taxi</span>`,
+          from && to ? `${from} → ${to}` : '',
+          site ? `📍 ${site}` : '',
+          desc || '',
+        ].filter(Boolean).join(' &nbsp;·&nbsp; ');
+      }
+      if (type === 'BIKE') {
+        const km = escHtml(p[1] || ''), site = escHtml(p[2] || ''), desc = escHtml(p[3] || '');
+        return [
+          `<span style="font-size:.7rem;font-weight:700;color:#059669;text-transform:uppercase">🏍 Bike</span>`,
+          km ? `${km} km` : '',
+          site ? `📍 ${site}` : '',
+          desc || '',
+        ].filter(Boolean).join(' &nbsp;·&nbsp; ');
+      }
       if (type === 'OTHER') {
         const name = escHtml(p[1] || ''), site = escHtml(p[2] || ''), desc = escHtml(p[3] || '');
         return [name ? `<strong>${name}</strong>` : '', site ? `📍 ${site}` : '', desc].filter(Boolean).join(' ');

@@ -635,8 +635,11 @@
 
     // Configurable per-category expense limits (null = no limit)
     const CATEGORY_LIMITS = {
-      'Travel':    null,
       'Regular':   null,
+      'Bus':       null,
+      'Taxi':      null,
+      'Bike':      null,
+      'Travel':    null,
       'Other':     null,
       'Room Rent': 700
     };
@@ -880,8 +883,9 @@
     function addRow(data = {}, locked = false) {
       const container = document.getElementById('rows-container');
       const rowId = 'row-' + Date.now() + Math.random().toString(36).substr(2, 5);
-      const isOther = data.category === 'Other';
-      const isTravel = data.category === 'Travel';
+      const isOther  = data.category === 'Other';
+      const isFromTo = (data.category === 'Travel' || data.category === 'Bus' || data.category === 'Taxi');
+      const isBike   = data.category === 'Bike';
 
       const card = document.createElement('div');
       card.className = 'expense-row-card p-4 mb-4 rounded-xl shadow-sm';
@@ -898,13 +902,16 @@
       <div class="grid gap-3 mb-3" style="grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));">
         <div class="form-group mb-0">
           <label class="form-label">Amount (₹)</label>
-          <input type="number" class="form-input font-bold" step="0.01" value="${data.amount || ''}" required
+          <input type="number" class="form-input font-bold row-amount" step="0.01" value="${data.amount || ''}" required
             oninput="validateRow('${rowId}')" placeholder="0.00">
         </div>
         <div class="form-group mb-0">
           <label class="form-label">Category</label>
           <select class="form-select row-cat" required onchange="handleCategoryChange('${rowId}')">
             <option value="Regular"   ${!data.category || data.category === 'Regular'   ? 'selected' : ''}>Regular</option>
+            <option value="Bus"       ${data.category === 'Bus'       ? 'selected' : ''}>Bus</option>
+            <option value="Taxi"      ${data.category === 'Taxi'      ? 'selected' : ''}>Taxi</option>
+            <option value="Bike"      ${data.category === 'Bike'      ? 'selected' : ''}>Bike</option>
             <option value="Travel"    ${data.category === 'Travel'    ? 'selected' : ''}>Travel</option>
             <option value="Other"     ${data.category === 'Other'     ? 'selected' : ''}>Other</option>
             <option value="Room Rent" ${data.category === 'Room Rent' ? 'selected' : ''}>Room Rent</option>
@@ -925,7 +932,7 @@
         </p>
       </div>
 
-      <div class="row-travel-group gap-3 mb-3" style="display: ${isTravel ? 'grid' : 'none'}; grid-template-columns: 1fr 1fr;">
+      <div class="row-travel-group gap-3 mb-3" style="display: ${isFromTo ? 'grid' : 'none'}; grid-template-columns: 1fr 1fr;">
         <div class="form-group mb-0">
           <label class="form-label">From</label>
           <input type="text" class="form-input row-from" placeholder="Start location" value="${data.from || ''}">
@@ -933,6 +940,18 @@
         <div class="form-group mb-0">
           <label class="form-label">To</label>
           <input type="text" class="form-input row-to" placeholder="End location" value="${data.to || ''}">
+        </div>
+      </div>
+
+      <div class="row-bike-group gap-3 mb-3" style="display: ${isBike ? 'grid' : 'none'}; grid-template-columns: 1fr 1fr;">
+        <div class="form-group mb-0">
+          <label class="form-label">Distance (km)</label>
+          <input type="number" class="form-input row-km" step="0.1" min="0" placeholder="0"
+            oninput="calcBikeAmount('${rowId}')">
+        </div>
+        <div class="form-group mb-0">
+          <label class="form-label">Rate</label>
+          <div class="form-input" style="background:#f3f4f6;color:var(--text-muted);font-size:.85rem;display:flex;align-items:center">₹4 / km</div>
         </div>
       </div>
 
@@ -969,6 +988,11 @@
     `;
       container.appendChild(card);
       handleCategoryChange(rowId);
+      if (data.id) card.dataset.expenseId = data.id;
+      if (data.km) {
+        const kmInput = card.querySelector('.row-km');
+        if (kmInput) { kmInput.value = data.km; calcBikeAmount(rowId); }
+      }
       if (locked) {
         card.dataset.locked = 'true';
         card.style.opacity = '0.82';
@@ -993,15 +1017,16 @@
       const row = document.getElementById(rowId);
       const cat = row.querySelector('.row-cat').value;
       const isOther  = (cat === 'Other');
-      const isTravel = (cat === 'Travel');
+      const isFromTo = (cat === 'Travel' || cat === 'Bus' || cat === 'Taxi');
+      const isBike   = (cat === 'Bike');
 
       row.querySelector('.row-name-group').style.display = isOther ? 'block' : 'none';
       if (isOther) row.querySelector('.row-name').setAttribute('required', '');
       else row.querySelector('.row-name').removeAttribute('required');
 
       const travelGroup = row.querySelector('.row-travel-group');
-      travelGroup.style.display = isTravel ? 'grid' : 'none';
-      if (isTravel) {
+      travelGroup.style.display = isFromTo ? 'grid' : 'none';
+      if (isFromTo) {
         row.querySelector('.row-from').setAttribute('required', '');
         row.querySelector('.row-to').setAttribute('required', '');
       } else {
@@ -1009,13 +1034,31 @@
         row.querySelector('.row-to').removeAttribute('required');
       }
 
+      row.querySelector('.row-bike-group').style.display = isBike ? 'grid' : 'none';
+      const amountInput = row.querySelector('.row-amount');
+      if (isBike) {
+        amountInput.setAttribute('readonly', '');
+        amountInput.style.cssText += ';background:#f3f4f6;color:var(--text-muted)';
+      } else {
+        amountInput.removeAttribute('readonly');
+        amountInput.style.background = '';
+        amountInput.style.color = '';
+      }
+
       validateRow(rowId);
+    }
+
+    function calcBikeAmount(rowId) {
+      const row = document.getElementById(rowId);
+      const km = parseFloat(row.querySelector('.row-km').value) || 0;
+      row.querySelector('.row-amount').value = (km * 4).toFixed(2);
+      calcPanelTotal();
     }
 
     function validateRow(rowId) {
       const row = document.getElementById(rowId);
       const cat    = row.querySelector('.row-cat').value;
-      const amount = parseFloat(row.querySelector('input[type="number"]').value) || 0;
+      const amount = parseFloat(row.querySelector('.row-amount').value) || 0;
       const limit  = CATEGORY_LIMITS[cat] ?? null;
 
       const limitWarning  = row.querySelector('.row-limit-warning');
@@ -1054,7 +1097,7 @@
 
     function calcPanelTotal() {
       let total = 0;
-      document.querySelectorAll('.expense-row-card input[type="number"]').forEach(input => total += parseFloat(input.value) || 0);
+      document.querySelectorAll('.expense-row-card .row-amount').forEach(input => total += parseFloat(input.value) || 0);
       document.getElementById('panel-day-total').textContent = formatCurrency(total);
     }
 
@@ -1070,11 +1113,18 @@
     function parseExpenseToRowData(exp) {
       const parts = (exp.description || '').split('|');
       const type = parts[0];
-      const row = { amount: exp.amount, category: exp.category, receipt_url: exp.receipt_url, status: exp.status };
-      if (type === 'TRAVEL')           { row.from = parts[1]||''; row.to = parts[2]||''; row.site = parts[3]||''; row.description = parts[4]||''; }
-      else if (type === 'OTHER')       { row.name = parts[1]||''; row.site = parts[2]||''; row.description = parts[3]||''; }
-      else if (type === 'ROOM_RENT' || type === 'REGULAR') { row.site = parts[1]||''; row.description = parts[2]||''; }
-      else                             { row.site = currentUser?.site_name||''; row.description = exp.description||''; }
+      const row = { id: exp.id, amount: exp.amount, category: exp.category, receipt_url: exp.receipt_url, status: exp.status };
+      if (type === 'TRAVEL' || type === 'BUS' || type === 'TAXI') {
+        row.from = parts[1]||''; row.to = parts[2]||''; row.site = parts[3]||''; row.description = parts[4]||'';
+      } else if (type === 'BIKE') {
+        row.km = parts[1]||''; row.site = parts[2]||''; row.description = parts[3]||'';
+      } else if (type === 'OTHER') {
+        row.name = parts[1]||''; row.site = parts[2]||''; row.description = parts[3]||'';
+      } else if (type === 'ROOM_RENT' || type === 'REGULAR') {
+        row.site = parts[1]||''; row.description = parts[2]||'';
+      } else {
+        row.site = currentUser?.site_name||''; row.description = exp.description||'';
+      }
       return row;
     }
 
@@ -1122,8 +1172,13 @@
       const rowElements = document.querySelectorAll('.expense-row-card:not([data-locked])');
       const newEntries = [];
 
+      // Collect IDs of existing pending entries so we can delete exactly those rows
+      const toDeleteIds = [...rowElements]
+        .map(el => el.dataset.expenseId)
+        .filter(Boolean);
+
       for (const row of rowElements) {
-        const amount = parseFloat(row.querySelector('input[type="number"]').value);
+        const amount = parseFloat(row.querySelector('.row-amount').value);
         const category = row.querySelector('.row-cat').value;
         const site = row.querySelector('.row-site').value.trim();
         const desc = row.querySelector('.row-desc').value.trim();
@@ -1154,6 +1209,17 @@
           const from = row.querySelector('.row-from').value.trim();
           const to = row.querySelector('.row-to').value.trim();
           finalDescription = `TRAVEL|${from}|${to}|${site}|${desc}`;
+        } else if (category === 'Bus') {
+          const from = row.querySelector('.row-from').value.trim();
+          const to = row.querySelector('.row-to').value.trim();
+          finalDescription = `BUS|${from}|${to}|${site}|${desc}`;
+        } else if (category === 'Taxi') {
+          const from = row.querySelector('.row-from').value.trim();
+          const to = row.querySelector('.row-to').value.trim();
+          finalDescription = `TAXI|${from}|${to}|${site}|${desc}`;
+        } else if (category === 'Bike') {
+          const km = row.querySelector('.row-km').value.trim();
+          finalDescription = `BIKE|${km}|${site}|${desc}`;
         } else if (category === 'Other') {
           const name = row.querySelector('.row-name').value.trim();
           finalDescription = `OTHER|${name}|${site}|${desc}`;
@@ -1167,14 +1233,10 @@
       }
 
       try {
-        const startOfDay = new Date(dateIso).toISOString();
-        const endOfDay = new Date(new Date(dateIso).getTime() + 86399999).toISOString();
-        // Only delete pending entries — approved/reviewed entries are preserved
-        await db.from('expenses').delete()
-          .eq('user_id', currentUser.id)
-          .eq('status', 'pending')
-          .gte('created_at', startOfDay)
-          .lte('created_at', endOfDay);
+        // Delete only the specific existing pending rows we loaded — prevents duplicates
+        if (toDeleteIds.length > 0) {
+          await db.from('expenses').delete().in('id', toDeleteIds);
+        }
         if (newEntries.length > 0) await db.from('expenses').insert(newEntries);
         showMessage('Entries updated successfully! ✨', 'success');
         closeEntryPanel();
