@@ -6,16 +6,29 @@
 const DEPARTMENTS = ['O&M', 'Project', 'Procurement', 'Account', 'HR', 'Purchase', 'Finance', 'Sales', 'Logistics'];
 
 // ── CONFIG ────────────────────────────────────────────────
-// Credentials are loaded from the server (.env) so switching Supabase
-// projects only requires updating .env — no code change needed.
+// Credentials are loaded from the server (.env). Config is cached in
+// sessionStorage so each page only pays the fetch cost once per browser session.
 let db; // initialized after config loads (see initSupabase below)
+let _cfgCache = null;
 
 async function initSupabase() {
   if (db) return db;
-  const res  = await fetch('/api/config');
-  if (!res.ok) throw new Error('Could not load Supabase config from server');
-  const { url, key } = await res.json();
-  db = window.supabase.createClient(url, key);
+  if (!_cfgCache) {
+    const stored = sessionStorage.getItem('_sbcfg');
+    if (stored) {
+      try { _cfgCache = JSON.parse(stored); } catch { _cfgCache = null; }
+    }
+    if (!_cfgCache) {
+      const res = await fetch('/api/config');
+      if (!res.ok) throw new Error('Could not load Supabase config from server');
+      _cfgCache = await res.json();
+      try { sessionStorage.setItem('_sbcfg', JSON.stringify(_cfgCache)); } catch {}
+    }
+  }
+  const { url, key } = _cfgCache;
+  db = window.supabase.createClient(url, key, {
+    realtime: { params: { eventsPerSecond: 5 } }
+  });
   return db;
 }
 
@@ -29,14 +42,19 @@ async function requireAuth() {
   return session.user;
 }
 
-/** Fetch the logged-in user's row from the `users` table. */
+// In-memory profile cache — cleared when the page unloads (tab closes / navigates)
+let _profileCache = null;
+
+/** Fetch the logged-in user's row from the `users` table. Cached per page load. */
 async function getUserProfile() {
+  if (_profileCache) return _profileCache;
   await initSupabase();
   const { data: { user } } = await db.auth.getUser();
   if (!user) return null;
   const { data, error } = await db
     .from('users').select('*').eq('id', user.id).single();
   if (error) { console.error('getUserProfile:', error.message); return null; }
+  _profileCache = data;
   return data;
 }
 
@@ -102,6 +120,17 @@ async function logout() {
   await initSupabase();
   await db.auth.signOut();
   window.location.href = 'index.html';
+}
+
+// ── UTILS ─────────────────────────────────────────────────
+
+/** Returns a debounced version of fn that fires after `ms` ms of inactivity. */
+function debounce(fn, ms = 250) {
+  let t;
+  return function (...args) {
+    clearTimeout(t);
+    t = setTimeout(() => fn.apply(this, args), ms);
+  };
 }
 
 // ── UI HELPERS ────────────────────────────────────────────
@@ -291,12 +320,13 @@ async function notifyUser(email, status, reason = null) {
  * employees only get their own rows, admins get every row.
  * @param {{ from?: string, to?: string, userId?: string }} opts
  */
-async function fetchExpenses({ from, to, userId, companyId } = {}) {
+async function fetchExpenses({ from, to, userId, companyId, limit = 500 } = {}) {
   await initSupabase();
   let q = db
     .from('expenses')
-    .select('*, users(*)')
-    .order('created_at', { ascending: false });
+    .select('*, users(id,email,name,role,department,site_name)')
+    .order('created_at', { ascending: false })
+    .limit(limit);
 
   if (userId)    q = q.eq('user_id', userId);
   if (companyId) q = q.eq('company_id', companyId);

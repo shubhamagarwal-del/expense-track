@@ -1378,3 +1378,47 @@ body.dark .modal-header { border-bottom-color: #1e293b; }
   body, html { overflow-x: hidden; }
 }
 
+/* ── Performance optimisations ────────────────────────────────
+   GPU-composited transforms keep hover/animation off the main thread.
+   contain:layout style lets the browser skip relayout outside each card.
+   ──────────────────────────────────────────────────────────── */
+.expense-card,
+.day-card,
+.stat-card,
+.plan-card {
+  contain: layout style;
+}
+.expense-card:hover,
+.day-card:hover {
+  will-change: transform;
+}
+
+/* Smoother skeleton on dark mode */
+body.dark .skeleton,
+body.dark .skeleton-card {
+  background: linear-gradient(90deg, #1e293b 25%, #253348 50%, #1e293b 75%);
+  background-size: 600px 100%;
+}
+
+/* Reduce motion for users who prefer it */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: .01ms !important;
+    transition-duration: .01ms !important;
+  }
+}
+
+/* Touch-action for scrollable containers → smoother mobile scroll */
+.drawer-body,
+.page-content,
+.app-main {
+  -webkit-overflow-scrolling: touch;
+}
+
+/* Prevent layout shift from font loading */
+.topbar-title,
+.sidebar-logo .logo-text,
+.hero-text h1 {
+  font-display: swap;
+}
+

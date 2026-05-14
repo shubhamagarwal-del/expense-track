@@ -11,6 +11,9 @@
 
   <!-- PWA -->
   <link rel="manifest" href="/manifest.json" />
+  <link rel="preconnect" href="https://cdn.jsdelivr.net" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="dns-prefetch" href="https://cdn.jsdelivr.net" />
   <meta name="theme-color" content="#6366f1" />
   <link rel="icon" type="image/svg+xml" href="/icon.svg" />
   <link rel="apple-touch-icon" href="/icon.svg" />
@@ -379,7 +382,11 @@
       refreshListView();
     }
 
-    function refreshListView() {
+    // Debounced wrapper so rapid search keystrokes don't re-render on every character
+    const _debouncedRefresh = debounce(_doRefreshListView, 200);
+    function refreshListView(skipCharts = false) { _debouncedRefresh(skipCharts); }
+
+    function _doRefreshListView(skipCharts = false) {
       const search = document.getElementById('f-user-search')?.value.toLowerCase().trim() || '';
       let filtered = allExpensesFetched;
 
@@ -394,13 +401,13 @@
 
       // Filter by search string (Admins only)
       if (search && isAdmin) {
-        filtered = filtered.filter(e => e.users?.email.toLowerCase().includes(search));
+        filtered = filtered.filter(e => (e.users?.email || '').toLowerCase().includes(search));
       }
 
       if (isAdmin) {
         renderAdminTable(filtered);
         renderAdminCards(filtered);
-        renderAdminCharts(filtered);
+        if (!skipCharts) renderAdminCharts(filtered);
       } else {
         renderEmpTable(filtered);
         renderEmpCards(filtered);
@@ -536,7 +543,7 @@
         </div>
         <div class="form-group mb-0">
           <label class="form-label" for="f-user-search">Search</label>
-          <input class="form-input" type="text" id="f-user-search" placeholder="Email..." oninput="refreshListView()" />
+          <input class="form-input" type="text" id="f-user-search" placeholder="Email..." oninput="refreshListView(true)" />
         </div>
         <div class="flex gap-2 items-center" style="align-self: end;">
           <button class="btn btn-primary btn-sm flex-1" onclick="applyCycleFilter()">Filter</button>
