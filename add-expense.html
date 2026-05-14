@@ -1235,19 +1235,13 @@
         const startOfDay = new Date(dateIso).toISOString();
         const endOfDay   = new Date(new Date(dateIso).getTime() + 86399999).toISOString();
 
-        // Pass 1 — delete by UUID (works even if created_at was overridden server-side)
-        if (currentDayPendingIds.length > 0) {
-          await db.from('expenses').delete()
-            .in('id', currentDayPendingIds)
-            .eq('user_id', currentUser.id)
-            .eq('status', 'pending');
-        }
-        // Pass 2 — date-range delete as safety net (catches any orphan pending rows for this day)
-        await db.from('expenses').delete()
-          .eq('user_id', currentUser.id)
-          .eq('status', 'pending')
-          .gte('created_at', startOfDay)
-          .lte('created_at', endOfDay);
+        // Delete via server-side API (service role key bypasses RLS — direct client delete silently fails)
+        const { data: { session } } = await db.auth.getSession();
+        await fetch('/api/delete-expenses', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.access_token}` },
+          body: JSON.stringify({ ids: currentDayPendingIds, date_start: startOfDay, date_end: endOfDay })
+        });
 
         if (newEntries.length > 0) await db.from('expenses').insert(newEntries);
         showMessage('Entries updated successfully! ✨', 'success');
