@@ -222,6 +222,55 @@
   <script>
     let currentProfile = null;
 
+    // ─── LINE MANAGER LOOKUP ───────────────────────────────────
+    const LINE_MANAGERS = {
+      'SSS_0160': { name: 'Chirag Panchal',                       phone: '7732917204', dept: 'O&M' },
+      'SSS_0010': { name: 'Vijay Singh',                          phone: '9352523904', dept: 'Lease' },
+      'SSS_0024': { name: 'Pintu Bairwa (Arun Sir)',              phone: '7891054848', dept: 'Liaison' },
+      'SSS_0058': { name: 'Bhukima Kudiwal',                      phone: '7062047980', dept: 'Compliance' },
+      'SSS_0064': { name: 'Peyush Kedia',                         phone: '8875533830', dept: 'Accounts' },
+      'SSS_0020': { name: 'Ashok Bharia',                         phone: '9529408901', dept: 'Project – Roof Top, Design' },
+      'SSS_0268': { name: 'Pawan Raj Koodi',                      phone: '9928096564', dept: 'Project' },
+      'SSS_0060': { name: 'Sagar Gurjar',                         phone: '9079370762', dept: 'Project' },
+      'SSS_0113': { name: 'Navneet Singh',                        phone: '9929986281', dept: 'HR & Admin' },
+      'SSS_0050': { name: 'Ritika Sharma (Arun Sir)',             phone: '9821585878', dept: 'Legal' },
+      'SSS_0053': { name: 'Shubham Maheshwari',                   phone: '7014635743', dept: 'Procurement' },
+      'SSS_0206': { name: 'Rohit Sharma',                         phone: '9983804321', dept: 'Procurement' },
+      'SSS_0137': { name: 'Ramgopal Sharma',                      phone: '9461251687', dept: 'Transmission Line' },
+      'SSS_0197': { name: 'Ashok Jat',                            phone: '7728871812', dept: 'Logistics & Supply Chain' },
+      'SSS_0189': { name: 'Anita',                                phone: '8058940971', dept: 'Internal Audit & A/C Payable' },
+      'SSS_0309': { name: 'Prashant Kumar Singh (Durgesh Sir)',   phone: '6391116991', dept: 'Sales' },
+    };
+
+    /** Look up line manager info by employee code string. Returns null if not found. */
+    function getLM(empNo) {
+      if (!empNo) return null;
+      return LINE_MANAGERS[(empNo || '').trim().toUpperCase()] || null;
+    }
+
+    /**
+     * Rebuild the #f-manager dropdown from currently loaded expenses.
+     * Only shows managers that actually appear in the visible data set.
+     */
+    function populateManagerFilter(expenses) {
+      const sel = document.getElementById('f-manager');
+      if (!sel) return;
+      const current = sel.value;                     // preserve selection
+      const managers = new Set();
+      expenses.forEach(e => {
+        const lm = getLM(e.users?.emp_no);
+        if (lm) managers.add(lm.name);
+      });
+      sel.innerHTML = '<option value="">All Managers</option>';
+      [...managers].sort().forEach(managerName => {
+        const opt = document.createElement('option');
+        opt.value = managerName;
+        opt.textContent = `👔 ${managerName}`;
+        if (managerName === current) opt.selected = true;
+        sel.appendChild(opt);
+      });
+    }
+
     // ─── Boot ─────────────────────────────────────────────────
     (async () => {
       const user = await requireAuth();
@@ -399,9 +448,21 @@
 
       const isAdmin = currentProfile.role === 'admin' || currentProfile.role === 'super_admin';
 
-      // Filter by search string (Admins only)
+      // Filter by search string — name OR email (Admins only)
       if (search && isAdmin) {
-        filtered = filtered.filter(e => (e.users?.email || '').toLowerCase().includes(search));
+        filtered = filtered.filter(e =>
+          (e.users?.email || '').toLowerCase().includes(search) ||
+          (e.users?.name  || '').toLowerCase().includes(search)
+        );
+      }
+
+      // Filter by line manager
+      const managerFilter = (document.getElementById('f-manager')?.value || '').trim();
+      if (managerFilter && isAdmin) {
+        filtered = filtered.filter(e => {
+          const lm = getLM(e.users?.emp_no);
+          return lm && lm.name === managerFilter;
+        });
       }
 
       if (isAdmin) {
@@ -543,7 +604,13 @@
         </div>
         <div class="form-group mb-0">
           <label class="form-label" for="f-user-search">Search</label>
-          <input class="form-input" type="text" id="f-user-search" placeholder="Email..." oninput="refreshListView(true)" />
+          <input class="form-input" type="text" id="f-user-search" placeholder="Name / Email..." oninput="refreshListView(true)" />
+        </div>
+        <div class="form-group mb-0">
+          <label class="form-label" for="f-manager">Line Manager</label>
+          <select class="form-select" id="f-manager" onchange="refreshListView(true)">
+            <option value="">All Managers</option>
+          </select>
         </div>
         <div class="flex gap-2 items-center" style="align-self: end;">
           <button class="btn btn-primary btn-sm flex-1" onclick="applyCycleFilter()">Filter</button>
@@ -619,6 +686,7 @@
         const raw = await fetchExpenses({ from, to, companyId });
         const expenses = deptFilter(raw);
         allExpensesFetched = expenses;
+        populateManagerFilter(expenses);
         updateAdminStats(expenses);
         refreshListView();
         renderAdminCharts(expenses);
@@ -747,12 +815,14 @@
         const filledCount = g.days.size;
         const pendingCount = totalDaysInCycle - filledCount;
         const safeKey = `${g.user.id}|${g.monthYear}|${g.cycleText}`;
+        const lm = getLM(g.user.emp_no);
 
         return `
                 <tr class="summary-row">
                   <td>
                     <div style="font-weight:700; color:var(--text-1)">${escHtml(g.user.name || 'N/A')}</div>
                     <div style="font-size:0.75rem; color:var(--text-3)">${escHtml(g.user.email)}</div>
+                    ${lm ? `<div style="font-size:.7rem;color:#059669;font-weight:600;margin-top:3px">👔 ${escHtml(lm.name)}</div>` : ''}
                   </td>
                   <td><strong>${g.monthYear}</strong><br><small style="color:var(--primary)">${g.cycleText}</small></td>
                   <td style="font-weight:700; color:var(--primary); font-size:1.1rem">${formatCurrency(g.totalAmount)}</td>
@@ -773,7 +843,14 @@
                       
                       <!-- Employee Info -->
                       <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 1rem; margin-bottom: 1rem; background: var(--bg-2); padding: 1rem; border-radius: 8px;">
-                        ${[['Full Name', g.user.name],['Employee ID', g.user.emp_no],['Department', g.user.department],['Site Name', g.user.site_name],['Mobile', g.user.phone]].map(([l,v])=>`
+                        ${[
+                          ['Full Name', g.user.name],
+                          ['Employee ID', g.user.emp_no],
+                          ['Department', g.user.department],
+                          ['Site Name', g.user.site_name],
+                          ['Mobile', g.user.phone],
+                          ...(lm ? [['Line Manager', lm.name], ['Manager Dept', lm.dept]] : [])
+                        ].map(([l,v])=>`
                         <div>
                           <p style="font-size:.7rem;text-transform:uppercase;color:var(--text-3);margin-bottom:.2rem">${l}</p>
                           <p style="font-weight:600">${escHtml(v||'—')}</p>
@@ -1006,7 +1083,18 @@
       const isAdmin = currentProfile.role === 'admin' || currentProfile.role === 'super_admin';
 
       if (search && isAdmin) {
-        filtered = filtered.filter(e => e.users?.email.toLowerCase().includes(search));
+        filtered = filtered.filter(e =>
+          (e.users?.email || '').toLowerCase().includes(search) ||
+          (e.users?.name  || '').toLowerCase().includes(search)
+        );
+      }
+
+      const managerFilter = (document.getElementById('f-manager')?.value || '').trim();
+      if (managerFilter && isAdmin) {
+        filtered = filtered.filter(e => {
+          const lm = getLM(e.users?.emp_no);
+          return lm && lm.name === managerFilter;
+        });
       }
 
       if (isAdmin) {
@@ -1022,6 +1110,7 @@
       if (document.getElementById('f-month')) document.getElementById('f-month').value = '';
       if (document.getElementById('f-cycle')) document.getElementById('f-cycle').value = 'all';
       if (document.getElementById('f-user-search')) document.getElementById('f-user-search').value = '';
+      if (document.getElementById('f-manager')) document.getElementById('f-manager').value = '';
       const spin = `<div class="loading-state"><div class="spinner"></div><span>Loading…</span></div>`;
       document.getElementById('admin-table').innerHTML = spin;
       document.getElementById('admin-cards').innerHTML = spin;
@@ -1207,6 +1296,7 @@
       const site = escHtml(u.site_name || '—');
       const dept = escHtml(u.department || '—');
       const phone = escHtml(u.phone || '—');
+      const lm = getLM(u.emp_no);
 
       const approvedAmt = e.approved_amount != null ? e.approved_amount : e.amount;
       const amtChanged = e.approved_amount != null && +e.approved_amount !== +e.amount;
@@ -1232,6 +1322,7 @@
         <div style="font-weight:700; color:var(--text-1)">👤 ${name} (${empNo})</div>
         <div style="font-size:.775rem; color:var(--text-2)">📧 ${email} | 📱 ${phone}</div>
         <div style="font-size:.775rem; color:var(--text-3)">📍 ${site} | 🏢 ${dept}</div>
+        ${lm ? `<div style="font-size:.75rem;color:#059669;font-weight:600;margin-top:2px">👔 ${escHtml(lm.name)} · ${escHtml(lm.dept)}</div>` : ''}
       </div>
       <div class="expense-card-meta" style="font-size: 0.7rem; color: var(--text-3); margin-top: 0.25rem">
         🕒 Submitted: ${new Date(e.created_at).toLocaleString()}

@@ -152,7 +152,7 @@ function showMessage(message, type = 'info') {
     <span class="toast-icon">${icons[type] ?? 'ℹ️'}</span>
     <span class="toast-msg">${message}</span>`;
   document.body.appendChild(toast);
-  setTimeout(() => toast.remove(), 4500); kfke
+  setTimeout(() => toast.remove(), 4500);
 }
 
 /** Toggle a button between its normal and loading state. */
@@ -324,7 +324,7 @@ async function fetchExpenses({ from, to, userId, companyId, limit = 500 } = {}) 
   await initSupabase();
   let q = db
     .from('expenses')
-    .select('*, users(id,email,name,role,department,site_name)')
+    .select('*, users(id,email,name,role,department,site_name,emp_no,phone,bank_holder,bank_name,bank_ifsc,bank_account)')
     .order('created_at', { ascending: false })
     .limit(limit);
 
