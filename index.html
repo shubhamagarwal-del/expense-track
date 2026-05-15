@@ -145,8 +145,13 @@
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ identifier })
           });
-          const data = await res.json();
-          if (!res.ok) throw new Error(data.error || 'Account not found');
+          // Read as text first — guards against a plain-text Vercel error page
+          // that would make res.json() throw a confusing SyntaxError.
+          const raw = await res.text();
+          let data = {};
+          try { data = JSON.parse(raw); } catch { /* not JSON */ }
+          if (!res.ok) throw new Error(data.error || 'Account not found. Please try your email address.');
+          if (!data.email) throw new Error('Account not found. Please try your email address.');
           email = data.email;
         }
 

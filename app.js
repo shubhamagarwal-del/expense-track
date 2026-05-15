@@ -21,7 +21,11 @@ async function initSupabase() {
     if (!_cfgCache) {
       const res = await fetch('/api/config');
       if (!res.ok) throw new Error('Could not load Supabase config from server');
-      _cfgCache = await res.json();
+      // Use text-first so a plain-text Vercel error never throws SyntaxError
+      const cfgText = await res.text();
+      try { _cfgCache = JSON.parse(cfgText); } catch {
+        throw new Error('Invalid config response from server. Please refresh and try again.');
+      }
       try { sessionStorage.setItem('_sbcfg', JSON.stringify(_cfgCache)); } catch { }
     }
   }
@@ -332,7 +336,23 @@ async function fetchLineManagers() {
   try {
     const res = await fetch('/api/line-managers');
     if (!res.ok) return null;
-    const rows = await res.json();
+
+    // Read raw text first — if the server returns a plain-text error (e.g.
+    // "A server error has occurred") calling .json() would throw SyntaxError.
+    const text = await res.text();
+    if (!text || !text.trimStart().startsWith('[')) {
+      // Response is not a JSON array — clear any stale cached value and bail
+      try { sessionStorage.removeItem('_lmdata'); } catch {}
+      return null;
+    }
+
+    let rows;
+    try { rows = JSON.parse(text); } catch {
+      try { sessionStorage.removeItem('_lmdata'); } catch {}
+      return null;
+    }
+
+    if (!Array.isArray(rows) || rows.length === 0) return null;
 
     // Convert flat rows → { department: [{ code, name, phone }] }
     const map = {};
