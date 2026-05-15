@@ -310,15 +310,8 @@
               <div style="font-size:1.05rem;font-weight:800;color:var(--text-main);margin-top:2px;" id="lm-name">—</div>
             </div>
           </div>
-          <div style="display:flex; gap:0.75rem; flex-wrap:wrap;">
-            <a id="lm-call" href="#" style="display:inline-flex;align-items:center;gap:0.4rem;background:#f0fdf4;color:#15803d;border-radius:20px;padding:0.35rem 1rem;font-size:0.82rem;font-weight:700;text-decoration:none;transition:background .15s;"
-               onmouseover="this.style.background='#dcfce7'" onmouseout="this.style.background='#f0fdf4'">
-              📞 <span id="lm-phone">—</span>
-            </a>
-            <span id="lm-dept-badge" style="display:inline-flex;align-items:center;gap:0.4rem;background:#eff6ff;color:#1d4ed8;border-radius:20px;padding:0.35rem 1rem;font-size:0.82rem;font-weight:700;">
-              🏢 <span id="lm-dept">—</span>
-            </span>
-          </div>
+          <!-- phone links injected dynamically (supports multiple managers) -->
+          <div id="lm-phones" style="display:flex; gap:0.75rem; flex-wrap:wrap;"></div>
         </div>
 
         <!-- ── Bank Details ───────────────────────────────── -->
@@ -368,26 +361,44 @@
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="app.js"></script>
   <script>
-    // ── Line Manager lookup ───────────────────────────────────
-    // Key: employee code (uppercase). Value: { name, phone, dept }
-    const LINE_MANAGERS = {
-      'SSS_0160': { name: 'Chirag Panchal',                       phone: '7732917204', dept: 'O&M' },
-      'SSS_0010': { name: 'Vijay Singh',                          phone: '9352523904', dept: 'Lease' },
-      'SSS_0024': { name: 'Pintu Bairwa (Arun Sir)',              phone: '7891054848', dept: 'Liaison' },
-      'SSS_0058': { name: 'Bhukima Kudiwal',                      phone: '7062047980', dept: 'Compliance' },
-      'SSS_0064': { name: 'Peyush Kedia',                         phone: '8875533830', dept: 'Accounts' },
-      'SSS_0020': { name: 'Ashok Bharia',                         phone: '9529408901', dept: 'Project – Roof Top, Design' },
-      'SSS_0268': { name: 'Pawan Raj Koodi',                      phone: '9928096564', dept: 'Project' },
-      'SSS_0060': { name: 'Sagar Gurjar',                         phone: '9079370762', dept: 'Project' },
-      'SSS_0113': { name: 'Navneet Singh',                        phone: '9929986281', dept: 'HR & Admin' },
-      'SSS_0050': { name: 'Ritika Sharma (Arun Sir)',             phone: '9821585878', dept: 'Legal' },
-      'SSS_0053': { name: 'Shubham Maheshwari',                   phone: '7014635743', dept: 'Procurement' },
-      'SSS_0206': { name: 'Rohit Sharma',                         phone: '9983804321', dept: 'Procurement' },
-      'SSS_0137': { name: 'Ramgopal Sharma',                      phone: '9461251687', dept: 'Transmission Line' },
-      'SSS_0197': { name: 'Ashok Jat',                            phone: '7728871812', dept: 'Logistics & Supply Chain' },
-      'SSS_0189': { name: 'Anita',                                phone: '8058940971', dept: 'Internal Audit & A/C Payable' },
-      'SSS_0309': { name: 'Prashant Kumar Singh (Durgesh Sir)',   phone: '6391116991', dept: 'Sales' },
+    // ── Line Manager lookup (keyed by department) ────────────
+    // Each value is an array so departments with multiple managers work naturally.
+    const DEPT_MANAGERS = {
+      'O&M':                          [{ name: 'Chirag Panchal',                       phone: '7732917204' }],
+      'Lease':                        [{ name: 'Vijay Singh',                          phone: '9352523904' }],
+      'Liaison':                      [{ name: 'Pintu Bairwa (Arun Sir)',               phone: '7891054848' }],
+      'Compliance':                   [{ name: 'Bhukima Kudiwal',                      phone: '7062047980' }],
+      'Accounts':                     [{ name: 'Peyush Kedia',                         phone: '8875533830' }],
+      'Account':                      [{ name: 'Peyush Kedia',                         phone: '8875533830' }],
+      'Project - Roof Top, Design':   [{ name: 'Ashok Bharia',                         phone: '9529408901' }],
+      'Project':                      [
+        { name: 'Pawan Raj Koodi', phone: '9928096564' },
+        { name: 'Sagar Gurjar',    phone: '9079370762' },
+      ],
+      'HR & Admin':                   [{ name: 'Navneet Singh',                        phone: '9929986281' }],
+      'HR':                           [{ name: 'Navneet Singh',                        phone: '9929986281' }],
+      'Legal':                        [{ name: 'Ritika Sharma (Arun Sir)',              phone: '9821585878' }],
+      'Procurement':                  [
+        { name: 'Shubham Maheshwari', phone: '7014635743' },
+        { name: 'Rohit Sharma',        phone: '9983804321' },
+      ],
+      'Transmission Line':            [{ name: 'Ramgopal Sharma',                      phone: '9461251687' }],
+      'Logistics & Supply Chain':     [{ name: 'Ashok Jat',                            phone: '7728871812' }],
+      'Logistics':                    [{ name: 'Ashok Jat',                            phone: '7728871812' }],
+      'Internal Audit & A/C Payable': [{ name: 'Anita',                                phone: '8058940971' }],
+      'Sales':                        [{ name: 'Prashant Kumar Singh (Durgesh Sir)',   phone: '6391116991' }],
     };
+
+    function getDeptLM(dept) {
+      if (!dept) return null;
+      const trimmed = dept.trim();
+      if (DEPT_MANAGERS[trimmed]) return DEPT_MANAGERS[trimmed];
+      const lower = trimmed.toLowerCase();
+      for (const [key, managers] of Object.entries(DEPT_MANAGERS)) {
+        if (key.toLowerCase() === lower) return managers;
+      }
+      return null;
+    }
 
     let profileId = null;
 
@@ -408,14 +419,17 @@
       document.getElementById('p-dept').textContent = p.department || 'Not Assigned';
       document.getElementById('p-site').textContent = p.site_name || 'Not Assigned';
 
-      // Show Line Manager card if this employee has a mapped manager
-      const empCode = (p.emp_no || '').trim().toUpperCase();
-      const lm = LINE_MANAGERS[empCode];
-      if (lm) {
-        document.getElementById('lm-name').textContent  = lm.name;
-        document.getElementById('lm-phone').textContent = lm.phone;
-        document.getElementById('lm-dept').textContent  = lm.dept;
-        document.getElementById('lm-call').href         = `tel:${lm.phone}`;
+      // Show Line Manager card based on the employee's department
+      const lms = getDeptLM(p.department);
+      if (lms && lms.length > 0) {
+        document.getElementById('lm-name').textContent = lms.map(m => m.name).join(' / ');
+        document.getElementById('lm-phones').innerHTML = lms.map(m =>
+          `<a href="tel:${m.phone}"
+              style="display:inline-flex;align-items:center;gap:0.4rem;background:#f0fdf4;color:#15803d;border-radius:20px;padding:0.35rem 1rem;font-size:0.82rem;font-weight:700;text-decoration:none;transition:background .15s;"
+              onmouseover="this.style.background='#dcfce7'" onmouseout="this.style.background='#f0fdf4'">
+            📞 ${m.name.split(' ')[0]} &nbsp;·&nbsp; ${m.phone}
+          </a>`
+        ).join('');
         document.getElementById('lm-card').style.display = 'block';
       }
 

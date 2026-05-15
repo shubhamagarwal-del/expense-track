@@ -222,47 +222,65 @@
   <script>
     let currentProfile = null;
 
-    // ─── LINE MANAGER LOOKUP ───────────────────────────────────
-    const LINE_MANAGERS = {
-      'SSS_0160': { name: 'Chirag Panchal',                       phone: '7732917204', dept: 'O&M' },
-      'SSS_0010': { name: 'Vijay Singh',                          phone: '9352523904', dept: 'Lease' },
-      'SSS_0024': { name: 'Pintu Bairwa (Arun Sir)',              phone: '7891054848', dept: 'Liaison' },
-      'SSS_0058': { name: 'Bhukima Kudiwal',                      phone: '7062047980', dept: 'Compliance' },
-      'SSS_0064': { name: 'Peyush Kedia',                         phone: '8875533830', dept: 'Accounts' },
-      'SSS_0020': { name: 'Ashok Bharia',                         phone: '9529408901', dept: 'Project – Roof Top, Design' },
-      'SSS_0268': { name: 'Pawan Raj Koodi',                      phone: '9928096564', dept: 'Project' },
-      'SSS_0060': { name: 'Sagar Gurjar',                         phone: '9079370762', dept: 'Project' },
-      'SSS_0113': { name: 'Navneet Singh',                        phone: '9929986281', dept: 'HR & Admin' },
-      'SSS_0050': { name: 'Ritika Sharma (Arun Sir)',             phone: '9821585878', dept: 'Legal' },
-      'SSS_0053': { name: 'Shubham Maheshwari',                   phone: '7014635743', dept: 'Procurement' },
-      'SSS_0206': { name: 'Rohit Sharma',                         phone: '9983804321', dept: 'Procurement' },
-      'SSS_0137': { name: 'Ramgopal Sharma',                      phone: '9461251687', dept: 'Transmission Line' },
-      'SSS_0197': { name: 'Ashok Jat',                            phone: '7728871812', dept: 'Logistics & Supply Chain' },
-      'SSS_0189': { name: 'Anita',                                phone: '8058940971', dept: 'Internal Audit & A/C Payable' },
-      'SSS_0309': { name: 'Prashant Kumar Singh (Durgesh Sir)',   phone: '6391116991', dept: 'Sales' },
+    // ─── LINE MANAGER LOOKUP (keyed by department) ────────────
+    // Each value is an ARRAY so departments with 2 managers work naturally.
+    const DEPT_MANAGERS = {
+      'O&M':                          [{ code: 'SSS_0160', name: 'Chirag Panchal',                     phone: '7732917204' }],
+      'Lease':                        [{ code: 'SSS_0010', name: 'Vijay Singh',                        phone: '9352523904' }],
+      'Liaison':                      [{ code: 'SSS_0024', name: 'Pintu Bairwa (Arun Sir)',             phone: '7891054848' }],
+      'Compliance':                   [{ code: 'SSS_0058', name: 'Bhukima Kudiwal',                    phone: '7062047980' }],
+      'Accounts':                     [{ code: 'SSS_0064', name: 'Peyush Kedia',                       phone: '8875533830' }],
+      'Account':                      [{ code: 'SSS_0064', name: 'Peyush Kedia',                       phone: '8875533830' }],
+      'Project - Roof Top, Design':   [{ code: 'SSS_0020', name: 'Ashok Bharia',                       phone: '9529408901' }],
+      'Project':                      [
+        { code: 'SSS_0268', name: 'Pawan Raj Koodi', phone: '9928096564' },
+        { code: 'SSS_0060', name: 'Sagar Gurjar',    phone: '9079370762' },
+      ],
+      'HR & Admin':                   [{ code: 'SSS_0113', name: 'Navneet Singh',                      phone: '9929986281' }],
+      'HR':                           [{ code: 'SSS_0113', name: 'Navneet Singh',                      phone: '9929986281' }],
+      'Legal':                        [{ code: 'SSS_0050', name: 'Ritika Sharma (Arun Sir)',            phone: '9821585878' }],
+      'Procurement':                  [
+        { code: 'SSS_0053', name: 'Shubham Maheshwari', phone: '7014635743' },
+        { code: 'SSS_0206', name: 'Rohit Sharma',        phone: '9983804321' },
+      ],
+      'Transmission Line':            [{ code: 'SSS_0137', name: 'Ramgopal Sharma',                    phone: '9461251687' }],
+      'Logistics & Supply Chain':     [{ code: 'SSS_0197', name: 'Ashok Jat',                          phone: '7728871812' }],
+      'Logistics':                    [{ code: 'SSS_0197', name: 'Ashok Jat',                          phone: '7728871812' }],
+      'Internal Audit & A/C Payable': [{ code: 'SSS_0189', name: 'Anita',                              phone: '8058940971' }],
+      'Sales':                        [{ code: 'SSS_0309', name: 'Prashant Kumar Singh (Durgesh Sir)', phone: '6391116991' }],
     };
 
-    /** Look up line manager info by employee code string. Returns null if not found. */
-    function getLM(empNo) {
-      if (!empNo) return null;
-      return LINE_MANAGERS[(empNo || '').trim().toUpperCase()] || null;
+    /**
+     * Look up manager(s) by employee's department name.
+     * Returns an array of { code, name, phone } objects, or null.
+     * Case-insensitive fallback for department name variations.
+     */
+    function getLM(dept) {
+      if (!dept) return null;
+      const trimmed = dept.trim();
+      if (DEPT_MANAGERS[trimmed]) return DEPT_MANAGERS[trimmed];
+      const lower = trimmed.toLowerCase();
+      for (const [key, managers] of Object.entries(DEPT_MANAGERS)) {
+        if (key.toLowerCase() === lower) return managers;
+      }
+      return null;
     }
 
     /**
      * Rebuild the #f-manager dropdown from currently loaded expenses.
-     * Only shows managers that actually appear in the visible data set.
+     * Only shows managers whose employees appear in the current data set.
      */
     function populateManagerFilter(expenses) {
       const sel = document.getElementById('f-manager');
       if (!sel) return;
-      const current = sel.value;                     // preserve selection
-      const managers = new Set();
+      const current = sel.value;
+      const names = new Set();
       expenses.forEach(e => {
-        const lm = getLM(e.users?.emp_no);
-        if (lm) managers.add(lm.name);
+        const lms = getLM(e.users?.department);
+        if (lms) lms.forEach(m => names.add(m.name));
       });
       sel.innerHTML = '<option value="">All Managers</option>';
-      [...managers].sort().forEach(managerName => {
+      [...names].sort().forEach(managerName => {
         const opt = document.createElement('option');
         opt.value = managerName;
         opt.textContent = `👔 ${managerName}`;
@@ -460,8 +478,8 @@
       const managerFilter = (document.getElementById('f-manager')?.value || '').trim();
       if (managerFilter && isAdmin) {
         filtered = filtered.filter(e => {
-          const lm = getLM(e.users?.emp_no);
-          return lm && lm.name === managerFilter;
+          const lms = getLM(e.users?.department);
+          return lms && lms.some(m => m.name === managerFilter);
         });
       }
 
@@ -815,14 +833,14 @@
         const filledCount = g.days.size;
         const pendingCount = totalDaysInCycle - filledCount;
         const safeKey = `${g.user.id}|${g.monthYear}|${g.cycleText}`;
-        const lm = getLM(g.user.emp_no);
+        const lms = getLM(g.user.department);
 
         return `
                 <tr class="summary-row">
                   <td>
                     <div style="font-weight:700; color:var(--text-1)">${escHtml(g.user.name || 'N/A')}</div>
                     <div style="font-size:0.75rem; color:var(--text-3)">${escHtml(g.user.email)}</div>
-                    ${lm ? `<div style="font-size:.7rem;color:#059669;font-weight:600;margin-top:3px">👔 ${escHtml(lm.name)}</div>` : ''}
+                    ${lms ? `<div style="font-size:.7rem;color:#059669;font-weight:600;margin-top:3px">👔 ${escHtml(lms.map(m=>m.name).join(' / '))}</div>` : ''}
                   </td>
                   <td><strong>${g.monthYear}</strong><br><small style="color:var(--primary)">${g.cycleText}</small></td>
                   <td style="font-weight:700; color:var(--primary); font-size:1.1rem">${formatCurrency(g.totalAmount)}</td>
@@ -849,7 +867,8 @@
                           ['Department', g.user.department],
                           ['Site Name', g.user.site_name],
                           ['Mobile', g.user.phone],
-                          ...(lm ? [['Line Manager', lm.name], ['Manager Dept', lm.dept]] : [])
+                          ...(lms ? [['Line Manager', lms.map(m=>m.name).join(' / ')],
+                                     ['Manager Contact', lms.map(m=>m.phone).join(' / ')]] : [])
                         ].map(([l,v])=>`
                         <div>
                           <p style="font-size:.7rem;text-transform:uppercase;color:var(--text-3);margin-bottom:.2rem">${l}</p>
@@ -1092,8 +1111,8 @@
       const managerFilter = (document.getElementById('f-manager')?.value || '').trim();
       if (managerFilter && isAdmin) {
         filtered = filtered.filter(e => {
-          const lm = getLM(e.users?.emp_no);
-          return lm && lm.name === managerFilter;
+          const lms = getLM(e.users?.department);
+          return lms && lms.some(m => m.name === managerFilter);
         });
       }
 
@@ -1296,7 +1315,7 @@
       const site = escHtml(u.site_name || '—');
       const dept = escHtml(u.department || '—');
       const phone = escHtml(u.phone || '—');
-      const lm = getLM(u.emp_no);
+      const lms = getLM(u.department);
 
       const approvedAmt = e.approved_amount != null ? e.approved_amount : e.amount;
       const amtChanged = e.approved_amount != null && +e.approved_amount !== +e.amount;
@@ -1322,7 +1341,7 @@
         <div style="font-weight:700; color:var(--text-1)">👤 ${name} (${empNo})</div>
         <div style="font-size:.775rem; color:var(--text-2)">📧 ${email} | 📱 ${phone}</div>
         <div style="font-size:.775rem; color:var(--text-3)">📍 ${site} | 🏢 ${dept}</div>
-        ${lm ? `<div style="font-size:.75rem;color:#059669;font-weight:600;margin-top:2px">👔 ${escHtml(lm.name)} · ${escHtml(lm.dept)}</div>` : ''}
+        ${lms ? `<div style="font-size:.75rem;color:#059669;font-weight:600;margin-top:2px">👔 ${escHtml(lms.map(m=>m.name).join(' / '))}</div>` : ''}
       </div>
       <div class="expense-card-meta" style="font-size: 0.7rem; color: var(--text-3); margin-top: 0.25rem">
         🕒 Submitted: ${new Date(e.created_at).toLocaleString()}
