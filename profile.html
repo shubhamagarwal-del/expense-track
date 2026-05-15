@@ -301,6 +301,26 @@
           </div>
         </div>
 
+        <!-- ── Line Manager ──────────────────────────────── -->
+        <div id="lm-card" style="display:none; margin-top:1.25rem; background:white; border-radius:var(--radius-lg); border:1px solid var(--border); padding:1.5rem; box-shadow:0 4px 16px rgba(0,0,0,0.04);">
+          <div style="display:flex; align-items:center; gap:0.75rem; margin-bottom:1rem;">
+            <div style="width:44px;height:44px;background:#f0fdf4;border-radius:14px;display:flex;align-items:center;justify-content:center;font-size:1.4rem;flex-shrink:0;">👔</div>
+            <div>
+              <div style="font-size:0.72rem;color:var(--text-muted);font-weight:700;text-transform:uppercase;letter-spacing:0.05em;">Line Manager</div>
+              <div style="font-size:1.05rem;font-weight:800;color:var(--text-main);margin-top:2px;" id="lm-name">—</div>
+            </div>
+          </div>
+          <div style="display:flex; gap:0.75rem; flex-wrap:wrap;">
+            <a id="lm-call" href="#" style="display:inline-flex;align-items:center;gap:0.4rem;background:#f0fdf4;color:#15803d;border-radius:20px;padding:0.35rem 1rem;font-size:0.82rem;font-weight:700;text-decoration:none;transition:background .15s;"
+               onmouseover="this.style.background='#dcfce7'" onmouseout="this.style.background='#f0fdf4'">
+              📞 <span id="lm-phone">—</span>
+            </a>
+            <span id="lm-dept-badge" style="display:inline-flex;align-items:center;gap:0.4rem;background:#eff6ff;color:#1d4ed8;border-radius:20px;padding:0.35rem 1rem;font-size:0.82rem;font-weight:700;">
+              🏢 <span id="lm-dept">—</span>
+            </span>
+          </div>
+        </div>
+
         <!-- ── Bank Details ───────────────────────────────── -->
         <div style="margin-top: 2rem; background: white; border-radius: var(--radius-lg); border: 1px solid var(--border); overflow: hidden; box-shadow: 0 4px 16px rgba(0,0,0,0.04);">
           <div style="padding: 1.25rem 1.5rem; background: linear-gradient(135deg,#1e1b4b,#312e81); color: white; display:flex; justify-content:space-between; align-items:center;">
@@ -348,6 +368,27 @@
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="app.js"></script>
   <script>
+    // ── Line Manager lookup ───────────────────────────────────
+    // Key: employee code (uppercase). Value: { name, phone, dept }
+    const LINE_MANAGERS = {
+      'SSS_0160': { name: 'Chirag Panchal',                       phone: '7732917204', dept: 'O&M' },
+      'SSS_0010': { name: 'Vijay Singh',                          phone: '9352523904', dept: 'Lease' },
+      'SSS_0024': { name: 'Pintu Bairwa (Arun Sir)',              phone: '7891054848', dept: 'Liaison' },
+      'SSS_0058': { name: 'Bhukima Kudiwal',                      phone: '7062047980', dept: 'Compliance' },
+      'SSS_0064': { name: 'Peyush Kedia',                         phone: '8875533830', dept: 'Accounts' },
+      'SSS_0020': { name: 'Ashok Bharia',                         phone: '9529408901', dept: 'Project – Roof Top, Design' },
+      'SSS_0268': { name: 'Pawan Raj Koodi',                      phone: '9928096564', dept: 'Project' },
+      'SSS_0060': { name: 'Sagar Gurjar',                         phone: '9079370762', dept: 'Project' },
+      'SSS_0113': { name: 'Navneet Singh',                        phone: '9929986281', dept: 'HR & Admin' },
+      'SSS_0050': { name: 'Ritika Sharma (Arun Sir)',             phone: '9821585878', dept: 'Legal' },
+      'SSS_0053': { name: 'Shubham Maheshwari',                   phone: '7014635743', dept: 'Procurement' },
+      'SSS_0206': { name: 'Rohit Sharma',                         phone: '9983804321', dept: 'Procurement' },
+      'SSS_0137': { name: 'Ramgopal Sharma',                      phone: '9461251687', dept: 'Transmission Line' },
+      'SSS_0197': { name: 'Ashok Jat',                            phone: '7728871812', dept: 'Logistics & Supply Chain' },
+      'SSS_0189': { name: 'Anita',                                phone: '8058940971', dept: 'Internal Audit & A/C Payable' },
+      'SSS_0309': { name: 'Prashant Kumar Singh (Durgesh Sir)',   phone: '6391116991', dept: 'Sales' },
+    };
+
     let profileId = null;
 
     (async () => {
@@ -366,6 +407,17 @@
       document.getElementById('p-mobile').textContent = p.phone || 'Not Provided';
       document.getElementById('p-dept').textContent = p.department || 'Not Assigned';
       document.getElementById('p-site').textContent = p.site_name || 'Not Assigned';
+
+      // Show Line Manager card if this employee has a mapped manager
+      const empCode = (p.emp_no || '').trim().toUpperCase();
+      const lm = LINE_MANAGERS[empCode];
+      if (lm) {
+        document.getElementById('lm-name').textContent  = lm.name;
+        document.getElementById('lm-phone').textContent = lm.phone;
+        document.getElementById('lm-dept').textContent  = lm.dept;
+        document.getElementById('lm-call').href         = `tel:${lm.phone}`;
+        document.getElementById('lm-card').style.display = 'block';
+      }
 
       // Pre-fill bank details if already saved
       if (p.bank_holder) document.getElementById('bank-holder').value = p.bank_holder;

@@ -22,7 +22,7 @@ async function initSupabase() {
       const res = await fetch('/api/config');
       if (!res.ok) throw new Error('Could not load Supabase config from server');
       _cfgCache = await res.json();
-      try { sessionStorage.setItem('_sbcfg', JSON.stringify(_cfgCache)); } catch {}
+      try { sessionStorage.setItem('_sbcfg', JSON.stringify(_cfgCache)); } catch { }
     }
   }
   const { url, key } = _cfgCache;
@@ -152,7 +152,7 @@ function showMessage(message, type = 'info') {
     <span class="toast-icon">${icons[type] ?? 'ℹ️'}</span>
     <span class="toast-msg">${message}</span>`;
   document.body.appendChild(toast);
-  setTimeout(() => toast.remove(), 4500);
+  setTimeout(() => toast.remove(), 4500); kfke
 }
 
 /** Toggle a button between its normal and loading state. */
@@ -190,16 +190,16 @@ function statusBadge(status) {
     </div>`;
   }
   const labels = {
-    pending:      'Pending',
-    l1_rejected:  'Rejected (L1)',
-    approved:     'Approved',
-    rejected:     'Rejected',
+    pending: 'Pending',
+    l1_rejected: 'Rejected (L1)',
+    approved: 'Approved',
+    rejected: 'Rejected',
   };
   const cls = {
-    pending:      'badge-pending',
-    l1_rejected:  'badge-rejected',
-    approved:     'badge-approved',
-    rejected:     'badge-rejected',
+    pending: 'badge-pending',
+    l1_rejected: 'badge-rejected',
+    approved: 'badge-approved',
+    rejected: 'badge-rejected',
   };
   return `<span class="status-badge ${cls[status] ?? 'badge-pending'}">${labels[status] ?? status}</span>`;
 }
@@ -212,7 +212,7 @@ function approvalStepper(e) {
   const l1 = e.l1_status || (e.status === 'approved' ? 'approved' : 'pending');
   const l2 = e.l2_status || (e.status === 'approved' ? 'approved' : 'pending');
 
-  const bg  = s => s === 'approved' ? '#d1fae5' : s === 'rejected' ? '#fee2e2' : '#f3f4f6';
+  const bg = s => s === 'approved' ? '#d1fae5' : s === 'rejected' ? '#fee2e2' : '#f3f4f6';
   const col = s => s === 'approved' ? '#065f46' : s === 'rejected' ? '#dc2626' : '#6b7280';
   const ico = s => s === 'approved' ? '✓' : s === 'rejected' ? '✗' : '·';
 
@@ -328,10 +328,10 @@ async function fetchExpenses({ from, to, userId, companyId, limit = 500 } = {}) 
     .order('created_at', { ascending: false })
     .limit(limit);
 
-  if (userId)    q = q.eq('user_id', userId);
+  if (userId) q = q.eq('user_id', userId);
   if (companyId) q = q.eq('company_id', companyId);
-  if (from)      q = q.gte('created_at', from);
-  if (to)        q = q.lte('created_at', to + 'T23:59:59');
+  if (from) q = q.gte('created_at', from);
+  if (to) q = q.lte('created_at', to + 'T23:59:59');
 
   const { data, error } = await q;
   if (error) throw error;
@@ -391,7 +391,7 @@ function compressImage(file) {
       let w = img.width, h = img.height;
       if (w > MAX || h > MAX) {
         if (w > h) { h = Math.round(h * MAX / w); w = MAX; }
-        else       { w = Math.round(w * MAX / h); h = MAX; }
+        else { w = Math.round(w * MAX / h); h = MAX; }
       }
       const canvas = document.createElement('canvas');
       canvas.width = w; canvas.height = h;
