@@ -362,8 +362,9 @@
   <script src="app.js"></script>
   <script>
     // ── Line Manager lookup (keyed by department) ────────────
+    // Hardcoded fallback — overwritten at boot by live Supabase data.
     // Each value is an array so departments with multiple managers work naturally.
-    const DEPT_MANAGERS = {
+    let DEPT_MANAGERS = {
       'O&M':                          [{ name: 'Chirag Panchal',                       phone: '7732917204' }],
       'Lease':                        [{ name: 'Vijay Singh',                          phone: '9352523904' }],
       'Liaison':                      [{ name: 'Pintu Bairwa (Arun Sir)',               phone: '7891054848' }],
@@ -418,6 +419,10 @@
       document.getElementById('p-mobile').textContent = p.phone || 'Not Provided';
       document.getElementById('p-dept').textContent = p.department || 'Not Assigned';
       document.getElementById('p-site').textContent = p.site_name || 'Not Assigned';
+
+      // Load live line manager data from Supabase, override hardcoded fallback
+      const liveManagers = await fetchLineManagers();
+      if (liveManagers) DEPT_MANAGERS = liveManagers;
 
       // Show Line Manager card based on the employee's department
       const lms = getDeptLM(p.department);

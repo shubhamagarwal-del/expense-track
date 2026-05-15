@@ -223,8 +223,9 @@
     let currentProfile = null;
 
     // ─── LINE MANAGER LOOKUP (keyed by department) ────────────
+    // Hardcoded fallback — overwritten at boot by live Supabase data.
     // Each value is an ARRAY so departments with 2 managers work naturally.
-    const DEPT_MANAGERS = {
+    let DEPT_MANAGERS = {
       'O&M':                          [{ code: 'SSS_0160', name: 'Chirag Panchal',                     phone: '7732917204' }],
       'Lease':                        [{ code: 'SSS_0010', name: 'Vijay Singh',                        phone: '9352523904' }],
       'Liaison':                      [{ code: 'SSS_0024', name: 'Pintu Bairwa (Arun Sir)',             phone: '7891054848' }],
@@ -305,6 +306,11 @@
       populateSidebar(profile);
       initTheme();
       enforcePasswordChange(profile);
+
+      // Load live line manager data from Supabase (cached in sessionStorage)
+      // Override hardcoded fallback so manager assignments stay up-to-date
+      const liveManagers = await fetchLineManagers();
+      if (liveManagers) DEPT_MANAGERS = liveManagers;
 
       if (profile.role === 'admin' || profile.role === 'super_admin') {
         const titleSuffix = profile.role === 'admin' && profile.department ? ` · ${profile.department}` : '';

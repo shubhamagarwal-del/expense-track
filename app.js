@@ -313,6 +313,46 @@ async function notifyUser(email, status, reason = null) {
 }
 
 
+// ── LINE MANAGER DATA ─────────────────────────────────────
+let _lmCache = null;
+
+/**
+ * Fetch line manager data from Supabase via /api/line-managers.
+ * Returns a { department: [{code, name, phone}] } map, or null on failure.
+ * Result is cached in sessionStorage for the browser session.
+ */
+async function fetchLineManagers() {
+  if (_lmCache) return _lmCache;
+
+  const stored = sessionStorage.getItem('_lmdata');
+  if (stored) {
+    try { _lmCache = JSON.parse(stored); return _lmCache; } catch {}
+  }
+
+  try {
+    const res = await fetch('/api/line-managers');
+    if (!res.ok) return null;
+    const rows = await res.json();
+
+    // Convert flat rows → { department: [{ code, name, phone }] }
+    const map = {};
+    rows.forEach(m => {
+      if (!map[m.department]) map[m.department] = [];
+      map[m.department].push({
+        code:  m.emp_code,
+        name:  m.manager_name,
+        phone: m.contact_number,
+      });
+    });
+
+    _lmCache = map;
+    try { sessionStorage.setItem('_lmdata', JSON.stringify(map)); } catch {}
+    return map;
+  } catch {
+    return null;
+  }
+}
+
 // ── DATA FETCHING ─────────────────────────────────────────
 
 /**
