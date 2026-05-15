@@ -480,6 +480,13 @@
       }
     }
     .row-travel-group { display: none; }
+
+    /* Receipt preview area */
+    .receipt-preview-area { transition: all .2s ease; }
+    .preview-thumb img { transition: transform .2s; }
+    .preview-thumb:hover img { transform: scale(1.04); }
+    /* Lightbox fade */
+    #_rcpt-lightbox { animation: fadeIn .18s ease both; }
     .site-ac-list { display:none; position:absolute; z-index:999; top:100%; left:0; right:0;
       background:#fff; border:1px solid var(--border); border-radius:10px;
       max-height:210px; overflow-y:auto; box-shadow:0 4px 18px rgba(0,0,0,.13); margin-top:2px; }
@@ -994,12 +1001,28 @@
 
       <div class="form-group mb-0">
         <label class="form-label receipt-label">Receipt (Optional)</label>
-        <div class="receipt-upload-box flex items-center gap-2 p-2 rounded-xl" style="position:relative; background:white; border:1px solid var(--border); overflow:hidden; transition: border-color 0.2s;">
-          <svg style="width:14px;height:14px;color:var(--text-3)" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z"/><path stroke-linecap="round" stroke-linejoin="round" d="M15 13a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
-          <span class="file-name flex-1 text-xs truncate" style="color:var(--text-3)">${data.receipt_url ? 'Receipt Uploaded' : 'Upload Receipt'}</span>
-          ${data.receipt_url ? `<a href="javascript:void(0)" onclick="viewReceipt('${escHtml(data.receipt_url)}')" style="font-size:.75rem;font-weight:600;color:var(--primary);white-space:nowrap;padding:0 4px">📎 View</a>` : ''}
-          <input type="file" class="row-file" accept="image/*,application/pdf" style="position:absolute; inset:0; opacity:0; cursor:pointer" onchange="updateFileLabel(this)">
+
+        <!-- Upload trigger bar -->
+        <div class="receipt-upload-box flex items-center gap-2 p-2 rounded-xl" style="position:relative;background:white;border:1px solid var(--border);overflow:hidden;transition:border-color 0.2s;cursor:pointer">
+          <svg style="width:14px;height:14px;flex-shrink:0;color:var(--text-3)" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z"/><path stroke-linecap="round" stroke-linejoin="round" d="M15 13a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+          <span class="file-name flex-1 text-xs truncate" style="color:var(--text-3)">${data.receipt_url ? 'Receipt attached · tap to change' : 'Tap to upload receipt'}</span>
+          <input type="file" class="row-file" accept="image/*,application/pdf" style="position:absolute;inset:0;opacity:0;cursor:pointer" onchange="updateFileLabel(this)">
           <input type="hidden" class="row-old-url" value="${data.receipt_url || ''}">
+        </div>
+
+        <!-- Inline preview (shown once a file is chosen or an existing receipt exists) -->
+        <div class="receipt-preview-area" style="display:${data.receipt_url ? 'flex' : 'none'};margin-top:.5rem;gap:.75rem;align-items:center;background:#f8fafc;border:1px solid var(--border);border-radius:12px;padding:.7rem">
+          <div class="preview-thumb" data-src="${escHtml(data.receipt_url || '')}" style="width:64px;height:64px;border-radius:9px;overflow:hidden;background:#e5e7eb;flex-shrink:0;cursor:zoom-in;display:flex;align-items:center;justify-content:center" onclick="openReceiptLightbox(this)">
+            ${data.receipt_url ? `<img src="${escHtml(data.receipt_url)}" style="width:100%;height:100%;object-fit:cover" onerror="this.style.display='none';this.insertAdjacentHTML('afterend','<span style=\\'font-size:1.8rem\\'>📄</span>')">` : ''}
+          </div>
+          <div style="flex:1;min-width:0">
+            <div class="preview-fname" style="font-size:.78rem;font-weight:600;color:#374151;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${data.receipt_url ? 'Saved receipt' : ''}</div>
+            <div style="font-size:.72rem;color:#9ca3af;margin-top:.1rem" class="preview-size"></div>
+            <div style="display:flex;gap:.4rem;margin-top:.45rem">
+              <button type="button" class="btn btn-secondary btn-sm" style="padding:.25rem .7rem;font-size:.73rem" onclick="openReceiptLightbox(this.closest('.receipt-preview-area').querySelector('.preview-thumb'))">🔍 View</button>
+              <button type="button" class="btn btn-secondary btn-sm" style="padding:.25rem .7rem;font-size:.73rem;color:#ef4444;border-color:#fca5a5" onclick="clearReceipt(this)">✕ Remove</button>
+            </div>
+          </div>
         </div>
       </div>
     `;
@@ -1136,12 +1159,89 @@
     }
 
     function updateFileLabel(input) {
-      const box = input.closest('.receipt-upload-box');
-      const label = box.querySelector('.file-name');
+      const box    = input.closest('.receipt-upload-box');
+      const label  = box.querySelector('.file-name');
+      const area   = box.parentElement.querySelector('.receipt-preview-area');
+      const thumb  = area.querySelector('.preview-thumb');
+      const fname  = area.querySelector('.preview-fname');
+      const fsize  = area.querySelector('.preview-size');
+
       if (input.files && input.files[0]) {
-        label.textContent = input.files[0].name;
+        const file = input.files[0];
+        label.textContent = file.name;
         label.style.color = 'var(--primary)';
+        fname.textContent = file.name;
+        fsize.textContent = file.size < 1024 * 1024
+          ? (file.size / 1024).toFixed(0) + ' KB'
+          : (file.size / (1024 * 1024)).toFixed(1) + ' MB';
+
+        // Revoke any previous blob URL to avoid memory leak
+        const prev = thumb.querySelector('img');
+        if (prev && prev.src.startsWith('blob:')) URL.revokeObjectURL(prev.src);
+
+        if (file.type.startsWith('image/')) {
+          const blobUrl = URL.createObjectURL(file);
+          thumb.dataset.src = blobUrl;
+          thumb.innerHTML = `<img src="${blobUrl}" style="width:100%;height:100%;object-fit:cover">`;
+          thumb.style.cursor = 'zoom-in';
+        } else {
+          // PDF or other — no image preview
+          thumb.dataset.src = '';
+          thumb.innerHTML = '<span style="font-size:1.8rem">📄</span>';
+          thumb.style.cursor = 'default';
+        }
+
+        area.style.display = 'flex';
       }
+    }
+
+    function clearReceipt(btn) {
+      const area      = btn.closest('.receipt-preview-area');
+      const box       = area.parentElement.querySelector('.receipt-upload-box');
+      const fileInput = box.querySelector('.row-file');
+      const oldUrl    = box.querySelector('.row-old-url');
+      const label     = box.querySelector('.file-name');
+      const thumb     = area.querySelector('.preview-thumb');
+
+      // Release blob URL
+      const img = thumb.querySelector('img');
+      if (img && img.src.startsWith('blob:')) URL.revokeObjectURL(img.src);
+
+      fileInput.value   = '';
+      oldUrl.value      = '';
+      label.textContent = 'Tap to upload receipt';
+      label.style.color = '';
+      thumb.innerHTML   = '';
+      thumb.dataset.src = '';
+      area.style.display = 'none';
+    }
+
+    function openReceiptLightbox(thumbEl) {
+      const src = thumbEl.dataset?.src || thumbEl.querySelector('img')?.src;
+      if (!src || !src.startsWith('blob:') && !src.match(/\.(jpg|jpeg|png|gif|webp|bmp)/i)) {
+        // Not a previewable image — fall back to signed-URL viewer
+        const oldUrl = thumbEl.closest('.form-group')?.querySelector('.row-old-url')?.value;
+        if (oldUrl) viewReceipt(oldUrl);
+        return;
+      }
+
+      let lb = document.getElementById('_rcpt-lightbox');
+      if (!lb) {
+        lb = document.createElement('div');
+        lb.id = '_rcpt-lightbox';
+        lb.style.cssText = 'position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.92);display:flex;align-items:center;justify-content:center;padding:1.25rem;cursor:zoom-out;animation:fadeIn .18s ease both';
+        lb.innerHTML = `
+          <button id="_rcpt-close" type="button"
+            style="position:absolute;top:1rem;right:1rem;width:40px;height:40px;border-radius:50%;background:rgba(255,255,255,.15);border:none;color:white;font-size:1.2rem;cursor:pointer;backdrop-filter:blur(6px);display:flex;align-items:center;justify-content:center;transition:background .15s"
+            onmouseenter="this.style.background='rgba(255,255,255,.3)'" onmouseleave="this.style.background='rgba(255,255,255,.15)'"
+            onclick="document.getElementById('_rcpt-lightbox').style.display='none'">✕</button>
+          <img id="_rcpt-img" style="max-width:100%;max-height:90vh;border-radius:14px;box-shadow:0 30px 60px rgba(0,0,0,.6);object-fit:contain;user-select:none" />`;
+        lb.addEventListener('click', e => { if (e.target === lb) lb.style.display = 'none'; });
+        document.addEventListener('keydown', e => { if (e.key === 'Escape') { const el = document.getElementById('_rcpt-lightbox'); if (el) el.style.display = 'none'; }});
+        document.body.appendChild(lb);
+      }
+      document.getElementById('_rcpt-img').src = src;
+      lb.style.display = 'flex';
     }
 
     function parseExpenseToRowData(exp) {
