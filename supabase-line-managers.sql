@@ -70,5 +70,36 @@ ON CONFLICT (emp_code) DO UPDATE SET
   contact_number = EXCLUDED.contact_number,
   updated_at     = NOW();
 
--- Verify
-SELECT emp_code, department, manager_name, contact_number FROM public.line_managers ORDER BY department;
+-- ── Update existing users: set department + role = 'manager' ────
+-- Uses emp_no to identify records; only touches the 16 listed managers.
+-- All other employees / admins are completely unaffected.
+UPDATE public.users SET department = 'O&M',                          role = 'manager' WHERE emp_no = 'SSS_0160';
+UPDATE public.users SET department = 'Lease',                        role = 'manager' WHERE emp_no = 'SSS_0010';
+UPDATE public.users SET department = 'Liaison',                      role = 'manager' WHERE emp_no = 'SSS_0024';
+UPDATE public.users SET department = 'Compliance',                   role = 'manager' WHERE emp_no = 'SSS_0058';
+UPDATE public.users SET department = 'Accounts',                     role = 'manager' WHERE emp_no = 'SSS_0064';
+UPDATE public.users SET department = 'Project - Roof Top, Design',   role = 'manager' WHERE emp_no = 'SSS_0020';
+UPDATE public.users SET department = 'Project',                      role = 'manager' WHERE emp_no = 'SSS_0268';
+UPDATE public.users SET department = 'Project',                      role = 'manager' WHERE emp_no = 'SSS_0060';
+UPDATE public.users SET department = 'HR & Admin',                   role = 'manager' WHERE emp_no = 'SSS_0113';
+UPDATE public.users SET department = 'Legal',                        role = 'manager' WHERE emp_no = 'SSS_0050';
+UPDATE public.users SET department = 'Procurement',                  role = 'manager' WHERE emp_no = 'SSS_0053';
+UPDATE public.users SET department = 'Procurement',                  role = 'manager' WHERE emp_no = 'SSS_0206';
+UPDATE public.users SET department = 'Transmission Line',            role = 'manager' WHERE emp_no = 'SSS_0137';
+UPDATE public.users SET department = 'Logistics & Supply Chain',     role = 'manager' WHERE emp_no = 'SSS_0197';
+UPDATE public.users SET department = 'Internal Audit & A/C Payable', role = 'manager' WHERE emp_no = 'SSS_0189';
+UPDATE public.users SET department = 'Sales',                        role = 'manager' WHERE emp_no = 'SSS_0309';
+
+-- ── Verify both tables ────────────────────────────────────────
+SELECT emp_code, department, manager_name, contact_number
+FROM public.line_managers
+ORDER BY department;
+
+SELECT emp_no, name, department, role
+FROM public.users
+WHERE emp_no IN (
+  'SSS_0160','SSS_0010','SSS_0024','SSS_0058','SSS_0064','SSS_0020',
+  'SSS_0268','SSS_0060','SSS_0113','SSS_0050','SSS_0053','SSS_0206',
+  'SSS_0137','SSS_0197','SSS_0189','SSS_0309'
+)
+ORDER BY emp_no;
