@@ -307,10 +307,13 @@
       initTheme();
       enforcePasswordChange(profile);
 
-      // Load live line manager data from Supabase (cached in sessionStorage)
-      // Override hardcoded fallback so manager assignments stay up-to-date
-      const liveManagers = await fetchLineManagers();
-      if (liveManagers) DEPT_MANAGERS = liveManagers;
+      // Load live line manager data from Supabase (cached in sessionStorage).
+      // Wrapped in try/catch — a missing function or failed API must never
+      // block the dashboard from rendering.
+      try {
+        const liveManagers = await fetchLineManagers();
+        if (liveManagers && typeof liveManagers === 'object') DEPT_MANAGERS = liveManagers;
+      } catch (_) { /* use hardcoded DEPT_MANAGERS fallback */ }
 
       if (profile.role === 'admin' || profile.role === 'super_admin') {
         const titleSuffix = profile.role === 'admin' && profile.department ? ` · ${profile.department}` : '';

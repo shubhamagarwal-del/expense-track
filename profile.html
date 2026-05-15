@@ -420,9 +420,12 @@
       document.getElementById('p-dept').textContent = p.department || 'Not Assigned';
       document.getElementById('p-site').textContent = p.site_name || 'Not Assigned';
 
-      // Load live line manager data from Supabase, override hardcoded fallback
-      const liveManagers = await fetchLineManagers();
-      if (liveManagers) DEPT_MANAGERS = liveManagers;
+      // Load live line manager data from Supabase, override hardcoded fallback.
+      // try/catch ensures a missing function or API error never breaks the profile page.
+      try {
+        const liveManagers = await fetchLineManagers();
+        if (liveManagers && typeof liveManagers === 'object') DEPT_MANAGERS = liveManagers;
+      } catch (_) { /* use hardcoded DEPT_MANAGERS fallback */ }
 
       // Show Line Manager card based on the employee's department
       const lms = getDeptLM(p.department);
