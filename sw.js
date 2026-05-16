@@ -12,7 +12,7 @@
 // This string MUST change with every deployment so the browser
 // detects a new SW, evicts the old cache, and reloads clients.
 // Format: YYYY-MM-DD-NNN  (increment NNN for same-day deploys)
-const CACHE_VERSION = '2026-05-16-007';
+const CACHE_VERSION = '2026-05-16-008';
 const CACHE_NAME    = `expensetrack-${CACHE_VERSION}`;
 
 // Same-origin static assets (CSS / JS / icons / manifest)
@@ -98,7 +98,14 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // 5. Same-origin static assets (CSS, JS, images) → stale-while-revalidate
+  // 5. Same-origin JS files → network-first (ensures latest code on every deploy;
+  //    falls back to cache only when offline)
+  if (url.pathname.endsWith('.js')) {
+    event.respondWith(networkFirstHTML(request));
+    return;
+  }
+
+  // 6. Same-origin CSS / images / other assets → stale-while-revalidate
   event.respondWith(staleWhileRevalidate(request));
 });
 

@@ -46,8 +46,16 @@
       }
     });
 
-    // Periodically check for updates every 60 s while the tab is active
-    setInterval(() => reg.update().catch(() => {}), 60_000);
+    // Check for an update immediately on every page load
+    reg.update().catch(() => {});
+
+    // Also check whenever the user switches back to this tab
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible') reg.update().catch(() => {});
+    });
+
+    // Periodic background check every 30 s
+    setInterval(() => reg.update().catch(() => {}), 30_000);
   });
 
   // ── Update toast ──────────────────────────────────────────
