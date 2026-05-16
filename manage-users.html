@@ -364,8 +364,8 @@
   let editOpen = false;
   let activeFilter = null; // null = all, 'employee'|'admin'|'super_admin'
 
-  const ROLE_LABEL = { employee: 'Employee', admin: 'Manager (L1)', super_admin: 'Super Admin (L2)' };
-  const ROLE_COLOR = { employee: '#6366f1', admin: '#0891b2', super_admin: '#7c3aed' };
+  const ROLE_LABEL = { employee: 'Employee', admin: 'Manager (L1)', super_admin: 'Super Admin (L2)', engineer: 'Engineer' };
+  const ROLE_COLOR = { employee: '#6366f1', admin: '#0891b2', super_admin: '#7c3aed', engineer: '#d97706' };
 
   // ── Boot ──────────────────────────────────────────────────
   (async () => {
@@ -435,22 +435,30 @@
   }
 
   function renderStats() {
-    const counts = { employee: 0, admin: 0, super_admin: 0 };
-    allUsers.forEach(u => { if (counts[u.role] !== undefined) counts[u.role]++; });
-    document.getElementById('stats-row').innerHTML = `
-      <div class="stat-chip ${activeFilter === 'employee' ? 'active' : ''}" onclick="setFilter('employee')">
-        <span style="color:${ROLE_COLOR.employee}">●</span> ${counts.employee} Employee${counts.employee !== 1 ? 's' : ''}
-      </div>
-      <div class="stat-chip ${activeFilter === 'admin' ? 'active' : ''}" onclick="setFilter('admin')">
-        <span style="color:${ROLE_COLOR.admin}">●</span> ${counts.admin} Manager${counts.admin !== 1 ? 's' : ''}
-      </div>
-      <div class="stat-chip ${activeFilter === 'super_admin' ? 'active' : ''}" onclick="setFilter('super_admin')">
-        <span style="color:${ROLE_COLOR.super_admin}">●</span> ${counts.super_admin} Super Admin${counts.super_admin !== 1 ? 's' : ''}
-      </div>
+    // Count every role that actually appears in the data (handles unknown roles like 'engineer')
+    const counts = {};
+    allUsers.forEach(u => { counts[u.role] = (counts[u.role] || 0) + 1; });
+
+    // Order: known roles first, then any extras alphabetically
+    const knownOrder = ['employee', 'admin', 'super_admin', 'engineer'];
+    const allRoles = [
+      ...knownOrder.filter(r => counts[r]),
+      ...Object.keys(counts).filter(r => !knownOrder.includes(r)).sort()
+    ];
+
+    const chips = allRoles.map(role => {
+      const color = ROLE_COLOR[role] || '#6b7280';
+      const label = ROLE_LABEL[role] || role.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+      const n = counts[role];
+      return `<div class="stat-chip ${activeFilter === role ? 'active' : ''}" onclick="setFilter('${role}')">
+        <span style="color:${color}">●</span> ${n} ${label}${n !== 1 ? 's' : ''}
+      </div>`;
+    }).join('');
+
+    document.getElementById('stats-row').innerHTML = chips + `
       <div class="stat-chip ${activeFilter === null ? 'active' : ''}" onclick="setFilter(null)">
         👥 ${allUsers.length} Total
-      </div>
-    `;
+      </div>`;
   }
 
   function setFilter(role) {

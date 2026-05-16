@@ -12,7 +12,7 @@
 // This string MUST change with every deployment so the browser
 // detects a new SW, evicts the old cache, and reloads clients.
 // Format: YYYY-MM-DD-NNN  (increment NNN for same-day deploys)
-const CACHE_VERSION = '2026-05-16-002';
+const CACHE_VERSION = '2026-05-16-003';
 const CACHE_NAME    = `expensetrack-${CACHE_VERSION}`;
 
 // Same-origin static assets (CSS / JS / icons / manifest)
