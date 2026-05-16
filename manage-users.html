@@ -295,8 +295,15 @@
 
     </div>
 
-    <div class="modal-footer">
+    <div class="modal-footer" style="justify-content:space-between">
       <button class="btn btn-secondary" onclick="closeModal()">Close</button>
+      <!-- Delete button — super_admin only, injected by JS -->
+      <button id="delete-user-btn" style="display:none"
+              class="btn btn-secondary"
+              style="color:#dc2626;border-color:#fca5a5"
+              onclick="deleteUser()">
+        🗑 Delete User
+      </button>
     </div>
   </div>
 </div>
@@ -587,6 +594,16 @@
 
     if (editOpen) { editOpen = false; document.getElementById('edit-section').style.display = 'none'; document.getElementById('edit-chevron').style.transform = ''; }
 
+    // Show delete button only for super_admin (cannot delete self)
+    const delBtn = document.getElementById('delete-user-btn');
+    if (currentProfile.role === 'super_admin' && u.id !== currentProfile.id) {
+      delBtn.style.display = 'inline-flex';
+      delBtn.style.color = '#dc2626';
+      delBtn.style.borderColor = '#fca5a5';
+    } else {
+      delBtn.style.display = 'none';
+    }
+
     document.getElementById('user-modal').style.display = 'flex';
   }
 
@@ -689,6 +706,45 @@
       showMessage(err.message, 'error');
     } finally {
       setLoading(btn, false);
+    }
+  }
+
+  // ── Delete User (super_admin only) ───────────────────────
+  async function deleteUser() {
+    if (!selectedUser) return;
+    const name = selectedUser.name || selectedUser.email;
+    const role = ROLE_LABEL[selectedUser.role] || selectedUser.role;
+
+    // Double-confirm — show role in prompt so admin knows what they're deleting
+    const confirmed = confirm(`⚠️ Delete ${role}: "${name}"?\n\nThis will permanently remove the user and all their login access. Their expense records will remain.\n\nThis cannot be undone.`);
+    if (!confirmed) return;
+
+    const btn = document.getElementById('delete-user-btn');
+    btn.disabled = true;
+    btn.textContent = 'Deleting…';
+
+    try {
+      const { data: { session } } = await db.auth.getSession();
+      const res = await fetch('/api/update-user', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + session.access_token },
+        body: JSON.stringify({ _action: 'delete', userId: selectedUser.id })
+      });
+      const raw = await res.text();
+      let data = {};
+      try { data = JSON.parse(raw); } catch {}
+      if (!res.ok) throw new Error(data.error || 'Delete failed');
+
+      // Remove from local list + refresh grid
+      allUsers = allUsers.filter(u => u.id !== selectedUser.id);
+      renderStats();
+      applyFilters();
+      closeModal();
+      showMessage(`${name} has been deleted.`, 'success');
+    } catch (err) {
+      showMessage(err.message, 'error');
+      btn.disabled = false;
+      btn.textContent = '🗑 Delete User';
     }
   }
 

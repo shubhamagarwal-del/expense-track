@@ -21,8 +21,22 @@ export default async function handler(req, res) {
   if (!profile || (profile.role !== 'admin' && profile.role !== 'super_admin'))
     return res.status(403).json({ error: 'Forbidden' });
 
-  const { userId, name, emp_no, phone, site_name, department, role, company_id } = req.body;
+  const { _action, userId, name, emp_no, phone, site_name, department, role, company_id } = req.body;
   if (!userId) return res.status(400).json({ error: 'userId is required' });
+
+  // ── DELETE user (super_admin only) ────────────────────────
+  if (_action === 'delete') {
+    if (profile.role !== 'super_admin')
+      return res.status(403).json({ error: 'Only Super Admin can delete users' });
+    if (userId === user.id)
+      return res.status(400).json({ error: 'You cannot delete your own account' });
+
+    // Remove from public.users first (avoids FK issues), then from auth
+    await supabaseAdmin.from('users').delete().eq('id', userId);
+    const { error: delErr } = await supabaseAdmin.auth.admin.deleteUser(userId);
+    if (delErr) return res.status(500).json({ error: delErr.message });
+    return res.status(200).json({ message: 'User deleted successfully' });
+  }
 
   const update = {};
   if (name       !== undefined) update.name       = name.trim();
