@@ -1,15 +1,7 @@
 -- ============================================================
--- ExpenseTrack — full manager migration
+-- ExpenseTrack — line_managers table
 -- Run this once in Supabase SQL Editor (Dashboard → SQL Editor)
 -- ============================================================
-
--- ── Step 0: Allow 'manager' as a valid role ───────────────────
--- Drop the old constraint (employee | admin | super_admin) and
--- recreate it with 'manager' added.
-ALTER TABLE public.users DROP CONSTRAINT IF EXISTS users_role_check;
-ALTER TABLE public.users
-  ADD CONSTRAINT users_role_check
-  CHECK (role IN ('employee', 'admin', 'super_admin', 'manager'));
 
 CREATE TABLE IF NOT EXISTS public.line_managers (
   id              UUID         DEFAULT gen_random_uuid() PRIMARY KEY,
