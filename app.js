@@ -3,7 +3,11 @@
    ============================================================ */
 
 // ── DEPARTMENTS ───────────────────────────────────────
-const DEPARTMENTS = ['O&M', 'Project', 'Procurement', 'Account', 'HR', 'Purchase', 'Finance', 'Sales', 'Logistics'];
+const DEPARTMENTS = [
+  'Account', 'Compliance', 'Export Improvements', 'Finance', 'HR',
+  'Lease', 'Legal', 'Liaison', 'Logistics', 'O&M',
+  'Procurement', 'Project', 'Purchase', 'Sales', 'Tender',
+];
 
 // ── CONFIG ────────────────────────────────────────────────
 // Credentials are loaded from the server (.env). Config is cached in
@@ -182,6 +186,14 @@ function formatCurrency(amount) {
 function formatDate(iso) {
   return new Date(iso).toLocaleDateString('en-US', {
     year: 'numeric', month: 'short', day: 'numeric'
+  });
+}
+
+/** Format an ISO timestamp as "29 Apr 2026, 3:30 PM" in local time. */
+function formatDateTime(iso) {
+  return new Date(iso).toLocaleString('en-IN', {
+    day: 'numeric', month: 'short', year: 'numeric',
+    hour: '2-digit', minute: '2-digit', hour12: true
   });
 }
 

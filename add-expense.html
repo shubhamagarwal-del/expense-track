@@ -1326,6 +1326,18 @@
       const btn = document.getElementById('save-btn');
       setLoading(btn, true);
       const dateIso = document.getElementById('entry-date').value;
+
+      // Build a timestamp that keeps the SELECTED DATE but uses the ACTUAL current
+      // time so that "Submitted At" shows when the form was really submitted,
+      // not midnight.  Local date parts are extracted so IST day boundaries are
+      // respected (dateIso is stored as UTC-midnight which shifts the date in UTC).
+      const _sel = new Date(dateIso);
+      const _now = new Date();
+      const submissionTs = new Date(
+        _sel.getFullYear(), _sel.getMonth(), _sel.getDate(),
+        _now.getHours(), _now.getMinutes(), _now.getSeconds(), _now.getMilliseconds()
+      ).toISOString();
+
       const rowElements = document.querySelectorAll('.expense-row-card:not([data-locked])');
       const newEntries = [];
 
@@ -1378,7 +1390,7 @@
           finalDescription = `REGULAR|${site}|${desc}`;
         }
 
-        newEntries.push({ user_id: currentUser.id, company_id: currentUser.company_id || null, amount, category, description: finalDescription, created_at: dateIso, status: 'pending', receipt_url });
+        newEntries.push({ user_id: currentUser.id, company_id: currentUser.company_id || null, amount, category, description: finalDescription, created_at: submissionTs, status: 'pending', receipt_url });
       }
 
       try {

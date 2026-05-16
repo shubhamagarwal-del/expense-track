@@ -1308,7 +1308,7 @@
         <span class="expense-card-date">${formatDate(e.created_at)}</span>
       </div>
       <div class="expense-card-meta" style="font-size: 0.7rem; color: var(--text-3); margin-top: 0.25rem">
-        🕒 Submitted: ${new Date(e.created_at).toLocaleString()}
+        🕒 Submitted: ${formatDateTime(e.created_at)}
       </div>
       <div class="expense-card-desc">${parseDescForDisplay(e.description)}</div>
       ${e.rejection_reason ? `<div class="expense-card-desc" style="color: #dc2626; background: #fee2e2; padding: 0.5rem; border-radius: 4px; margin-top: 0.5rem;"><strong>Rejected:</strong> ${escHtml(e.rejection_reason)}</div>` : ''}
@@ -1353,7 +1353,7 @@
         ${lms ? `<div style="font-size:.75rem;color:#059669;font-weight:600;margin-top:2px">👔 ${escHtml(lms.map(m=>m.name).join(' / '))}</div>` : ''}
       </div>
       <div class="expense-card-meta" style="font-size: 0.7rem; color: var(--text-3); margin-top: 0.25rem">
-        🕒 Submitted: ${new Date(e.created_at).toLocaleString()}
+        🕒 Submitted: ${formatDateTime(e.created_at)}
       </div>
       <div class="expense-card-desc">${parseDescForDisplay(e.description)}</div>
       ${e.rejection_reason ? `<div class="expense-card-desc" style="color: var(--primary); background: var(--bg-2); padding: 0.5rem; border-radius: 4px; margin-top: 0.5rem; border-left: 3px solid var(--primary);"><strong>Admin Comment:</strong> ${escHtml(e.rejection_reason)}</div>` : ''}
@@ -1650,6 +1650,9 @@
       const safeFilename = filename.replace(/[^a-z0-9.]/gi, '_');
       if (!safeFilename.endsWith('.xlsx')) filename += '.xlsx';
 
+      // Sort oldest → newest before writing rows
+      const sorted = [...expenses].sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
+
       // Define clear headers
       const headers = [
         "Date", "Cycle", "Submitted At", "Name", "Emp No", "Mobile",
@@ -1661,7 +1664,7 @@
       ];
 
       // Map data to rows
-      const rows = expenses.map(e => {
+      const rows = sorted.map(e => {
         const u = e.users || {};
         const parts = (e.description || '').split('|');
         const type = parts[0];
@@ -1676,12 +1679,12 @@
         const bankAcct = u.bank_account ? '****' + u.bank_account.slice(-4) : '—';
 
         return [
-          formatDate(e.created_at), cycle, date.toLocaleString(),
+          formatDate(e.created_at), cycle, formatDateTime(e.created_at),
           u.name || '—', u.emp_no || '—', u.phone || '—', u.department || '—',
           s, e.category, f, t, d, e.amount, approvedAmt, e.status,
           u.bank_holder || '—', u.bank_name || '—', u.bank_ifsc || '—', bankAcct,
-          e.l1_by_name || '—', e.l1_at ? new Date(e.l1_at).toLocaleString() : '—', e.l1_remark || '—',
-          e.l2_by_name || '—', e.l2_at ? new Date(e.l2_at).toLocaleString() : '—', e.l2_remark || '—',
+          e.l1_by_name || '—', e.l1_at ? formatDateTime(e.l1_at) : '—', e.l1_remark || '—',
+          e.l2_by_name || '—', e.l2_at ? formatDateTime(e.l2_at) : '—', e.l2_remark || '—',
           e.rejection_reason || ''
         ];
       });
@@ -1751,6 +1754,9 @@
       const safeFilename = filename.replace(/[^a-z0-9.]/gi, '_');
       const finalFilename = safeFilename.endsWith('.csv') ? safeFilename : safeFilename + '.csv';
 
+      // Sort oldest → newest before writing rows
+      const sorted = [...expenses].sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
+
       const headers = [
         "Date", "Cycle", "Submitted At", "Name", "Emp No", "Mobile",
         "Department", "Site", "Category", "From", "To",
@@ -1760,7 +1766,7 @@
         "L2 Approver", "L2 Date", "L2 Remark", "Admin Comment"
       ];
 
-      const rows = expenses.map(e => {
+      const rows = sorted.map(e => {
         const u = e.users || {};
         const parts = (e.description || '').split('|');
         const type = parts[0];
@@ -1774,12 +1780,12 @@
         const bankAcct = u.bank_account ? '****' + u.bank_account.slice(-4) : '—';
         const clean = str => `"${String(str || '').replace(/"/g, '""')}"`;
         return [
-          formatDate(e.created_at), cycle, date.toLocaleString(),
+          formatDate(e.created_at), cycle, formatDateTime(e.created_at),
           u.name || '—', u.emp_no || '—', u.phone || '—', u.department || '—',
           s, e.category, f, t, d, e.amount, approvedAmt, e.status,
           u.bank_holder || '—', u.bank_name || '—', u.bank_ifsc || '—', bankAcct,
-          e.l1_by_name || '—', e.l1_at ? new Date(e.l1_at).toLocaleString() : '—', e.l1_remark || '—',
-          e.l2_by_name || '—', e.l2_at ? new Date(e.l2_at).toLocaleString() : '—', e.l2_remark || '—',
+          e.l1_by_name || '—', e.l1_at ? formatDateTime(e.l1_at) : '—', e.l1_remark || '—',
+          e.l2_by_name || '—', e.l2_at ? formatDateTime(e.l2_at) : '—', e.l2_remark || '—',
           e.rejection_reason || ''
         ].map(clean).join(',');
       });
