@@ -1013,7 +1013,7 @@
         <!-- Inline preview (shown once a file is chosen or an existing receipt exists) -->
         <div class="receipt-preview-area" style="display:${data.receipt_url ? 'flex' : 'none'};margin-top:.5rem;gap:.75rem;align-items:center;background:#f8fafc;border:1px solid var(--border);border-radius:12px;padding:.7rem">
           <div class="preview-thumb" data-src="${escHtml(data.receipt_url || '')}" style="width:64px;height:64px;border-radius:9px;overflow:hidden;background:#e5e7eb;flex-shrink:0;cursor:zoom-in;display:flex;align-items:center;justify-content:center" onclick="openReceiptLightbox(this)">
-            ${data.receipt_url ? `<img src="${escHtml(data.receipt_url)}" style="width:100%;height:100%;object-fit:cover" onerror="this.style.display='none';this.insertAdjacentHTML('afterend','<span style=\\'font-size:1.8rem\\'>📄</span>')">` : ''}
+            ${data.receipt_url ? `<img src="${escHtml(data.receipt_url)}" data-stored-url="${escHtml(data.receipt_url)}" style="width:100%;height:100%;object-fit:cover" onerror="loadSignedThumb(this)">` : ''}
           </div>
           <div style="flex:1;min-width:0">
             <div class="preview-fname" style="font-size:.78rem;font-weight:600;color:#374151;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${data.receipt_url ? 'Saved receipt' : ''}</div>

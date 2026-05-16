@@ -402,13 +402,21 @@ async function fetchExpenses({ from, to, userId, companyId, limit = 500 } = {}) 
  * Open a receipt URL safely.
  * Extracts the storage path from the stored URL and fetches a short-lived
  * signed URL from the server — works whether the bucket is public or private.
+ *
+ * IMPORTANT: the blank tab MUST be opened synchronously before any await,
+ * otherwise browsers treat window.open() as a popup and block it.
  */
 async function viewReceipt(storedUrl) {
   if (!storedUrl) return;
 
-  // Extract the path after "/receipts/" from the stored URL
+  // Open blank tab NOW — synchronous with user click, before any await.
+  const newTab = window.open('', '_blank');
+
   const match = storedUrl.match(/\/receipts\/(.+?)(\?|$)/);
-  if (!match) { window.open(storedUrl, '_blank'); return; }
+  if (!match) {
+    if (newTab) newTab.location.href = storedUrl;
+    return;
+  }
 
   const path = match[1];
   try {
@@ -421,14 +429,57 @@ async function viewReceipt(storedUrl) {
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
       body: JSON.stringify({ path })
     });
+
+    let finalUrl = storedUrl; // fallback
     if (res.ok) {
-      const { url } = await res.json();
-      window.open(url, '_blank');
-    } else {
-      window.open(storedUrl, '_blank'); // fallback
+      const text = await res.text();
+      try { const d = JSON.parse(text); if (d.url) finalUrl = d.url; } catch {}
     }
+
+    if (newTab) newTab.location.href = finalUrl;
   } catch {
-    window.open(storedUrl, '_blank'); // fallback
+    if (newTab) newTab.location.href = storedUrl;
+  }
+}
+
+/**
+ * Recover a broken receipt thumbnail when the public URL fails
+ * (private Supabase bucket). Called from img onerror.
+ * Fetches a signed URL and retries the img src once.
+ */
+async function loadSignedThumb(img) {
+  const storedUrl = img.dataset.storedUrl;
+  // Guard: only try once; if no stored URL, fall through to 📄 icon
+  if (!storedUrl || img.dataset.signedAttempted) {
+    img.style.display = 'none';
+    if (!img.parentElement?.querySelector('.receipt-pdf-icon')) {
+      img.insertAdjacentHTML('afterend', '<span class="receipt-pdf-icon" style="font-size:1.8rem">📄</span>');
+    }
+    return;
+  }
+  img.dataset.signedAttempted = '1';
+  try {
+    const match = storedUrl.match(/\/receipts\/(.+?)(\?|$)/);
+    if (!match) throw new Error('no-match');
+    const path = match[1];
+    await initSupabase();
+    const { data: { session } } = await db.auth.getSession();
+    const res = await fetch('/api/receipt-url', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + session?.access_token },
+      body: JSON.stringify({ path })
+    });
+    if (!res.ok) throw new Error('not-ok');
+    const text = await res.text();
+    const d = JSON.parse(text);
+    if (!d.url) throw new Error('no-url');
+    img.style.display = '';
+    img.src = d.url; // retry with signed URL
+  } catch {
+    img.style.display = 'none';
+    if (!img.parentElement?.querySelector('.receipt-pdf-icon')) {
+      img.insertAdjacentHTML('afterend', '<span class="receipt-pdf-icon" style="font-size:1.8rem">📄</span>');
+    }
   }
 }
 
