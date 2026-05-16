@@ -400,7 +400,9 @@
       const res = await fetch('/api/list-companies', {
         headers: { 'Authorization': 'Bearer ' + session.access_token }
       });
-      const data = await res.json();
+      const raw = await res.text();
+      let data = {};
+      try { data = JSON.parse(raw); } catch { return; }
       if (!res.ok) throw new Error(data.error);
       allCompanies = data.companies || [];
       const sel = document.getElementById('edit-company');
@@ -423,8 +425,10 @@
       const res = await fetch('/api/list-users', {
         headers: { 'Authorization': 'Bearer ' + session.access_token }
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error);
+      const raw = await res.text();
+      let data = {};
+      try { data = JSON.parse(raw); } catch { throw new Error('Server error loading users. Please refresh.'); }
+      if (!res.ok) throw new Error(data.error || 'Failed to load users');
       allUsers = data.users || [];
       renderStats();
       renderGrid(allUsers);
