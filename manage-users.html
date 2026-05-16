@@ -295,8 +295,50 @@
 
     </div>
 
-    <div class="modal-footer">
+    <div class="modal-footer" style="justify-content:space-between;flex-wrap:wrap;gap:.5rem">
+      <button id="modal-delete-btn" class="btn"
+              style="background:#fee2e2;color:#dc2626;border:1px solid #fca5a5;display:none;border-radius:10px"
+              onclick="openDeleteConfirm(selectedUser)">
+        🗑️ Delete User
+      </button>
       <button class="btn btn-secondary" onclick="closeModal()">Close</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Delete Confirmation Modal ── -->
+<div id="delete-modal" class="modal-overlay" style="display:none;z-index:1100"
+     onclick="handleDeleteBackdrop(event)">
+  <div class="modal-card" style="max-width:420px;width:90vw" onclick="event.stopPropagation()">
+
+    <div class="modal-header">
+      <div style="display:flex;align-items:center;gap:.75rem">
+        <div style="width:44px;height:44px;border-radius:14px;background:#fee2e2;display:flex;align-items:center;justify-content:center;font-size:1.3rem;flex-shrink:0">🗑️</div>
+        <div>
+          <h3 style="margin:0;color:#dc2626">Delete User</h3>
+          <p style="margin:.1rem 0 0;font-size:.78rem;color:var(--text-muted)">This action is permanent</p>
+        </div>
+      </div>
+      <button class="modal-close" onclick="closeDeleteConfirm()">✕</button>
+    </div>
+
+    <div class="modal-body">
+      <p style="margin:0 0 .75rem;font-size:.95rem;color:var(--text-main)">
+        Are you sure you want to delete <strong id="delete-user-name">this user</strong>?
+      </p>
+      <div style="background:#fef2f2;border:1px solid #fecaca;border-radius:10px;padding:.875rem;font-size:.82rem;color:#991b1b;line-height:1.6">
+        ⚠️ This will permanently remove the user's account and all profile data.
+        Expense records will be kept for audit purposes.
+        <strong>This cannot be undone.</strong>
+      </div>
+    </div>
+
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeDeleteConfirm()" style="flex:1">Cancel</button>
+      <button id="delete-confirm-btn" class="btn" onclick="confirmDeleteUser()"
+              style="flex:1;background:#dc2626;color:#fff;border:none;border-radius:10px">
+        🗑️ Delete User
+      </button>
     </div>
   </div>
 </div>
@@ -360,6 +402,7 @@
   let allUsers = [];
   let allCompanies = [];
   let selectedUser = null;
+  let userToDelete = null;
   let pwOpen = false;
   let editOpen = false;
   let activeFilter = null; // null = all, 'employee'|'admin'|'super_admin'
@@ -599,6 +642,12 @@
 
     if (editOpen) { editOpen = false; document.getElementById('edit-section').style.display = 'none'; document.getElementById('edit-chevron').style.transform = ''; }
 
+    // Delete button — super_admin only, never for own account
+    const delBtn = document.getElementById('modal-delete-btn');
+    delBtn.style.display =
+      (currentProfile.role === 'super_admin' && u.id !== currentProfile.id)
+        ? 'inline-flex' : 'none';
+
     document.getElementById('user-modal').style.display = 'flex';
   }
 
@@ -697,6 +746,53 @@
       showMessage('Password updated successfully!', 'success');
       document.getElementById('pw-new').value = '';
       document.getElementById('pw-confirm').value = '';
+    } catch (err) {
+      showMessage(err.message, 'error');
+    } finally {
+      setLoading(btn, false);
+    }
+  }
+
+  // ── Delete User ───────────────────────────────────────────
+  function openDeleteConfirm(u) {
+    if (!u) return;
+    userToDelete = u;
+    document.getElementById('delete-user-name').textContent = u.name || u.email;
+    document.getElementById('delete-modal').style.display = 'flex';
+  }
+
+  function closeDeleteConfirm() {
+    document.getElementById('delete-modal').style.display = 'none';
+    userToDelete = null;
+  }
+
+  function handleDeleteBackdrop(e) {
+    if (e.target === document.getElementById('delete-modal')) closeDeleteConfirm();
+  }
+
+  async function confirmDeleteUser() {
+    if (!userToDelete) return;
+    const btn = document.getElementById('delete-confirm-btn');
+    setLoading(btn, true);
+    try {
+      const { data: { session } } = await db.auth.getSession();
+      const res = await fetch('/api/update-user', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + session.access_token },
+        body: JSON.stringify({ _action: 'delete', userId: userToDelete.id })
+      });
+      const text = await res.text();
+      let data; try { data = JSON.parse(text); } catch { throw new Error(text || 'Server error'); }
+      if (!res.ok) throw new Error(data.error || 'Delete failed');
+
+      // Remove from local state instantly — no reload needed
+      const deletedId = userToDelete.id;
+      allUsers = allUsers.filter(u => u.id !== deletedId);
+      closeDeleteConfirm();
+      closeModal();
+      renderStats();
+      applyFilters();
+      showMessage('User deleted successfully.', 'success');
     } catch (err) {
       showMessage(err.message, 'error');
     } finally {
