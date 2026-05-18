@@ -344,6 +344,7 @@
                 allExpensesFetched = expenses;
                 updateAdminStats(expenses);
                 refreshListView();
+                if (hierarchyMode) renderHierarchyView(expenses);
                 renderAdminCharts(expenses);
               } else {
                 const expenses = await fetchExpenses({ userId: currentProfile.id });
@@ -438,6 +439,21 @@
     let allExpensesFetched = [];
     let currentListFilter = 'all';
 
+    let hierarchyMode = true; // hierarchy is the default view
+    const hierExpanded = { depts: new Set(), mgrs: new Set(), emps: new Set() };
+
+    const DEPT_COLORS = {
+      'O&M':'#6366f1','Project':'#ea580c','Procurement':'#16a34a',
+      'Account':'#0891b2','Accounts':'#0891b2','HR':'#db2777','HR & Admin':'#db2777',
+      'Purchase':'#0284c7','Finance':'#7c3aed','Sales':'#c026d3',
+      'Logistics':'#0284c7','Logistics & Supply Chain':'#0284c7',
+      'Lease':'#2563eb','Legal':'#dc2626','Liaison':'#65a30d',
+      'Compliance':'#059669','Tender':'#0d9488','Export Improvements':'#d97706',
+      'Transmission Line':'#92400e','Internal Audit & A/C Payable':'#1d4ed8',
+      'Unassigned':'#6b7280'
+    };
+    function deptColor(dept){ return DEPT_COLORS[dept] || '#6366f1'; }
+
     async function loadEmployeeExpenses() {
       try {
         const expenses = await fetchExpenses({ userId: currentProfile.id });
@@ -493,9 +509,13 @@
       }
 
       if (isAdmin) {
-        renderAdminTable(filtered);
-        renderAdminCards(filtered);
-        if (!skipCharts) renderAdminCharts(filtered);
+        if (hierarchyMode) {
+          renderHierarchyView(filtered);
+        } else {
+          renderAdminTable(filtered);
+          renderAdminCards(filtered);
+          if (!skipCharts) renderAdminCharts(filtered);
+        }
       } else {
         renderEmpTable(filtered);
         renderEmpCards(filtered);
@@ -616,7 +636,7 @@
       </div>
 
       <!-- Filter bar -->
-      <div class="filter-bar p-4 mb-6 shadow-sm rounded-xl grid gap-4 items-center" style="grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));">
+      <div class="filter-bar p-4 mb-6 shadow-sm rounded-xl grid gap-4 items-center" style="position:sticky;top:56px;z-index:10;background:var(--card-bg,#fff);border-radius:14px;border:1px solid var(--border);box-shadow:0 2px 8px rgba(0,0,0,.06);grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));">
         <div class="form-group mb-0">
           <label class="form-label" for="f-month">Month</label>
           <input class="form-input" type="month" id="f-month" onchange="autoUpdateCycleFilter()" />
@@ -643,12 +663,30 @@
           <button class="btn btn-primary btn-sm flex-1" onclick="applyCycleFilter()">Filter</button>
           <button class="btn btn-secondary btn-sm" onclick="clearFilter()">✕</button>
         </div>
-        
+
         <div class="flex gap-2 sm-w-full" style="align-self: end; justify-content: flex-end;">
           <button class="btn btn-primary btn-sm" onclick="exportMonthToExcel()">Month Excel</button>
           <button class="btn btn-secondary btn-sm" onclick="exportToCSV()" style="background: #0f172a; color: white; border: none;">CSV</button>
         </div>
+
+        <!-- View toggle -->
+        <div style="grid-column:1/-1;display:flex;gap:.5rem;justify-content:flex-end;flex-wrap:wrap;align-items:center;padding-top:.625rem;border-top:1px solid var(--border);margin-top:.25rem">
+          <span style="font-size:.78rem;color:var(--text-muted);font-weight:600">View Mode:</span>
+          <button id="btn-view-hier" class="btn btn-primary btn-sm" onclick="setViewMode('hierarchy')" style="border-radius:8px">🏗️ Hierarchy</button>
+          <button id="btn-view-list" class="btn btn-secondary btn-sm" onclick="setViewMode('list')" style="border-radius:8px">📋 List</button>
+        </div>
       </div>
+
+      <!-- ── Hierarchy View ─────────────────────────────────── -->
+      <div id="hier-view">
+        <div id="hier-summary"></div>
+        <div id="hier-container">
+          <div class="loading-state"><div class="spinner"></div><span>Building hierarchy…</span></div>
+        </div>
+      </div>
+
+      <!-- ── List View ──────────────────────────────────────────── -->
+      <div id="list-view-wrap" style="display:none">
 
       <!-- Analytics Section -->
       <div class="charts-row" id="admin-charts-section" style="display:none">
@@ -658,7 +696,7 @@
             <canvas id="categoryChart"></canvas>
           </div>
         </div>
-        
+
         <!-- Cycle Progress Card -->
         <div class="card chart-container" id="cycle-progress-card" style="display:none">
           <p class="card-title">Cycle Progress (Daily Tracking)</p>
@@ -690,6 +728,8 @@
       <!-- Mobile cards -->
       <div class="show-mobile" id="admin-cards">
         <div class="loading-state"><div class="spinner"></div><span>Fetching all expenses…</span></div>
+      </div>
+
       </div>
     `;
 
@@ -1143,6 +1183,24 @@
       document.getElementById('admin-table').innerHTML = spin;
       document.getElementById('admin-cards').innerHTML = spin;
       await loadAdminExpenses();
+    }
+
+    function setViewMode(mode) {
+      hierarchyMode = mode === 'hierarchy';
+      const hierView = document.getElementById('hier-view');
+      const listWrap = document.getElementById('list-view-wrap');
+      const hierBtn  = document.getElementById('btn-view-hier');
+      const listBtn  = document.getElementById('btn-view-list');
+      if (hierView) hierView.style.display = hierarchyMode ? 'block' : 'none';
+      if (listWrap) listWrap.style.display = hierarchyMode ? 'none'  : 'block';
+      if (hierBtn)  { hierBtn.className  = hierarchyMode ? 'btn btn-primary btn-sm'   : 'btn btn-secondary btn-sm'; hierBtn.style.borderRadius='8px'; }
+      if (listBtn)  { listBtn.className  = hierarchyMode ? 'btn btn-secondary btn-sm' : 'btn btn-primary btn-sm';   listBtn.style.borderRadius='8px'; }
+      if (hierarchyMode) {
+        renderHierarchyView(allExpensesFetched);
+      } else {
+        refreshListView();
+        renderAdminCharts(allExpensesFetched);
+      }
     }
 
     // ─── TEMPLATES ──────────────────────────────────────────────
@@ -1884,6 +1942,359 @@
       } catch (err) {
         showMessage(err.message, 'error');
       }
+    }
+
+    // ── HIERARCHY VIEW ────────────────────────────────────────
+
+    function buildHierarchyTree(expenses) {
+      const tree = {};
+      expenses.forEach(e => {
+        const dept = (e.users?.department || '').trim() || 'Unassigned';
+        if (!tree[dept]) tree[dept] = { dept, managers: {} };
+        const lms = getLM(dept);
+        const addEmp = (mgrKey, mgr) => {
+          if (!tree[dept].managers[mgrKey]) tree[dept].managers[mgrKey] = { mgr, employees: {} };
+          const uid = e.user_id;
+          if (!tree[dept].managers[mgrKey].employees[uid])
+            tree[dept].managers[mgrKey].employees[uid] = { user: e.users, expenses: [] };
+          tree[dept].managers[mgrKey].employees[uid].expenses.push(e);
+        };
+        if (lms && lms.length) lms.forEach(m => addEmp(m.code, m));
+        else addEmp('__no_mgr__', null);
+      });
+      return tree;
+    }
+
+    function renderHierarchyView(expenses) {
+      const container = document.getElementById('hier-container');
+      const summaryEl = document.getElementById('hier-summary');
+      if (!container) return;
+
+      const search = (document.getElementById('f-user-search')?.value || '').toLowerCase().trim();
+      const mgrFilter = (document.getElementById('f-manager')?.value || '').trim();
+
+      let filtered = expenses;
+      if (search) filtered = filtered.filter(e =>
+        (e.users?.name || '').toLowerCase().includes(search) ||
+        (e.users?.email || '').toLowerCase().includes(search) ||
+        (e.users?.emp_no || '').toLowerCase().includes(search)
+      );
+      if (mgrFilter) filtered = filtered.filter(e => {
+        const lms = getLM(e.users?.department);
+        return lms && lms.some(m => m.name === mgrFilter);
+      });
+
+      const tree = buildHierarchyTree(filtered);
+      const depts = Object.keys(tree).sort((a, b) =>
+        a === 'Unassigned' ? 1 : b === 'Unassigned' ? -1 : a.localeCompare(b)
+      );
+
+      // Summary chips
+      const totalEmps = new Set(filtered.map(e => e.user_id)).size;
+      const pendingCnt = filtered.filter(e => e.status === 'pending').length;
+      const l1Cnt = filtered.filter(e => e.status === 'l1_approved').length;
+      const approvedSum = filtered.filter(e => e.status === 'approved')
+        .reduce((s, e) => s + (e.approved_amount != null ? +e.approved_amount : +e.amount), 0);
+      if (summaryEl) summaryEl.innerHTML = `
+        <div style="display:flex;flex-wrap:wrap;gap:.625rem;margin-bottom:1.25rem;align-items:center">
+          <div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:10px;padding:.375rem .875rem;font-size:.78rem;font-weight:700;color:#1e40af">👥 ${totalEmps} Employees</div>
+          ${pendingCnt ? `<div style="background:#fef3c7;border:1px solid #fde68a;border-radius:10px;padding:.375rem .875rem;font-size:.78rem;font-weight:700;color:#92400e">⏳ ${pendingCnt} Pending</div>` : ''}
+          ${l1Cnt ? `<div style="background:#ede9fe;border:1px solid #c4b5fd;border-radius:10px;padding:.375rem .875rem;font-size:.78rem;font-weight:700;color:#5b21b6">🔍 ${l1Cnt} In Review</div>` : ''}
+          <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:10px;padding:.375rem .875rem;font-size:.78rem;font-weight:700;color:#065f46">✅ ${formatCurrency(approvedSum)} Approved</div>
+          <div style="margin-left:auto;display:flex;gap:.4rem">
+            <button class="btn btn-secondary btn-sm" style="font-size:.75rem;border-radius:8px" onclick="hierExpandAll()">Expand All</button>
+            <button class="btn btn-secondary btn-sm" style="font-size:.75rem;border-radius:8px" onclick="hierCollapseAll()">Collapse All</button>
+          </div>
+        </div>`;
+
+      if (!depts.length) {
+        container.innerHTML = `<div style="text-align:center;padding:3rem;color:var(--text-muted)"><div style="font-size:2.5rem;margin-bottom:.75rem">🔍</div><p style="font-weight:700;font-size:1.1rem;margin:0">No results</p><p style="font-size:.85rem;margin:.25rem 0 0">Try adjusting filters or search</p></div>`;
+        return;
+      }
+
+      if (search || mgrFilter) {
+        depts.forEach(dept => {
+          hierExpanded.depts.add(dept);
+          Object.keys(tree[dept].managers).forEach(mk => hierExpanded.mgrs.add(mk + '||' + dept));
+        });
+      }
+
+      container.innerHTML = depts.map(dept => {
+        const dData = tree[dept];
+        const col = deptColor(dept);
+        const dId = 'dept__' + dept.replace(/[^a-z0-9]/gi, '_');
+
+        let dEmps = new Set(), dPend = 0, dL1 = 0, dAppr = 0;
+        Object.values(dData.managers).forEach(md => {
+          Object.values(md.employees).forEach(ed => {
+            dEmps.add(ed.user?.id);
+            ed.expenses.forEach(e => {
+              if (e.status === 'pending') dPend++;
+              if (e.status === 'l1_approved') dL1++;
+              if (e.status === 'approved') dAppr += (e.approved_amount != null ? +e.approved_amount : +e.amount);
+            });
+          });
+        });
+
+        const dOpen = hierExpanded.depts.has(dept);
+        const mgrs = Object.entries(dData.managers).sort(([ka],[kb]) => ka === '__no_mgr__' ? 1 : kb === '__no_mgr__' ? -1 : (dData.managers[ka].mgr?.name||'').localeCompare(dData.managers[kb].mgr?.name||''));
+
+        return `
+        <div style="margin-bottom:.875rem">
+          <div onclick="hierToggleDept('${dId}','${dept.replace(/'/g,"\\'")}');"
+               style="display:flex;align-items:center;gap:.875rem;padding:1rem 1.25rem;border-radius:14px;cursor:pointer;background:${col};color:white;user-select:none;transition:opacity .15s"
+               onmouseover="this.style.opacity='.9'" onmouseout="this.style.opacity='1'">
+            <div style="flex:1;min-width:0;display:flex;align-items:center;gap:.625rem;flex-wrap:wrap">
+              <span style="font-weight:800;font-size:1rem">${escHtml(dept)}</span>
+              <span style="background:rgba(255,255,255,.2);border-radius:6px;padding:1px 7px;font-size:.72rem;font-weight:700">${dEmps.size} emp</span>
+              ${dPend ? `<span style="background:rgba(251,191,36,.3);border-radius:6px;padding:1px 7px;font-size:.72rem;font-weight:700">⏳ ${dPend}</span>` : ''}
+              ${dL1 ? `<span style="background:rgba(139,92,246,.3);border-radius:6px;padding:1px 7px;font-size:.72rem;font-weight:700">🔍 ${dL1}</span>` : ''}
+              <span style="background:rgba(255,255,255,.15);border-radius:6px;padding:1px 7px;font-size:.72rem;font-weight:700">✅ ${formatCurrency(dAppr)}</span>
+            </div>
+            <svg id="chev-${dId}" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"
+                 style="width:20px;height:20px;flex-shrink:0;transition:transform .2s;transform:${dOpen?'rotate(180deg)':'rotate(0deg)'}">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/>
+            </svg>
+          </div>
+          <div id="hnode-${dId}" style="display:${dOpen?'block':'none'};padding:.5rem 0 0 .75rem">
+            ${mgrs.map(([mgrKey, mgrData]) => {
+              const mgr = mgrData.mgr;
+              const empArr = Object.values(mgrData.employees).sort((a,b)=>(a.user?.name||'').localeCompare(b.user?.name||''));
+              let mPend = 0, mL1 = 0, mAppr = 0;
+              empArr.forEach(ed => ed.expenses.forEach(e => {
+                if (e.status==='pending') mPend++;
+                if (e.status==='l1_approved') mL1++;
+                if (e.status==='approved') mAppr += (e.approved_amount!=null?+e.approved_amount:+e.amount);
+              }));
+              const mId = 'mgr__' + (mgrKey).replace(/[^a-z0-9]/gi,'_') + '__' + dept.replace(/[^a-z0-9]/gi,'_');
+              const mOpen = hierExpanded.mgrs.has(mId);
+              const mi = mgr ? (mgr.name[0]||'?').toUpperCase() : '?';
+
+              return `
+              <div style="border:1px solid var(--border);border-radius:12px;margin-bottom:.5rem;overflow:hidden;background:var(--card-bg,#fff)">
+                <div onclick="hierToggleMgr('${mId}');"
+                     style="display:flex;align-items:center;gap:.875rem;padding:.875rem 1rem;cursor:pointer;transition:background .15s"
+                     onmouseover="this.style.background='var(--bg-page,#f9fafb)'" onmouseout="this.style.background=''">
+                  <div style="width:40px;height:40px;border-radius:12px;background:${col}18;color:${col};display:flex;align-items:center;justify-content:center;font-weight:800;font-size:1rem;flex-shrink:0">${mi}</div>
+                  <div style="flex:1;min-width:0">
+                    <div style="font-weight:700;font-size:.9rem">${mgr ? escHtml(mgr.name) : '<span style="color:var(--text-muted)">No Manager Assigned</span>'}</div>
+                    <div style="font-size:.72rem;color:var(--text-muted);margin-top:1px">${mgr ? `${escHtml(mgr.code)} · ${escHtml(dept)} · 📱 ${escHtml(mgr.phone||'—')}` : escHtml(dept)}</div>
+                  </div>
+                  <div style="display:flex;flex-wrap:wrap;gap:.3rem;align-items:center;justify-content:flex-end">
+                    <span style="background:#f3f4f6;border-radius:6px;padding:1px 7px;font-size:.7rem;font-weight:600;color:#374151">${empArr.length} emp</span>
+                    ${mPend ? `<span style="background:#fef3c7;color:#92400e;border-radius:6px;padding:1px 7px;font-size:.7rem;font-weight:700">⏳${mPend}</span>` : ''}
+                    ${mL1 ? `<span style="background:#ede9fe;color:#5b21b6;border-radius:6px;padding:1px 7px;font-size:.7rem;font-weight:700">🔍${mL1}</span>` : ''}
+                    <span style="background:#f0fdf4;color:#065f46;border-radius:6px;padding:1px 7px;font-size:.7rem;font-weight:700">${formatCurrency(mAppr)}</span>
+                    <svg id="chev-${mId}" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"
+                         style="width:16px;height:16px;color:var(--text-muted);transition:transform .2s;flex-shrink:0;transform:${mOpen?'rotate(180deg)':''}">
+                      <path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/>
+                    </svg>
+                  </div>
+                </div>
+                <div id="hnode-${mId}" style="display:${mOpen?'block':'none'}">
+                  ${empArr.map(ed => {
+                    const user = ed.user || {};
+                    const exps = ed.expenses;
+                    const ePend = exps.filter(e=>e.status==='pending').length;
+                    const eL1   = exps.filter(e=>e.status==='l1_approved').length;
+                    const eAppr = exps.filter(e=>e.status==='approved').length;
+                    const eRej  = exps.filter(e=>e.status==='rejected'||e.status==='l1_rejected').length;
+                    const eAmt  = exps.reduce((s,e)=>{
+                      if(e.status==='rejected'||e.status==='l1_rejected') return s;
+                      return s+(e.approved_amount!=null?+e.approved_amount:+e.amount);
+                    },0);
+                    const eId = 'emp__' + (user.id||'x').replace(/[^a-z0-9]/gi,'_');
+                    const eOpen = hierExpanded.emps.has(eId);
+                    const ei = (user.name?.[0]||user.email?.[0]||'?').toUpperCase();
+                    const lmsE = getLM(user.department);
+
+                    return `
+                    <div style="border-top:1px solid var(--border)">
+                      <div onclick="hierToggleEmp('${eId}');"
+                           style="display:flex;align-items:center;gap:.75rem;padding:.75rem 1rem .75rem 1.25rem;cursor:pointer;transition:background .15s"
+                           onmouseover="this.style.background='var(--bg-page,#f9fafb)'" onmouseout="this.style.background=''">
+                        <div style="width:34px;height:34px;border-radius:10px;background:${col}12;color:${col};display:flex;align-items:center;justify-content:center;font-weight:800;font-size:.82rem;flex-shrink:0">${ei}</div>
+                        <div style="flex:1;min-width:0">
+                          <div style="font-weight:700;font-size:.85rem">${escHtml(user.name||'—')}</div>
+                          <div style="font-size:.7rem;color:var(--text-muted)">${user.emp_no?`🆔${escHtml(user.emp_no)}`:''}${user.department?` · ${escHtml(user.department)}`:''}</div>
+                        </div>
+                        <div style="display:flex;flex-wrap:wrap;gap:.25rem;align-items:center;justify-content:flex-end">
+                          ${ePend?`<span style="background:#fef3c7;color:#92400e;border-radius:5px;padding:0 6px;font-size:.68rem;font-weight:700">⏳${ePend}</span>`:''}
+                          ${eL1?`<span style="background:#ede9fe;color:#5b21b6;border-radius:5px;padding:0 6px;font-size:.68rem;font-weight:700">🔍${eL1}</span>`:''}
+                          ${eAppr?`<span style="background:#d1fae5;color:#065f46;border-radius:5px;padding:0 6px;font-size:.68rem;font-weight:700">✓${eAppr}</span>`:''}
+                          ${eRej?`<span style="background:#fee2e2;color:#991b1b;border-radius:5px;padding:0 6px;font-size:.68rem;font-weight:700">✗${eRej}</span>`:''}
+                          <span style="font-size:.78rem;font-weight:700;color:var(--primary)">${formatCurrency(eAmt)}</span>
+                          <svg id="chev-${eId}" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"
+                               style="width:14px;height:14px;color:var(--text-muted);transition:transform .2s;flex-shrink:0;transform:${eOpen?'rotate(180deg)':''}">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/>
+                          </svg>
+                        </div>
+                      </div>
+                      <div id="hnode-${eId}" style="display:${eOpen?'block':'none'};background:var(--bg-page,#f9fafb);border-top:1px solid var(--border)">
+                        ${renderHierEmpDetail(user, exps, lmsE)}
+                      </div>
+                    </div>`;
+                  }).join('')}
+                </div>
+              </div>`;
+            }).join('')}
+          </div>
+        </div>`;
+      }).join('');
+    }
+
+    function renderHierEmpDetail(user, expenses, lms) {
+      // Group by month/cycle
+      const groups = {};
+      expenses.forEach(e => {
+        const d = new Date(e.created_at);
+        const mY = d.toLocaleString('default', { month: 'long', year: 'numeric' });
+        const cT = d.getDate() <= 15 ? '1st - 15th' : '16th - End';
+        const k = mY + '||' + cT;
+        if (!groups[k]) groups[k] = { mY, cT, entries: [] };
+        groups[k].entries.push(e);
+      });
+      const sorted = Object.values(groups).sort((a,b) => new Date(b.entries[0].created_at) - new Date(a.entries[0].created_at));
+
+      return `
+      <div style="padding:.875rem 1rem">
+        <!-- Employee info -->
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:.625rem;background:var(--card-bg,#fff);border:1px solid var(--border);border-radius:10px;padding:.875rem;margin-bottom:.75rem;font-size:.8rem">
+          ${[['👤 Name',user.name],['🆔 Emp No',user.emp_no],['📧 Email',user.email],
+             ['📱 Mobile',user.phone],['🏢 Dept',user.department],['📍 Site',user.site_name],
+             ...(lms ? [['👔 Manager', lms.map(m=>m.name).join(' / ')]] : [])
+            ].map(([l,v])=>v?`<div><div style="font-size:.6rem;text-transform:uppercase;font-weight:700;color:var(--text-muted);margin-bottom:2px">${l}</div><div style="font-weight:600">${escHtml(String(v))}</div></div>`:'').filter(Boolean).join('')}
+        </div>
+        ${(user.bank_holder||user.bank_name) ? `
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:.625rem;background:#eff6ff;border:1px solid #bfdbfe;border-radius:10px;padding:.875rem;margin-bottom:.75rem;font-size:.8rem">
+          <div style="grid-column:1/-1;font-size:.6rem;font-weight:700;color:#1e40af;text-transform:uppercase;margin-bottom:.1rem">🏦 Bank Details</div>
+          ${[['Holder',user.bank_holder],['Bank',user.bank_name],['IFSC',user.bank_ifsc],
+             ['Acct No',user.bank_account?'****'+user.bank_account.slice(-4):null]
+            ].map(([l,v])=>v?`<div><div style="font-size:.6rem;text-transform:uppercase;font-weight:700;color:#3b82f6;margin-bottom:2px">${l}</div><div style="font-weight:700;color:#1e3a8a">${escHtml(String(v))}</div></div>`:'').filter(Boolean).join('')}
+        </div>` : ''}
+        <!-- Cycle groups -->
+        ${sorted.map(g => {
+          const safeKey = `${user.id}|${g.mY}|${g.cT}`;
+          const gTotal = g.entries.reduce((s,e)=>{
+            if(e.status==='rejected'||e.status==='l1_rejected') return s;
+            return s+(e.approved_amount!=null?+e.approved_amount:+e.amount);
+          },0);
+          return `
+          <div style="border:1px solid var(--border);border-radius:10px;overflow:hidden;margin-bottom:.625rem;background:var(--card-bg,#fff)">
+            <div style="padding:.625rem 1rem;background:var(--bg-page,#f9fafb);display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:.5rem">
+              <div>
+                <span style="font-weight:700;font-size:.85rem">${escHtml(g.mY)}</span>
+                <span style="background:var(--primary);color:white;border-radius:5px;padding:0 7px;font-size:.68rem;font-weight:700;margin-left:.4rem">${escHtml(g.cT)}</span>
+                <span style="font-size:.72rem;color:var(--text-muted);margin-left:.5rem">${g.entries.length} entries · ${formatCurrency(gTotal)}</span>
+              </div>
+              <div style="display:flex;gap:.3rem;flex-wrap:wrap">
+                <button class="btn btn-primary btn-sm" style="font-size:.7rem;padding:.2rem .55rem;border-radius:7px" onclick="approveEntireCycle('${safeKey}')">✓ Approve Cycle</button>
+                <button class="btn btn-secondary btn-sm" style="font-size:.7rem;padding:.2rem .55rem;border-radius:7px" onclick="exportCycleToExcel('${safeKey}')">Excel</button>
+                <button class="btn btn-secondary btn-sm" style="font-size:.7rem;padding:.2rem .55rem;border-radius:7px;background:#0f172a;color:white;border:none" onclick="exportCycleToCSV('${safeKey}')">CSV</button>
+              </div>
+            </div>
+            <div style="overflow-x:auto">
+              <table style="width:100%;border-collapse:collapse;font-size:.8rem">
+                <thead>
+                  <tr style="background:var(--bg-page,#f9fafb)">
+                    <th style="padding:.5rem .75rem;text-align:left;font-size:.65rem;text-transform:uppercase;color:var(--text-muted);white-space:nowrap;font-weight:700">Date</th>
+                    <th style="padding:.5rem .75rem;text-align:left;font-size:.65rem;text-transform:uppercase;color:var(--text-muted);font-weight:700">Category</th>
+                    <th style="padding:.5rem .75rem;text-align:left;font-size:.65rem;text-transform:uppercase;color:var(--text-muted);font-weight:700">Description</th>
+                    <th style="padding:.5rem .75rem;text-align:right;font-size:.65rem;text-transform:uppercase;color:var(--text-muted);font-weight:700;white-space:nowrap">Amount</th>
+                    <th style="padding:.5rem .75rem;text-align:left;font-size:.65rem;text-transform:uppercase;color:var(--text-muted);font-weight:700">Status</th>
+                    <th style="padding:.5rem .75rem;text-align:right;font-size:.65rem;text-transform:uppercase;color:var(--text-muted);font-weight:700">Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${g.entries.sort((a,b)=>new Date(a.created_at)-new Date(b.created_at)).map(e => {
+                    const apAmt = e.approved_amount!=null?e.approved_amount:e.amount;
+                    const changed = e.approved_amount!=null && +e.approved_amount!==+e.amount;
+                    const showL1 = currentProfile.role==='admin' && e.status==='pending';
+                    const showL2 = currentProfile.role==='super_admin' && e.status==='l1_approved';
+                    const showDir= currentProfile.role==='super_admin' && e.status==='pending';
+                    return `
+                    <tr style="border-top:1px solid var(--border)">
+                      <td style="padding:.5rem .75rem;white-space:nowrap;color:var(--text-muted)">${new Date(e.created_at).toLocaleDateString('en-IN',{day:'2-digit',month:'short'})}</td>
+                      <td style="padding:.5rem .75rem">${catPill(e.category)}</td>
+                      <td style="padding:.5rem .75rem;max-width:220px">
+                        <div>${parseDescForDisplay(e.description)}</div>
+                        ${e.rejection_reason?`<div style="font-size:.7rem;color:#dc2626;margin-top:.2rem">💬 ${escHtml(e.rejection_reason)}</div>`:''}
+                        ${e.l1_remark?`<div style="font-size:.68rem;color:#3b82f6;margin-top:.15rem">L1: ${escHtml(e.l1_remark)}</div>`:''}
+                        ${e.l2_remark?`<div style="font-size:.68rem;color:#16a34a;margin-top:.15rem">L2: ${escHtml(e.l2_remark)}</div>`:''}
+                      </td>
+                      <td style="padding:.5rem .75rem;text-align:right;white-space:nowrap">
+                        ${changed?`<div style="text-decoration:line-through;color:var(--text-muted);font-size:.7rem">${formatCurrency(e.amount)}</div>`:''}
+                        <div style="font-weight:700;color:var(--primary)">${formatCurrency(apAmt)}</div>
+                      </td>
+                      <td style="padding:.5rem .75rem">
+                        ${approvalStepper(e)}
+                        ${e.l1_by_name?`<div style="font-size:.62rem;color:var(--text-muted);margin-top:.2rem">L1: ${escHtml(e.l1_by_name)}</div>`:''}
+                        ${e.l2_by_name?`<div style="font-size:.62rem;color:var(--text-muted)">L2: ${escHtml(e.l2_by_name)}</div>`:''}
+                        ${e.receipt_url?`<a href="javascript:void(0)" onclick="viewReceipt('${escHtml(e.receipt_url)}')" style="font-size:.68rem;color:var(--primary);font-weight:600">📎 Receipt</a>`:''}
+                      </td>
+                      <td style="padding:.5rem .75rem;text-align:right">
+                        <div style="display:flex;gap:.2rem;justify-content:flex-end;flex-wrap:wrap">
+                          <button class="btn btn-secondary btn-sm" style="padding:.18rem .4rem;font-size:.7rem" onclick="openCommentModal('${e.id}')">💬</button>
+                          ${showL1?`<button class="btn btn-primary btn-sm" style="padding:.18rem .4rem;font-size:.7rem" onclick="openApprovalModal('${e.id}')">L1</button>`:''}
+                          ${showL2?`<button class="btn btn-primary btn-sm" style="padding:.18rem .4rem;font-size:.7rem;background:#7c3aed" onclick="openApprovalModal('${e.id}')">L2</button>`:''}
+                          ${showDir?`<button class="btn btn-secondary btn-sm" style="padding:.18rem .4rem;font-size:.7rem" onclick="openApprovalModal('${e.id}')">↑</button>`:''}
+                          <button class="btn btn-secondary btn-sm" style="padding:.18rem .4rem;font-size:.7rem;color:#dc2626" onclick="deleteExpense('${e.id}')">🗑️</button>
+                        </div>
+                      </td>
+                    </tr>`;
+                  }).join('')}
+                </tbody>
+              </table>
+            </div>
+          </div>`;
+        }).join('')}
+      </div>`;
+    }
+
+    function hierToggleDept(nodeId, dept) {
+      const open = hierExpanded.depts.has(dept);
+      if (open) hierExpanded.depts.delete(dept); else hierExpanded.depts.add(dept);
+      const el = document.getElementById('hnode-' + nodeId);
+      const ch = document.getElementById('chev-' + nodeId);
+      if (el) el.style.display = open ? 'none' : 'block';
+      if (ch) ch.style.transform = open ? '' : 'rotate(180deg)';
+    }
+
+    function hierToggleMgr(id) {
+      const open = hierExpanded.mgrs.has(id);
+      if (open) hierExpanded.mgrs.delete(id); else hierExpanded.mgrs.add(id);
+      const el = document.getElementById('hnode-' + id);
+      const ch = document.getElementById('chev-' + id);
+      if (el) el.style.display = open ? 'none' : 'block';
+      if (ch) ch.style.transform = open ? '' : 'rotate(180deg)';
+    }
+
+    function hierToggleEmp(id) {
+      const open = hierExpanded.emps.has(id);
+      if (open) hierExpanded.emps.delete(id); else hierExpanded.emps.add(id);
+      const el = document.getElementById('hnode-' + id);
+      const ch = document.getElementById('chev-' + id);
+      if (el) el.style.display = open ? 'none' : 'block';
+      if (ch) ch.style.transform = open ? '' : 'rotate(180deg)';
+    }
+
+    function hierExpandAll() {
+      document.querySelectorAll('[id^="hnode-dept__"]').forEach(el => {
+        el.style.display = 'block';
+        hierExpanded.depts.add(el.id.replace('hnode-dept__','').replace(/_/g,' '));
+      });
+      document.querySelectorAll('[id^="chev-dept__"]').forEach(el => el.style.transform = 'rotate(180deg)');
+      document.querySelectorAll('[id^="hnode-mgr__"]').forEach(el => {
+        el.style.display = 'block';
+        hierExpanded.mgrs.add(el.id.replace('hnode-',''));
+      });
+      document.querySelectorAll('[id^="chev-mgr__"]').forEach(el => el.style.transform = 'rotate(180deg)');
+    }
+
+    function hierCollapseAll() {
+      hierExpanded.depts.clear(); hierExpanded.mgrs.clear(); hierExpanded.emps.clear();
+      document.querySelectorAll('[id^="hnode-dept__"],[id^="hnode-mgr__"],[id^="hnode-emp__"]').forEach(el => el.style.display = 'none');
+      document.querySelectorAll('[id^="chev-dept__"],[id^="chev-mgr__"],[id^="chev-emp__"]').forEach(el => el.style.transform = '');
     }
   </script>
 </body>
