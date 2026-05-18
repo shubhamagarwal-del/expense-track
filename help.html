@@ -1,0 +1,1392 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ExpenseTrack — Help Center</title>
+  <link rel="stylesheet" href="style.css" />
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+
+  <!-- PWA -->
+  <link rel="manifest" href="/manifest.json" />
+  <meta name="theme-color" content="#6366f1" />
+  <link rel="icon" type="image/svg+xml" href="/icon.svg" />
+  <link rel="apple-touch-icon" href="/icon.svg" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="ExpenseTrack" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <script src="/pwa-register.js" defer></script>
+
+  <style>
+    /* ============================================================
+       Help Center — Scoped Styles
+       ============================================================ */
+    :root {
+      --hc-emp:     #3b82f6;
+      --hc-emp-bg:  #eff6ff;
+      --hc-adm:     #8b5cf6;
+      --hc-adm-bg:  #f5f3ff;
+      --hc-sup:     #f59e0b;
+      --hc-sup-bg:  #fffbeb;
+      --hc-tip-bg:  #f0fdf4;
+      --hc-tip:     #16a34a;
+      --hc-warn-bg: #fffbeb;
+      --hc-warn:    #d97706;
+      --hc-info-bg: #eef2ff;
+      --hc-info:    #4f46e5;
+    }
+    body.dark {
+      --hc-emp-bg:  rgba(59,130,246,.12);
+      --hc-adm-bg:  rgba(139,92,246,.12);
+      --hc-sup-bg:  rgba(245,158,11,.12);
+      --hc-tip-bg:  rgba(16,185,129,.1);
+      --hc-warn-bg: rgba(245,158,11,.1);
+      --hc-info-bg: rgba(99,102,241,.1);
+    }
+
+    /* ── Hero ──────────────────────────────────────────────── */
+    .hc-hero {
+      background: linear-gradient(135deg,#1e1b4b 0%,#312e81 55%,#4c1d95 100%);
+      padding: 3rem 2rem 3.5rem;
+      text-align: center;
+      color: white;
+      position: relative;
+      overflow: hidden;
+    }
+    .hc-hero::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: radial-gradient(ellipse at 70% 50%,rgba(99,102,241,.3) 0%,transparent 60%);
+      pointer-events: none;
+    }
+    .hc-hero-content { position: relative; z-index: 1; max-width: 640px; margin: 0 auto; }
+    .hc-hero-icon    { font-size: 3rem; margin-bottom: 1rem; }
+    .hc-hero h1      { font-size: 2.25rem; font-weight: 800; letter-spacing:-.03em; margin:0 0 .5rem; }
+    .hc-hero p       { font-size: 1.05rem; opacity:.85; margin:0 0 2rem; }
+    .hc-search-wrap  { position: relative; max-width: 500px; margin: 0 auto; }
+    .hc-search-ico   {
+      position: absolute; left: 1rem; top: 50%; transform: translateY(-50%);
+      color: rgba(255,255,255,.5); pointer-events: none; display:flex; align-items:center;
+    }
+    .hc-search-ico svg { width: 18px; height: 18px; }
+    #hc-search {
+      width: 100%;
+      background: rgba(255,255,255,.15);
+      backdrop-filter: blur(8px);
+      border: 1px solid rgba(255,255,255,.25);
+      border-radius: 40px;
+      padding: .875rem 1.25rem .875rem 2.75rem;
+      color: white;
+      font-size: .95rem;
+      font-family: inherit;
+      outline: none;
+      transition: background .2s,border-color .2s;
+      box-sizing: border-box;
+    }
+    #hc-search::placeholder { color: rgba(255,255,255,.5); }
+    #hc-search:focus { background: rgba(255,255,255,.22); border-color: rgba(255,255,255,.55); }
+
+    /* ── Quick cards ───────────────────────────────────────── */
+    .hc-quick {
+      display: grid;
+      grid-template-columns: repeat(3,1fr);
+      gap: 1rem;
+      padding: 1.5rem 2rem;
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+    @media (max-width: 900px) { .hc-quick { grid-template-columns: 1fr 1fr; } }
+    @media (max-width: 600px) { .hc-quick { grid-template-columns: 1fr; padding: 1rem; } }
+
+    .hc-quick-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 1.5rem;
+      text-decoration: none !important;
+      transition: transform .2s,box-shadow .2s,border-color .2s;
+      display: flex;
+      align-items: flex-start;
+      gap: 1rem;
+      cursor: pointer;
+    }
+    .hc-quick-card:hover { transform: translateY(-3px); box-shadow: var(--sh-lg); border-color: var(--primary); }
+    .hc-qc-icon {
+      width: 48px; height: 48px; border-radius: 14px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 1.5rem; flex-shrink: 0;
+    }
+    .hc-qc-body h3 { font-size:.95rem; font-weight:700; color:var(--text-1); margin:0 0 .35rem; }
+    .hc-qc-body p  { font-size:.8rem; color:var(--text-2); margin:0; line-height:1.5; }
+
+    /* ── Filter bar ────────────────────────────────────────── */
+    .hc-filter-bar {
+      display: flex; gap: .5rem; padding: .75rem 2rem;
+      max-width: 1200px; margin: 0 auto; flex-wrap: wrap;
+    }
+    @media (max-width: 600px) { .hc-filter-bar { padding: .75rem 1rem; } }
+    .hc-filter-btn {
+      padding: .4rem 1rem; border-radius: 100px;
+      border: 1px solid var(--border); background: var(--surface);
+      font-size: .8rem; font-weight: 600; cursor: pointer;
+      color: var(--text-2); font-family: inherit; transition: .15s;
+    }
+    .hc-filter-btn:hover  { border-color: var(--primary); color: var(--primary); }
+    .hc-filter-btn.active { background: var(--primary); color: white; border-color: var(--primary); }
+
+    /* ── Main layout ───────────────────────────────────────── */
+    .hc-wrap {
+      display: grid;
+      grid-template-columns: 210px 1fr;
+      gap: 2rem;
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 0 2rem 4rem;
+      align-items: start;
+    }
+    @media (max-width: 960px)  { .hc-wrap { grid-template-columns: 1fr; } }
+    @media (max-width: 600px)  { .hc-wrap { padding: 0 1rem 3rem; } }
+
+    /* ── TOC ───────────────────────────────────────────────── */
+    .hc-toc {
+      position: sticky; top: 72px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 1.25rem;
+      max-height: calc(100vh - 100px);
+      overflow-y: auto;
+    }
+    @media (max-width: 960px) { .hc-toc { display: none; } }
+
+    .hc-toc-title { font-size:.7rem; font-weight:700; text-transform:uppercase; letter-spacing:.1em; color:var(--text-3); margin:0 0 .75rem; }
+    .hc-toc a {
+      display: block; font-size:.8rem; font-weight:500; color:var(--text-2);
+      padding:.35rem .5rem; border-radius:6px; text-decoration:none;
+      border-left:2px solid transparent;
+      transition:color .15s,background .15s,border-color .15s;
+      line-height:1.4;
+    }
+    .hc-toc a:hover { color:var(--text-1); background:var(--primary-50); text-decoration:none; }
+    .hc-toc a.active { color:var(--primary); background:var(--primary-50); border-left-color:var(--primary); font-weight:600; }
+    .hc-toc a.sub { padding-left:1rem; font-size:.77rem; }
+
+    /* ── Sections ──────────────────────────────────────────── */
+    .hc-section {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      margin-bottom: 1.25rem;
+      overflow: hidden;
+      scroll-margin-top: 76px;
+    }
+    .hc-section-hdr {
+      padding: 1.35rem 1.6rem;
+      border-bottom: 1px solid transparent;
+      display: flex; align-items: center; gap: 1rem;
+      cursor: pointer; user-select: none;
+      transition: background .15s;
+    }
+    .hc-section-hdr:hover  { background: rgba(99,102,241,.03); }
+    .hc-section.open .hc-section-hdr { border-bottom-color: var(--border); }
+    .hc-sec-icon {
+      width: 44px; height: 44px; border-radius: 12px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 1.35rem; flex-shrink: 0;
+    }
+    .hc-sec-meta     { flex: 1; min-width: 0; }
+    .hc-sec-meta h2  { font-size:1.05rem; font-weight:700; margin:0 0 .15rem; color:var(--text-1); }
+    .hc-sec-meta p   { font-size:.8rem; color:var(--text-2); margin:0; }
+    .hc-chevron      { color:var(--text-3); transition:transform .25s; flex-shrink:0; }
+    .hc-chevron svg  { width:20px; height:20px; }
+    .hc-section.open .hc-chevron { transform:rotate(180deg); }
+    .hc-sec-body {
+      padding: 1.75rem;
+      display: none;
+    }
+    .hc-section.open .hc-sec-body { display: block; }
+    @media (max-width: 600px) { .hc-sec-body { padding: 1.25rem; } }
+
+    /* ── Role badges ───────────────────────────────────────── */
+    .role-badge {
+      display: inline-flex; align-items: center; gap:.35rem;
+      font-size:.7rem; font-weight:700; text-transform:uppercase; letter-spacing:.06em;
+      padding:.25rem .65rem; border-radius:100px; white-space:nowrap; flex-shrink:0;
+    }
+    .role-badge.emp { background:var(--hc-emp-bg); color:var(--hc-emp); }
+    .role-badge.adm { background:var(--hc-adm-bg); color:var(--hc-adm); }
+    .role-badge.sup { background:var(--hc-sup-bg); color:var(--hc-sup); }
+
+    /* ── Step list ─────────────────────────────────────────── */
+    .hc-steps { list-style:none; padding:0; margin:.875rem 0; counter-reset:step; }
+    .hc-steps li {
+      counter-increment: step;
+      display: flex; gap: 1rem;
+      padding: .875rem 0;
+      border-bottom: 1px solid var(--border);
+      font-size: .875rem;
+    }
+    .hc-steps li:last-child { border-bottom: none; }
+    .hc-steps li::before {
+      content: counter(step);
+      min-width: 28px; height: 28px;
+      background: var(--hc-info); color: white;
+      border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      font-size:.78rem; font-weight:700;
+      margin-top:.1rem; flex-shrink:0;
+    }
+    .hc-steps li strong { display:block; font-weight:700; margin-bottom:.2rem; color:var(--text-1); font-size:.9rem; }
+    .hc-steps li span   { color:var(--text-2); line-height:1.55; }
+
+    /* ── Callout boxes ─────────────────────────────────────── */
+    .callout {
+      display:flex; gap:.875rem; align-items:flex-start;
+      padding:1rem 1.25rem; border-radius:10px; margin:.875rem 0;
+      font-size:.875rem; line-height:1.65;
+    }
+    .callout-ico { font-size:1.05rem; flex-shrink:0; margin-top:.1rem; }
+    .callout strong { display:block; font-weight:700; margin-bottom:.2rem; }
+    .callout.tip  { background:var(--hc-tip-bg);  border-left:3px solid var(--hc-tip);  color:var(--text-2); }
+    .callout.warn { background:var(--hc-warn-bg); border-left:3px solid var(--hc-warn); color:var(--text-2); }
+    .callout.info { background:var(--hc-info-bg); border-left:3px solid var(--hc-info); color:var(--text-2); }
+
+    /* ── Status pills ──────────────────────────────────────── */
+    .sp {
+      display:inline-flex; align-items:center; gap:.3rem;
+      padding:.2rem .7rem; border-radius:100px;
+      font-size:.78rem; font-weight:600; white-space:nowrap;
+    }
+    .sp.pending   { background:#fff7ed; color:#c2410c; }
+    .sp.approved  { background:#f0fdf4; color:#15803d; }
+    .sp.rejected  { background:#fef2f2; color:#dc2626; }
+    .sp.l1        { background:#eff6ff; color:#1d4ed8; }
+    .sp.completed { background:#f0fdf4; color:#15803d; }
+
+    /* ── Workflow flow ─────────────────────────────────────── */
+    .hc-flow {
+      display: flex; align-items: center; gap: 0;
+      overflow-x: auto; padding: 1.5rem 0; margin: .875rem 0;
+      scrollbar-width: thin;
+    }
+    .hc-flow-step {
+      display:flex; flex-direction:column; align-items:center; gap:.5rem;
+      min-width: 110px; text-align:center; flex-shrink:0;
+    }
+    .hc-flow-circle {
+      width:52px; height:52px; border-radius:50%;
+      display:flex; align-items:center; justify-content:center;
+      font-size:1.35rem; border:2px solid currentColor;
+    }
+    .hc-flow-lbl { font-size:.75rem; font-weight:600; color:var(--text-2); line-height:1.3; }
+    .hc-flow-sub { font-size:.68rem; color:var(--text-3); }
+    .hc-flow-arr { font-size:1.1rem; color:var(--text-3); flex-shrink:0; padding:0 .15rem; margin-bottom:1.75rem; }
+    .hc-flow-step.s1 .hc-flow-circle { color:#6366f1; background:#eef2ff; }
+    .hc-flow-step.s2 .hc-flow-circle { color:#f59e0b; background:#fffbeb; }
+    .hc-flow-step.s3 .hc-flow-circle { color:#3b82f6; background:#eff6ff; }
+    .hc-flow-step.s4 .hc-flow-circle { color:#8b5cf6; background:#f5f3ff; }
+    .hc-flow-step.s5 .hc-flow-circle { color:#22c55e; background:#f0fdf4; }
+
+    /* ── Table ─────────────────────────────────────────────── */
+    .hc-table { width:100%; border-collapse:collapse; margin:.875rem 0; font-size:.875rem; }
+    .hc-table th {
+      text-align:left; padding:.7rem 1rem;
+      background:var(--bg); font-size:.75rem; font-weight:700;
+      text-transform:uppercase; letter-spacing:.05em; color:var(--text-2);
+      border-bottom:1px solid var(--border);
+    }
+    .hc-table td {
+      padding:.8rem 1rem;
+      border-bottom:1px solid var(--border); color:var(--text-1);
+      vertical-align:top; line-height:1.5;
+    }
+    .hc-table tr:last-child td { border-bottom:none; }
+    .hc-table tr:hover td { background:rgba(99,102,241,.02); }
+    @media (max-width:640px) {
+      .hc-table th, .hc-table td { padding:.6rem .75rem; font-size:.82rem; }
+    }
+
+    /* ── FAQ accordion ─────────────────────────────────────── */
+    details.hc-faq { border:1px solid var(--border); border-radius:10px; margin-bottom:.5rem; }
+    details.hc-faq summary {
+      padding:.9rem 1.25rem; font-size:.9rem; font-weight:600;
+      cursor:pointer; list-style:none;
+      display:flex; justify-content:space-between; align-items:center; gap:1rem;
+      color:var(--text-1);
+    }
+    details.hc-faq summary::-webkit-details-marker { display:none; }
+    details.hc-faq summary::after { content:'+'; font-size:1.2rem; color:var(--primary); flex-shrink:0; }
+    details.hc-faq[open] summary::after { content:'−'; }
+    details.hc-faq[open] summary { color:var(--primary); border-bottom:1px solid var(--border); }
+    .faq-body { padding:.9rem 1.25rem; font-size:.875rem; color:var(--text-2); line-height:1.7; }
+    .faq-body ul { padding-left:1.25rem; margin:.4rem 0; }
+    .faq-body li { margin:.3rem 0; }
+
+    /* ── PWA platform tabs ─────────────────────────────────── */
+    .hc-platform-tabs { display:flex; gap:.5rem; margin-bottom:1.25rem; flex-wrap:wrap; }
+    .hc-platform-tab {
+      padding:.45rem 1.1rem; border-radius:100px;
+      border:1px solid var(--border); background:none;
+      font-size:.85rem; font-weight:600; cursor:pointer;
+      color:var(--text-2); font-family:inherit; transition:.15s;
+    }
+    .hc-platform-tab:hover  { border-color:var(--primary); color:var(--primary); }
+    .hc-platform-tab.active { background:var(--primary); color:white; border-color:var(--primary); }
+    .hc-platform-pane       { display:none; }
+    .hc-platform-pane.active{ display:block; }
+
+    /* ── Feature grid ──────────────────────────────────────── */
+    .hc-feat-grid { display:grid; grid-template-columns:1fr 1fr; gap:.875rem; margin:.875rem 0; }
+    @media (max-width:640px) { .hc-feat-grid { grid-template-columns:1fr; } }
+    .hc-feat {
+      background:var(--bg); border-radius:10px; padding:1rem 1.1rem;
+      display:flex; gap:.75rem; align-items:flex-start;
+    }
+    .hc-feat .ico  { font-size:1.25rem; flex-shrink:0; margin-top:.1rem; }
+    .hc-feat strong{ display:block; font-size:.875rem; font-weight:700; margin-bottom:.2rem; color:var(--text-1); }
+    .hc-feat span  { font-size:.82rem; color:var(--text-2); line-height:1.5; }
+
+    /* ── Typography helpers ────────────────────────────────── */
+    .hc-h3 {
+      font-size:.95rem; font-weight:700; color:var(--text-1);
+      margin:1.5rem 0 .65rem; display:flex; align-items:center; gap:.5rem;
+    }
+    .hc-h3:first-child { margin-top:0; }
+    .hc-p  { font-size:.875rem; color:var(--text-2); line-height:1.7; margin:.5rem 0; }
+    .hc-ul { font-size:.875rem; color:var(--text-2); line-height:1.7; padding-left:1.25rem; margin:.4rem 0; }
+    .hc-ul li { margin:.3rem 0; }
+
+    kbd {
+      display:inline-flex; align-items:center;
+      background:var(--bg); border:1px solid var(--border); border-radius:4px;
+      padding:.1rem .45rem; font-size:.75rem; font-family:inherit;
+      color:var(--text-2); font-weight:600;
+    }
+    body.dark kbd { background:#1e293b; }
+
+    /* ── No-results ────────────────────────────────────────── */
+    .hc-no-results { text-align:center; padding:3rem 1rem; color:var(--text-3); }
+    .hc-no-results .nri { font-size:2.5rem; margin-bottom:.75rem; }
+    .hc-no-results p { font-size:.9rem; }
+
+    /* ── Print ─────────────────────────────────────────────── */
+    @media print {
+      .sidebar,.topbar,.hc-toc,.hc-filter-bar,.hc-search-wrap,.hc-quick { display:none !important; }
+      .app-main { margin-left:0 !important; }
+      .hc-sec-body { display:block !important; }
+      .hc-chevron  { display:none !important; }
+      .hc-wrap { grid-template-columns:1fr !important; padding:0 !important; }
+    }
+  </style>
+</head>
+
+<body>
+<div class="app-layout">
+
+  <div class="sidebar-overlay" id="sidebar-overlay" onclick="closeSidebar()"></div>
+
+  <!-- ══════════════════════════════════════════════════════
+       SIDEBAR
+       ══════════════════════════════════════════════════════ -->
+  <nav class="sidebar" id="sidebar">
+    <div class="sidebar-logo">
+      <div class="logo-icon">💰</div>
+      <span class="logo-text">ExpenseTrack</span>
+    </div>
+    <div class="sidebar-nav">
+      <p class="sidebar-nav-label">Menu</p>
+
+      <a href="dashboard.html" class="sidebar-link">
+        <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
+        </svg>
+        Dashboard
+      </a>
+      <a href="plans.html" class="sidebar-link" id="sb-plans-link">
+        <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+        </svg>
+        Work Plans
+      </a>
+      <a href="add-expense.html" class="sidebar-link" id="sb-add-link">
+        <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4" />
+        </svg>
+        Add Expense
+      </a>
+      <a href="profile.html" class="sidebar-link">
+        <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+        </svg>
+        My Profile
+      </a>
+      <a href="create-user.html" class="sidebar-link" id="sb-create-user-link">
+        <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z" />
+        </svg>
+        Create User
+      </a>
+      <a href="manage-users.html" class="sidebar-link" id="sb-manage-users-link">
+        <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" />
+        </svg>
+        Manage Users
+      </a>
+
+      <a href="help.html" class="sidebar-link active" id="sb-help-link">
+        <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+        </svg>
+        Help Center
+      </a>
+    </div>
+
+    <div class="sidebar-footer">
+      <div class="sidebar-user">
+        <div class="avatar" id="sb-avatar">?</div>
+        <div>
+          <div class="sidebar-user-email" id="sb-email">Loading…</div>
+          <div class="sidebar-user-role" id="sb-role">—</div>
+        </div>
+      </div>
+      <button class="sidebar-btn" onclick="toggleTheme()">
+        <span id="theme-icon">🌙</span>
+        <span id="theme-text">Dark Mode</span>
+      </button>
+      <button class="sidebar-btn" onclick="logout()">
+        <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+        </svg>
+        Sign Out
+      </button>
+    </div>
+  </nav>
+
+  <!-- ══════════════════════════════════════════════════════
+       MAIN CONTENT
+       ══════════════════════════════════════════════════════ -->
+  <div class="app-main">
+
+    <!-- Topbar -->
+    <header class="topbar">
+      <button class="topbar-menu" onclick="toggleSidebar()" aria-label="Open menu">
+        <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 12h16M4 18h16" />
+        </svg>
+      </button>
+      <span class="topbar-title">Help Center</span>
+    </header>
+
+    <!-- ── Hero ──────────────────────────────────────────── -->
+    <div class="hc-hero">
+      <div class="hc-hero-content">
+        <div class="hc-hero-icon">📖</div>
+        <h1>Help Center</h1>
+        <p>Complete guide to ExpenseTrack — for every role and every device</p>
+        <div class="hc-search-wrap">
+          <span class="hc-search-ico">
+            <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
+            </svg>
+          </span>
+          <input type="search" id="hc-search" placeholder="Search articles, features, questions…" autocomplete="off" />
+        </div>
+      </div>
+    </div>
+
+    <!-- ── Quick access cards ─────────────────────────────── -->
+    <div class="hc-quick">
+      <a class="hc-quick-card" href="#employee-guide" data-sec="sec-employee">
+        <div class="hc-qc-icon" style="background:#eff6ff">👤</div>
+        <div class="hc-qc-body">
+          <h3>Employee Guide</h3>
+          <p>Submit expenses, upload receipts, and track your approval status step by step.</p>
+        </div>
+      </a>
+      <a class="hc-quick-card" href="#admin-guide" data-sec="sec-admin">
+        <div class="hc-qc-icon" style="background:#f5f3ff">🛡️</div>
+        <div class="hc-qc-body">
+          <h3>Admin Guide</h3>
+          <p>Review expenses, approve or reject, browse the hierarchy view, and export reports.</p>
+        </div>
+      </a>
+      <a class="hc-quick-card" href="#super-admin-guide" data-sec="sec-superadmin">
+        <div class="hc-qc-icon" style="background:#fffbeb">⚡</div>
+        <div class="hc-qc-body">
+          <h3>Super Admin Guide</h3>
+          <p>Create and manage users, assign roles, reset passwords, and delete accounts.</p>
+        </div>
+      </a>
+    </div>
+
+    <!-- ── Role filter bar ───────────────────────────────── -->
+    <div class="hc-filter-bar">
+      <button class="hc-filter-btn active" onclick="hcFilterRole('all',this)">All Topics</button>
+      <button class="hc-filter-btn" onclick="hcFilterRole('employee',this)">👤 Employee</button>
+      <button class="hc-filter-btn" onclick="hcFilterRole('admin',this)">🛡️ Admin</button>
+      <button class="hc-filter-btn" onclick="hcFilterRole('super_admin',this)">⚡ Super Admin</button>
+    </div>
+
+    <!-- ══════════════════════════════════════════════════════
+         TWO-COLUMN: TOC + ARTICLES
+         ══════════════════════════════════════════════════════ -->
+    <div class="hc-wrap">
+
+      <!-- ── Table of Contents ─────────────────────────── -->
+      <aside class="hc-toc" id="hc-toc" aria-label="Page navigation">
+        <div class="hc-toc-title">On this page</div>
+        <a href="#getting-started" class="toc-link">🚀 Getting Started</a>
+        <a href="#employee-guide"  class="toc-link sub">👤 Employee Guide</a>
+        <a href="#admin-guide"     class="toc-link sub">🛡️ Admin Guide</a>
+        <a href="#super-admin-guide" class="toc-link sub">⚡ Super Admin</a>
+        <a href="#expense-workflow" class="toc-link sub">🔄 Expense Workflow</a>
+        <a href="#approval-system"  class="toc-link sub">✅ Approval System</a>
+        <a href="#realtime-updates" class="toc-link sub">⚡ Realtime Updates</a>
+        <a href="#pwa-mobile"       class="toc-link sub">📱 PWA / Mobile App</a>
+        <a href="#faq"              class="toc-link sub">❓ FAQ</a>
+      </aside>
+
+      <!-- ── Articles ──────────────────────────────────── -->
+      <div class="hc-articles" id="hc-articles">
+
+        <!-- ══════════════════════════════════════════════
+             1. GETTING STARTED
+             ══════════════════════════════════════════════ -->
+        <section id="getting-started" class="hc-section open" data-roles="all">
+          <div class="hc-section-hdr" onclick="hcToggle(this)">
+            <div class="hc-sec-icon" style="background:#eef2ff">🚀</div>
+            <div class="hc-sec-meta">
+              <h2>Getting Started</h2>
+              <p>Overview, user roles, and how to sign in for the first time</p>
+            </div>
+            <div class="hc-chevron"><svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/></svg></div>
+          </div>
+          <div class="hc-sec-body">
+
+            <p class="hc-p">ExpenseTrack is a role-based expense management platform. Employees record daily expenses, Line Managers review and approve them, and Super Admins manage the entire system including user accounts.</p>
+
+            <div class="hc-h3">👥 User Roles at a Glance</div>
+            <table class="hc-table">
+              <thead><tr><th>Role</th><th>Access</th><th>Primary Responsibilities</th></tr></thead>
+              <tbody>
+                <tr>
+                  <td><span class="role-badge emp">Employee</span></td>
+                  <td>Own data only</td>
+                  <td>Submit expenses, attach receipts, track approval status, manage bank details</td>
+                </tr>
+                <tr>
+                  <td><span class="role-badge adm">Admin / Line Manager</span></td>
+                  <td>Team data</td>
+                  <td>Review &amp; approve/reject expenses, export reports, view hierarchy, bulk actions</td>
+                </tr>
+                <tr>
+                  <td><span class="role-badge sup">Super Admin</span></td>
+                  <td>All data + system</td>
+                  <td>Everything Admin can do + create/edit/delete users, assign roles, manage line managers</td>
+                </tr>
+              </tbody>
+            </table>
+
+            <div class="hc-h3">🔐 Signing In</div>
+            <p class="hc-p">You can sign in using any of three identifiers — use whichever is easiest:</p>
+            <ul class="hc-ul">
+              <li><strong>Email address</strong> — e.g. <kbd>john@company.com</kbd></li>
+              <li><strong>Employee number</strong> — e.g. <kbd>EMP001</kbd></li>
+              <li><strong>Mobile number</strong> — e.g. <kbd>9876543210</kbd></li>
+            </ul>
+            <div class="callout info">
+              <span class="callout-ico">ℹ️</span>
+              <div><strong>First-time login</strong> — If your account was created by a Super Admin, you will be prompted to set a new personal password on your very first sign-in. Choose something strong and unique.</div>
+            </div>
+
+            <div class="hc-h3">🗺️ Navigation Overview</div>
+            <div class="hc-feat-grid">
+              <div class="hc-feat"><span class="ico">🏠</span><div><strong>Dashboard</strong><span>Home screen with summary stats, monthly chart, and expense history.</span></div></div>
+              <div class="hc-feat"><span class="ico">➕</span><div><strong>Add Expense</strong><span>Daily tracking form — fill details and attach a receipt photo.</span></div></div>
+              <div class="hc-feat"><span class="ico">👤</span><div><strong>My Profile</strong><span>Your employee details, line manager, and bank account information.</span></div></div>
+              <div class="hc-feat"><span class="ico">📅</span><div><strong>Work Plans</strong><span>View and manage work plans assigned to you by your manager.</span></div></div>
+              <div class="hc-feat"><span class="ico">👥</span><div><strong>Manage Users</strong><span>Admin/Super Admin only — view and edit all user accounts.</span></div></div>
+              <div class="hc-feat"><span class="ico">❓</span><div><strong>Help Center</strong><span>This page — documentation and guidance for all features.</span></div></div>
+            </div>
+
+          </div>
+        </section>
+
+        <!-- ══════════════════════════════════════════════
+             2. EMPLOYEE GUIDE
+             ══════════════════════════════════════════════ -->
+        <section id="employee-guide" class="hc-section open" data-roles="employee">
+          <div class="hc-section-hdr" onclick="hcToggle(this)">
+            <div class="hc-sec-icon" style="background:#eff6ff">👤</div>
+            <div class="hc-sec-meta">
+              <h2>Employee Guide</h2>
+              <p>Submit expenses, check status, manage your profile and bank details</p>
+            </div>
+            <span class="role-badge emp">Employee</span>
+            <div class="hc-chevron"><svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/></svg></div>
+          </div>
+          <div class="hc-sec-body">
+
+            <div class="hc-h3">📊 Your Dashboard</div>
+            <p class="hc-p">After signing in you land on your Dashboard. The four summary cards at the top show:</p>
+            <div class="hc-feat-grid">
+              <div class="hc-feat"><span class="ico">⏳</span><div><strong>Pending</strong><span>Submitted expenses still awaiting manager review.</span></div></div>
+              <div class="hc-feat"><span class="ico">✅</span><div><strong>Approved</strong><span>Expenses that have cleared all approval levels.</span></div></div>
+              <div class="hc-feat"><span class="ico">❌</span><div><strong>Rejected</strong><span>Declined expenses — rejection reason visible on the card.</span></div></div>
+              <div class="hc-feat"><span class="ico">💰</span><div><strong>Total Amount</strong><span>Sum of all your approved reimbursable expenses.</span></div></div>
+            </div>
+            <p class="hc-p">Below the cards you will find a bar chart of your monthly spending, followed by a full history table with date and status filters.</p>
+
+            <div class="hc-h3">➕ Adding a Daily Expense — Step by Step</div>
+            <p class="hc-p">Click <strong>Add Expense</strong> in the sidebar to open the Daily Tracking page.</p>
+            <ol class="hc-steps">
+              <li><strong>Select the date</strong><span>Choose the date the expense was incurred. Defaults to today. You can back-date entries.</span></li>
+              <li><strong>Click "+ Add Expense Entry"</strong><span>A form row appears. You can add multiple entries for the same day before saving.</span></li>
+              <li><strong>Choose a Category</strong><span>Select: Travel, Food, Accommodation, Tools, Communication, or Other.</span></li>
+              <li><strong>Enter the Amount (₹)</strong><span>Type the exact amount in Indian Rupees. Decimal values are supported (e.g. 245.50).</span></li>
+              <li><strong>Add a Description (recommended)</strong><span>Briefly explain the expense — e.g. "Taxi to client site, Jaipur". This helps approvers verify the entry.</span></li>
+              <li><strong>Attach a Receipt Photo</strong><span>Tap the camera/file button to attach a JPG, PNG, or PDF of the bill. Strongly recommended for all expenses over ₹100.</span></li>
+              <li><strong>Click "Save Daily Entries"</strong><span>All rows are submitted together. A success confirmation appears and the entries immediately show in your history with <span class="sp pending">Pending</span> status.</span></li>
+            </ol>
+            <div class="callout tip">
+              <span class="callout-ico">💡</span>
+              <div><strong>Multiple entries per day</strong> — You can add as many rows as needed before clicking Save. Useful when you have several receipts from one day (taxi + lunch + hotel).</div>
+            </div>
+            <div class="callout warn">
+              <span class="callout-ico">⚠️</span>
+              <div><strong>Expenses cannot be edited after submission.</strong> Double-check the amount, date, and category before saving. If you notice an error, ask your manager to reject the entry so you can resubmit correctly.</div>
+            </div>
+
+            <div class="hc-h3">🔍 Understanding Expense Statuses</div>
+            <table class="hc-table">
+              <thead><tr><th>Status</th><th>What it means</th><th>What to do</th></tr></thead>
+              <tbody>
+                <tr><td><span class="sp pending">⏳ Pending</span></td><td>Submitted, waiting for L1 (line manager) review</td><td>No action needed — wait for manager</td></tr>
+                <tr><td><span class="sp l1">🔵 L1 Approved</span></td><td>Line manager approved; waiting for L2 (admin) final sign-off</td><td>Wait for admin final review</td></tr>
+                <tr><td><span class="sp approved">✅ Approved</span></td><td>Fully approved by both levels — reimbursement in process</td><td>Nothing required</td></tr>
+                <tr><td><span class="sp rejected">❌ Rejected</span></td><td>Declined — rejection reason shown on the expense card</td><td>Read the comment; contact your manager for clarification</td></tr>
+              </tbody>
+            </table>
+
+            <div class="hc-h3">🧾 Viewing a Receipt</div>
+            <p class="hc-p">Each expense entry with a receipt shows a small thumbnail in the history table. Click the thumbnail or the <strong>"View Receipt"</strong> button to open the full image in a new tab.</p>
+            <div class="callout info">
+              <span class="callout-ico">💡</span>
+              <div>If the receipt does not open, your browser may be blocking pop-ups. Look for the blocked-popup icon in the address bar and choose <strong>"Always allow pop-ups from this site"</strong>.</div>
+            </div>
+
+            <div class="hc-h3">👤 My Profile &amp; Bank Details</div>
+            <p class="hc-p">Navigate to <strong>My Profile</strong> to view your employee information and save bank details for reimbursement:</p>
+            <ul class="hc-ul">
+              <li>Your Employee ID, department, site, and assigned line manager</li>
+              <li>Your line manager's name and direct phone number (tap to call)</li>
+              <li>Bank Account Holder Name, Bank Name, IFSC Code, Account Number</li>
+            </ul>
+            <div class="callout warn">
+              <span class="callout-ico">🏦</span>
+              <div><strong>Complete your bank details before submitting expenses.</strong> Reimbursements are processed to the account saved in your profile. Incorrect details may cause payment delays.</div>
+            </div>
+
+            <div class="hc-h3">📅 Work Plans</div>
+            <p class="hc-p">The <strong>Work Plans</strong> section shows plans assigned to you by your manager — including work location, objectives, travel dates, and current plan status. You cannot create or edit plans; contact your manager to update them.</p>
+
+          </div>
+        </section>
+
+        <!-- ══════════════════════════════════════════════
+             3. ADMIN GUIDE
+             ══════════════════════════════════════════════ -->
+        <section id="admin-guide" class="hc-section open" data-roles="admin super_admin">
+          <div class="hc-section-hdr" onclick="hcToggle(this)">
+            <div class="hc-sec-icon" style="background:#f5f3ff">🛡️</div>
+            <div class="hc-sec-meta">
+              <h2>Line Manager / Admin Guide</h2>
+              <p>Review expenses, approve or reject, browse the hierarchy, and export reports</p>
+            </div>
+            <span class="role-badge adm">Admin</span>
+            <div class="hc-chevron"><svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/></svg></div>
+          </div>
+          <div class="hc-sec-body">
+
+            <div class="hc-h3">📊 Admin Dashboard</div>
+            <p class="hc-p">The Admin dashboard provides a real-time overview of all team expenses. Summary cards at the top show:</p>
+            <ul class="hc-ul">
+              <li><strong>Total Submitted</strong> — all expenses ever recorded across the team</li>
+              <li><strong>Pending Review</strong> — expenses currently waiting for your action</li>
+              <li><strong>Approved This Month</strong> — total approved reimbursable amount for the current month</li>
+              <li><strong>Total Rejected</strong> — count of declined entries</li>
+            </ul>
+
+            <div class="hc-h3">🏗️ Hierarchy View — Department → Manager → Employee</div>
+            <p class="hc-p">The <strong>Employee History</strong> section uses a collapsible three-level tree to organise all expenses logically:</p>
+            <div class="hc-feat-grid">
+              <div class="hc-feat"><span class="ico">🏢</span><div><strong>Level 1 — Department</strong><span>Colour-coded badge per department. Shows total expenses, pending count, and total amount.</span></div></div>
+              <div class="hc-feat"><span class="ico">👔</span><div><strong>Level 2 — Manager</strong><span>Manager's employee count, pending count, and approved total under that manager.</span></div></div>
+              <div class="hc-feat"><span class="ico">👤</span><div><strong>Level 3 — Employee</strong><span>Employee name, emp code, status badge counts (pending / approved / rejected), and total amount.</span></div></div>
+              <div class="hc-feat"><span class="ico">📋</span><div><strong>Expense Detail</strong><span>Click an employee row to expand their expenses, grouped by billing cycle (15th–14th monthly).</span></div></div>
+            </div>
+            <p class="hc-p"><strong>Navigating the hierarchy:</strong></p>
+            <ul class="hc-ul">
+              <li>Click a <strong>Department row</strong> → expands / collapses all managers in that department</li>
+              <li>Click a <strong>Manager row</strong> → expands / collapses employees under that manager</li>
+              <li>Click an <strong>Employee row</strong> → opens their full expense detail panel</li>
+              <li><strong>Expand All</strong> and <strong>Collapse All</strong> buttons affect every level simultaneously</li>
+              <li>Use the <strong>Hierarchy / List</strong> toggle in the filter bar to switch between the tree view and the classic flat table view</li>
+            </ul>
+            <div class="callout info">
+              <span class="callout-ico">🔍</span>
+              <div>When a search or filter is active, matching nodes <strong>automatically expand</strong> so results are immediately visible — no manual clicking needed.</div>
+            </div>
+
+            <div class="hc-h3">✅ Reviewing and Approving Expenses</div>
+            <ol class="hc-steps">
+              <li><strong>Open an employee's expense detail</strong><span>In Hierarchy view, click the employee's row. In List view, expand the expense card for that employee.</span></li>
+              <li><strong>Inspect each entry</strong><span>Check category, amount, date, description, and receipt thumbnail. Click <em>View Receipt</em> to open the bill in full.</span></li>
+              <li><strong>Add a comment (optional but recommended)</strong><span>Type a note in the comment field — recorded permanently in the audit trail and visible to the employee.</span></li>
+              <li><strong>Click Approve or Reject</strong><span>Approved entries move to <span class="sp l1">L1 Approved</span> (awaiting final L2 sign-off). Rejected entries are returned to the employee with your comment.</span></li>
+            </ol>
+            <div class="callout tip">
+              <span class="callout-ico">⚡</span>
+              <div><strong>Bulk Approval</strong> — Select multiple expense checkboxes and use the floating <strong>Approve Selected</strong> / <strong>Reject Selected</strong> bar at the bottom of the screen to process many at once.</div>
+            </div>
+
+            <div class="hc-h3">🔎 Filters &amp; Search</div>
+            <p class="hc-p">The sticky filter bar at the top of Employee History offers:</p>
+            <ul class="hc-ul">
+              <li><strong>Search</strong> — type any name or employee code to filter the hierarchy instantly</li>
+              <li><strong>Department</strong> dropdown — narrow the view to one department</li>
+              <li><strong>Manager</strong> dropdown — show only employees under a specific manager</li>
+              <li><strong>Date range</strong> — filter by submission date (from / to)</li>
+              <li><strong>Status</strong> — show only Pending, Approved, or Rejected entries</li>
+            </ul>
+
+            <div class="hc-h3">📥 Exporting Reports</div>
+            <p class="hc-p">Click the <strong>Export</strong> dropdown in the filter bar to download data:</p>
+            <ul class="hc-ul">
+              <li><strong>Export Excel (.xlsx)</strong> — fully formatted spreadsheet, sorted oldest → newest by date</li>
+              <li><strong>Export CSV</strong> — plain comma-separated file compatible with any spreadsheet tool</li>
+            </ul>
+            <p class="hc-p">Exports include: Date, Employee Name, Emp Code, Department, Category, Amount (₹), Status, Submitted At, L1 Approved Date, L2 Approved Date, Notes, and Receipt URL.</p>
+            <div class="callout tip">
+              <span class="callout-ico">💡</span>
+              <div>Apply filters <em>before</em> exporting to download only the data you need — e.g. one department's expenses for the current billing cycle.</div>
+            </div>
+
+          </div>
+        </section>
+
+        <!-- ══════════════════════════════════════════════
+             4. SUPER ADMIN GUIDE
+             ══════════════════════════════════════════════ -->
+        <section id="super-admin-guide" class="hc-section open" data-roles="super_admin">
+          <div class="hc-section-hdr" onclick="hcToggle(this)">
+            <div class="hc-sec-icon" style="background:#fffbeb">⚡</div>
+            <div class="hc-sec-meta">
+              <h2>Super Admin Guide</h2>
+              <p>Create and manage users, assign roles, and control the whole system</p>
+            </div>
+            <span class="role-badge sup">Super Admin</span>
+            <div class="hc-chevron"><svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/></svg></div>
+          </div>
+          <div class="hc-sec-body">
+
+            <div class="hc-h3">🌐 Super Admin Capabilities</div>
+            <p class="hc-p">A Super Admin has all Admin capabilities plus:</p>
+            <div class="hc-feat-grid">
+              <div class="hc-feat"><span class="ico">➕</span><div><strong>Create Users</strong><span>Add new employee, admin, or super_admin accounts with full profile details.</span></div></div>
+              <div class="hc-feat"><span class="ico">✏️</span><div><strong>Edit Any User</strong><span>Update name, email, department, role, phone, or site for any account.</span></div></div>
+              <div class="hc-feat"><span class="ico">🔑</span><div><strong>Reset Passwords</strong><span>Set a new temporary password for any user; they will be asked to change it on next login.</span></div></div>
+              <div class="hc-feat"><span class="ico">🗑️</span><div><strong>Delete Users</strong><span>Permanently remove an account from both authentication and the database.</span></div></div>
+            </div>
+
+            <div class="hc-h3">➕ Creating a New User</div>
+            <p class="hc-p">Navigate to <strong>Create User</strong> in the sidebar and fill in the form:</p>
+            <table class="hc-table">
+              <thead><tr><th>Field</th><th>Required</th><th>Notes</th></tr></thead>
+              <tbody>
+                <tr><td>Full Name</td><td>✅ Yes</td><td>Employee's legal name as on company records</td></tr>
+                <tr><td>Email Address</td><td>✅ Yes</td><td>Must be unique — used as the primary login identifier</td></tr>
+                <tr><td>Employee No.</td><td>✅ Yes</td><td>Unique code, e.g. <kbd>EMP042</kbd> — used as alternate login</td></tr>
+                <tr><td>Mobile Number</td><td>No</td><td>Optional alternate login; also shown on Profile page</td></tr>
+                <tr><td>Department</td><td>✅ Yes</td><td>Select from the dropdown — determines line manager assignment</td></tr>
+                <tr><td>Site Name</td><td>No</td><td>Office or project site location</td></tr>
+                <tr><td>Role</td><td>✅ Yes</td><td>employee / admin / super_admin</td></tr>
+                <tr><td>Initial Password</td><td>✅ Yes</td><td>Temporary — user is forced to change on first login</td></tr>
+              </tbody>
+            </table>
+            <div class="callout info">
+              <span class="callout-ico">🔑</span>
+              <div><strong>Force password change</strong> — All new accounts are automatically flagged to require a password change on first sign-in. You only need to set a temporary password to share with the user.</div>
+            </div>
+
+            <div class="hc-h3">✏️ Editing a User</div>
+            <ol class="hc-steps">
+              <li><strong>Go to Manage Users</strong><span>Click "Manage Users" in the sidebar. All accounts appear as cards in a grid.</span></li>
+              <li><strong>Click the user's card</strong><span>A detail modal opens showing all editable fields.</span></li>
+              <li><strong>Edit fields and save</strong><span>Click <strong>Save Changes</strong>. The profile updates immediately.</span></li>
+            </ol>
+
+            <div class="hc-h3">🔑 Resetting a Password</div>
+            <p class="hc-p">In the user detail modal, enter a new temporary password in the <strong>New Password</strong> field and click <strong>Update Password</strong>. The user will be required to change it again on their next login.</p>
+
+            <div class="hc-h3">🗑️ Deleting a User</div>
+            <div class="callout warn">
+              <span class="callout-ico">⚠️</span>
+              <div><strong>This action is permanent and cannot be undone.</strong> The user's login credentials are removed from authentication and their profile is deleted from the database. Their historical expense records are retained (anonymised) for audit purposes.</div>
+            </div>
+            <ol class="hc-steps">
+              <li><strong>Open the user's detail modal</strong><span>Click their card in Manage Users.</span></li>
+              <li><strong>Click "🗑️ Delete User"</strong><span>A red confirmation dialog appears with the user's name and a warning message.</span></li>
+              <li><strong>Confirm</strong><span>Click <strong>"Yes, Delete User"</strong>. The account is removed immediately. The card disappears from the grid.</span></li>
+            </ol>
+            <div class="callout warn">
+              <span class="callout-ico">🚫</span>
+              <div>You <strong>cannot delete your own account.</strong> The delete button is hidden when viewing your own user card to prevent accidental self-lockout.</div>
+            </div>
+
+          </div>
+        </section>
+
+        <!-- ══════════════════════════════════════════════
+             5. EXPENSE WORKFLOW
+             ══════════════════════════════════════════════ -->
+        <section id="expense-workflow" class="hc-section open" data-roles="all">
+          <div class="hc-section-hdr" onclick="hcToggle(this)">
+            <div class="hc-sec-icon" style="background:#f0fdf4">🔄</div>
+            <div class="hc-sec-meta">
+              <h2>Expense Workflow</h2>
+              <p>How an expense travels from submission to final reimbursement approval</p>
+            </div>
+            <div class="hc-chevron"><svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/></svg></div>
+          </div>
+          <div class="hc-sec-body">
+
+            <!-- Workflow diagram -->
+            <div class="hc-flow" role="img" aria-label="Expense approval flow">
+              <div class="hc-flow-step s1">
+                <div class="hc-flow-circle">📝</div>
+                <div class="hc-flow-lbl">Employee<br>Submits</div>
+                <div class="hc-flow-sub">Pending</div>
+              </div>
+              <div class="hc-flow-arr">→</div>
+              <div class="hc-flow-step s2">
+                <div class="hc-flow-circle">👔</div>
+                <div class="hc-flow-lbl">Line Manager<br>Reviews (L1)</div>
+                <div class="hc-flow-sub">L1 Review</div>
+              </div>
+              <div class="hc-flow-arr">→</div>
+              <div class="hc-flow-step s3">
+                <div class="hc-flow-circle">🔵</div>
+                <div class="hc-flow-lbl">L1 Approved<br>or Rejected</div>
+                <div class="hc-flow-sub">L1 Done</div>
+              </div>
+              <div class="hc-flow-arr">→</div>
+              <div class="hc-flow-step s4">
+                <div class="hc-flow-circle">🛡️</div>
+                <div class="hc-flow-lbl">Admin Final<br>Review (L2)</div>
+                <div class="hc-flow-sub">L2 Review</div>
+              </div>
+              <div class="hc-flow-arr">→</div>
+              <div class="hc-flow-step s5">
+                <div class="hc-flow-circle">🎉</div>
+                <div class="hc-flow-lbl">Fully<br>Approved</div>
+                <div class="hc-flow-sub">Completed</div>
+              </div>
+            </div>
+
+            <table class="hc-table">
+              <thead><tr><th>Stage</th><th>Status</th><th>Responsible</th><th>What Happens</th></tr></thead>
+              <tbody>
+                <tr>
+                  <td>1 · Submitted</td>
+                  <td><span class="sp pending">Pending</span></td>
+                  <td>—</td>
+                  <td>Expense recorded. Visible to employee and all admins in real time.</td>
+                </tr>
+                <tr>
+                  <td>2 · L1 Review</td>
+                  <td><span class="sp pending">Pending</span></td>
+                  <td>Line Manager / Admin</td>
+                  <td>Manager verifies amount, category, receipt, and policy compliance. Approves or rejects with an optional comment.</td>
+                </tr>
+                <tr>
+                  <td>3 · L1 Approved</td>
+                  <td><span class="sp l1">L1 Approved</span></td>
+                  <td>—</td>
+                  <td>First level cleared. Expense automatically enters the L2 review queue.</td>
+                </tr>
+                <tr>
+                  <td>4 · L2 Review</td>
+                  <td><span class="sp l1">L1 Approved</span></td>
+                  <td>Admin / Super Admin</td>
+                  <td>Senior approver performs a final check for budget alignment and completeness.</td>
+                </tr>
+                <tr>
+                  <td>5 · Fully Approved</td>
+                  <td><span class="sp approved">Approved</span></td>
+                  <td>—</td>
+                  <td>Both levels cleared. Expense confirmed for reimbursement processing.</td>
+                </tr>
+                <tr>
+                  <td>Rejected (any stage)</td>
+                  <td><span class="sp rejected">Rejected</span></td>
+                  <td>—</td>
+                  <td>Expense declined. Rejection reason shown to employee. No further review required.</td>
+                </tr>
+              </tbody>
+            </table>
+
+            <div class="callout info">
+              <span class="callout-ico">📅</span>
+              <div><strong>Billing Cycles</strong> — In the admin hierarchy view, expenses are grouped into billing cycles that run <strong>15th to 14th</strong> of each month. This makes it easy to batch-approve a full period's submissions in one action.</div>
+            </div>
+
+          </div>
+        </section>
+
+        <!-- ══════════════════════════════════════════════
+             6. APPROVAL SYSTEM
+             ══════════════════════════════════════════════ -->
+        <section id="approval-system" class="hc-section open" data-roles="admin super_admin">
+          <div class="hc-section-hdr" onclick="hcToggle(this)">
+            <div class="hc-sec-icon" style="background:#eff6ff">✅</div>
+            <div class="hc-sec-meta">
+              <h2>Approval System</h2>
+              <p>Two-level review, comments, audit trail, and bulk actions explained</p>
+            </div>
+            <span class="role-badge adm">Admin</span>
+            <div class="hc-chevron"><svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/></svg></div>
+          </div>
+          <div class="hc-sec-body">
+
+            <div class="hc-h3">Two-Level Approval — Why it Exists</div>
+            <p class="hc-p">ExpenseTrack enforces a mandatory two-level approval process to ensure accountability and prevent errors:</p>
+            <div class="hc-feat-grid">
+              <div class="hc-feat">
+                <span class="ico">1️⃣</span>
+                <div>
+                  <strong>L1 — Line Manager</strong>
+                  <span>The employee's direct manager performs the first review. They verify the expense is valid, properly documented, and within team budget guidelines.</span>
+                </div>
+              </div>
+              <div class="hc-feat">
+                <span class="ico">2️⃣</span>
+                <div>
+                  <strong>L2 — Admin / Super Admin</strong>
+                  <span>A senior approver performs the final check. This provides a second set of eyes, ensures cross-team consistency, and protects against errors before reimbursement.</span>
+                </div>
+              </div>
+            </div>
+
+            <div class="hc-h3">💬 Approval Comments</div>
+            <p class="hc-p">Every approve or reject action includes an optional comment field. Use comments to:</p>
+            <ul class="hc-ul">
+              <li>Explain a rejection — e.g. <em>"Receipt image is blurry, please resubmit with a clearer photo"</em></li>
+              <li>Set expectations — e.g. <em>"Approved this time, but please keep meal expenses under ₹400"</em></li>
+              <li>Acknowledge context — e.g. <em>"Emergency travel approved by director"</em></li>
+            </ul>
+            <p class="hc-p">Comments are permanent and visible to both the employee and all approvers in the audit trail.</p>
+
+            <div class="hc-h3">⚡ Bulk Actions</div>
+            <ol class="hc-steps">
+              <li><strong>Enable selection mode</strong><span>Click the checkbox on any expense card or table row. A floating action bar appears at the bottom of the screen.</span></li>
+              <li><strong>Select more entries</strong><span>Continue checking more expenses. The counter in the action bar updates as you select.</span></li>
+              <li><strong>Approve or Reject all selected</strong><span>Click <strong>Approve Selected</strong> or <strong>Reject Selected</strong>. All checked entries update simultaneously.</span></li>
+            </ol>
+            <div class="callout warn">
+              <span class="callout-ico">⚠️</span>
+              <div>Bulk actions apply the same status to all selected items without per-item comments. Use individual approval for entries that require a specific explanation or policy note.</div>
+            </div>
+
+            <div class="hc-h3">📋 Audit Trail</div>
+            <p class="hc-p">Every approval or rejection is permanently recorded with:</p>
+            <ul class="hc-ul">
+              <li>Exact timestamp of the action (date and time in IST)</li>
+              <li>Approver name (L1 or L2 level)</li>
+              <li>Comment text (if provided)</li>
+            </ul>
+            <p class="hc-p">The audit trail is visible in each expense's detail panel and is included in all Excel / CSV exports.</p>
+
+          </div>
+        </section>
+
+        <!-- ══════════════════════════════════════════════
+             7. REALTIME UPDATES
+             ══════════════════════════════════════════════ -->
+        <section id="realtime-updates" class="hc-section open" data-roles="all">
+          <div class="hc-section-hdr" onclick="hcToggle(this)">
+            <div class="hc-sec-icon" style="background:#f0fdf4">⚡</div>
+            <div class="hc-sec-meta">
+              <h2>Realtime Updates</h2>
+              <p>How the dashboard stays live without manual page refreshes</p>
+            </div>
+            <div class="hc-chevron"><svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/></svg></div>
+          </div>
+          <div class="hc-sec-body">
+
+            <p class="hc-p">ExpenseTrack uses <strong>Supabase Realtime</strong> — a WebSocket push channel — so dashboards update automatically the moment data changes anywhere in the system. No manual refreshes needed during a working session.</p>
+
+            <div class="hc-h3">What triggers a live update?</div>
+            <div class="hc-feat-grid">
+              <div class="hc-feat"><span class="ico">📝</span><div><strong>New expense submitted</strong><span>All admin dashboards immediately show the new entry. Employee's own counter increments.</span></div></div>
+              <div class="hc-feat"><span class="ico">✅</span><div><strong>Expense approved or rejected</strong><span>The employee's card status updates within seconds. Admin pending counters refresh too.</span></div></div>
+              <div class="hc-feat"><span class="ico">💬</span><div><strong>Comment added</strong><span>The comment appears in the expense detail panel immediately after the approver saves it.</span></div></div>
+              <div class="hc-feat"><span class="ico">👤</span><div><strong>Profile updated</strong><span>Department or role changes take effect on the next page navigation by that user.</span></div></div>
+            </div>
+
+            <div class="hc-h3">📶 Offline Behaviour</div>
+            <p class="hc-p">If the internet connection is lost:</p>
+            <ul class="hc-ul">
+              <li>Live updates pause — the dashboard freezes at the last known state</li>
+              <li>Previously loaded data stays visible via the service worker cache</li>
+              <li>Updates resume automatically once the connection is restored</li>
+            </ul>
+
+            <div class="hc-h3">🔄 Manual Refresh Options</div>
+            <ul class="hc-ul">
+              <li>Press <kbd>F5</kbd> or <kbd>Ctrl + R</kbd> (Windows) / <kbd>Cmd + R</kbd> (Mac) to reload</li>
+              <li>Pull-to-refresh on mobile (when the app is installed as a PWA)</li>
+              <li>The app also auto-reloads data when you switch browser tabs back to it</li>
+            </ul>
+            <div class="callout info">
+              <span class="callout-ico">ℹ️</span>
+              <div>The realtime connection is active on the <strong>Dashboard</strong> page only. Other pages (Add Expense, Profile, Help, etc.) load fresh data on each navigation but do not maintain a live socket while open.</div>
+            </div>
+
+          </div>
+        </section>
+
+        <!-- ══════════════════════════════════════════════
+             8. PWA / MOBILE APP
+             ══════════════════════════════════════════════ -->
+        <section id="pwa-mobile" class="hc-section open" data-roles="all">
+          <div class="hc-section-hdr" onclick="hcToggle(this)">
+            <div class="hc-sec-icon" style="background:#fff7ed">📱</div>
+            <div class="hc-sec-meta">
+              <h2>PWA / Mobile App</h2>
+              <p>Install ExpenseTrack as a native-like app on any device — no app store required</p>
+            </div>
+            <div class="hc-chevron"><svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/></svg></div>
+          </div>
+          <div class="hc-sec-body">
+
+            <p class="hc-p">ExpenseTrack is a <strong>Progressive Web App (PWA)</strong>. You can install it on your phone or computer and launch it like any native app — with a home-screen icon, full-screen mode, and offline support — without visiting the Play Store or App Store.</p>
+
+            <div class="hc-platform-tabs">
+              <button class="hc-platform-tab active" onclick="hcPlatform('android',this)">🤖 Android</button>
+              <button class="hc-platform-tab" onclick="hcPlatform('ios',this)">🍎 iPhone / iPad</button>
+              <button class="hc-platform-tab" onclick="hcPlatform('desktop',this)">💻 Desktop</button>
+            </div>
+
+            <!-- Android -->
+            <div id="pwa-android" class="hc-platform-pane active">
+              <ol class="hc-steps">
+                <li><strong>Open Chrome on Android</strong><span>Navigate to <kbd>stockwell-expense.vercel.app</kbd> and sign in to your account.</span></li>
+                <li><strong>Tap the three-dot menu (⋮)</strong><span>Located in the top-right corner of Chrome.</span></li>
+                <li><strong>Tap "Add to Home screen"</strong><span>Chrome shows a preview of the ExpenseTrack icon and name.</span></li>
+                <li><strong>Tap "Add"</strong><span>The icon appears on your home screen. Tap it to launch as a full-screen app with no browser chrome.</span></li>
+              </ol>
+              <div class="callout tip">
+                <span class="callout-ico">💡</span>
+                <div>Many Android devices show an automatic <strong>"Install App"</strong> banner at the bottom of the page. Tap it for a one-tap install without opening the menu.</div>
+              </div>
+            </div>
+
+            <!-- iOS -->
+            <div id="pwa-ios" class="hc-platform-pane">
+              <ol class="hc-steps">
+                <li><strong>Open Safari on iPhone or iPad</strong><span>PWA installation only works in Safari on iOS — not in Chrome or other browsers.</span></li>
+                <li><strong>Navigate to the app</strong><span>Go to <kbd>stockwell-expense.vercel.app</kbd> and sign in.</span></li>
+                <li><strong>Tap the Share button (□↑)</strong><span>Found at the bottom of the screen on iPhone, or at the top on iPad.</span></li>
+                <li><strong>Scroll down and tap "Add to Home Screen"</strong><span>Edit the display name if you wish, then tap <strong>Add</strong> in the top-right corner.</span></li>
+              </ol>
+              <div class="callout info">
+                <span class="callout-ico">🍎</span>
+                <div>On iOS 16.4 and later, you can receive push notifications from the installed app. Tap <strong>Allow</strong> when prompted to stay updated on expense approvals.</div>
+              </div>
+            </div>
+
+            <!-- Desktop -->
+            <div id="pwa-desktop" class="hc-platform-pane">
+              <ol class="hc-steps">
+                <li><strong>Open Chrome or Microsoft Edge</strong><span>Navigate to <kbd>stockwell-expense.vercel.app</kbd> and sign in.</span></li>
+                <li><strong>Look for the install icon (⊕)</strong><span>An install icon appears in the right side of the browser address bar.</span></li>
+                <li><strong>Click the icon and then "Install"</strong><span>A small confirmation dialog appears. Click Install to proceed.</span></li>
+                <li><strong>Launch from Start / Applications</strong><span>ExpenseTrack now opens as a standalone window — find it in your Start menu (Windows) or Applications folder (Mac).</span></li>
+              </ol>
+            </div>
+
+            <div class="hc-h3">📶 Offline Support</div>
+            <p class="hc-p">The service worker caches the app shell (HTML, CSS, JavaScript) so the interface loads instantly even without a network connection. However:</p>
+            <ul class="hc-ul">
+              <li>Expense data requires a live connection — offline shows the last-loaded snapshot only</li>
+              <li>New expenses <strong>cannot</strong> be submitted while offline</li>
+              <li>An offline notice appears if the server cannot be reached</li>
+            </ul>
+
+            <div class="hc-h3">🔔 Automatic App Updates</div>
+            <p class="hc-p">When a new version of ExpenseTrack is deployed:</p>
+            <ul class="hc-ul">
+              <li>An <strong>"Updating to latest version…"</strong> toast slides up at the bottom of the screen</li>
+              <li>The app reloads automatically after ~2 seconds to apply the update</li>
+              <li>No manual action is needed — updates are seamless</li>
+            </ul>
+            <div class="callout info">
+              <span class="callout-ico">🔄</span>
+              <div>The app checks for updates every 30 seconds and whenever you switch back to the tab. If you see stale data, switch away and return — an update may be in progress.</div>
+            </div>
+
+          </div>
+        </section>
+
+        <!-- ══════════════════════════════════════════════
+             9. FAQ
+             ══════════════════════════════════════════════ -->
+        <section id="faq" class="hc-section open" data-roles="all">
+          <div class="hc-section-hdr" onclick="hcToggle(this)">
+            <div class="hc-sec-icon" style="background:#f5f3ff">❓</div>
+            <div class="hc-sec-meta">
+              <h2>Frequently Asked Questions</h2>
+              <p>Quick answers to the most common questions from all user roles</p>
+            </div>
+            <div class="hc-chevron"><svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/></svg></div>
+          </div>
+          <div class="hc-sec-body">
+
+            <details class="hc-faq">
+              <summary>Can I edit or delete an expense after submitting?</summary>
+              <div class="faq-body">No — expenses cannot be edited or deleted by the employee after submission. If you made an error, contact your Line Manager or Admin and ask them to <strong>reject the entry</strong> with a note. You can then resubmit the corrected expense.</div>
+            </details>
+
+            <details class="hc-faq">
+              <summary>What receipt file formats are accepted?</summary>
+              <div class="faq-body">
+                Receipts can be uploaded as:
+                <ul>
+                  <li><strong>Images</strong> — JPG, JPEG, PNG, WebP, HEIC (iPhone photos)</li>
+                  <li><strong>Documents</strong> — PDF</li>
+                </ul>
+                Maximum file size is <strong>10 MB</strong> per receipt. Standard phone photos are well within this limit.
+              </div>
+            </details>
+
+            <details class="hc-faq">
+              <summary>Why can't I see my receipt when I click "View Receipt"?</summary>
+              <div class="faq-body">
+                This is almost always a browser pop-up blocker. To fix it:
+                <ul>
+                  <li>Look for a <strong>pop-up blocked</strong> icon in your browser's address bar</li>
+                  <li>Click it and choose <strong>"Always allow pop-ups from this site"</strong></li>
+                  <li>Click "View Receipt" again — the image will open in a new tab</li>
+                </ul>
+                On mobile, pop-up blockers are rare. If you still cannot see the receipt, try a page refresh.
+              </div>
+            </details>
+
+            <details class="hc-faq">
+              <summary>How long does the approval process take?</summary>
+              <div class="faq-body">Approval timelines depend on your company's internal policy. ExpenseTrack does not enforce a time limit, but sends real-time notifications to approvers when new expenses are submitted. If an expense has been pending for more than 2 business days, contact your Line Manager directly using the phone number on your Profile page.</div>
+            </details>
+
+            <details class="hc-faq">
+              <summary>Who can see my expense entries?</summary>
+              <div class="faq-body">
+                Your expenses are visible to:
+                <ul>
+                  <li><strong>You</strong> — always, on your own Dashboard</li>
+                  <li><strong>Your Line Manager and Admins</strong> — for review and approval purposes</li>
+                  <li><strong>Super Admin</strong> — full system-wide access</li>
+                </ul>
+                Other employees at the same level <strong>cannot</strong> see your expense data.
+              </div>
+            </details>
+
+            <details class="hc-faq">
+              <summary>Can I export my own expense history?</summary>
+              <div class="faq-body">Currently, export functionality is available to Admin and Super Admin roles only. If you need a personal copy of your history, ask your Admin to filter by your employee ID and export the data for you.</div>
+            </details>
+
+            <details class="hc-faq">
+              <summary>How do I change my password?</summary>
+              <div class="faq-body">
+                <ul>
+                  <li>If you were prompted to change your password on first login, follow that flow</li>
+                  <li>To change it at any other time, ask your <strong>Super Admin</strong> to reset your password from the Manage Users page — you will then be required to set a new one on your next login</li>
+                </ul>
+                A self-service password reset feature is planned for a future update.
+              </div>
+            </details>
+
+            <details class="hc-faq">
+              <summary>I see old data even after refreshing. What should I do?</summary>
+              <div class="faq-body">
+                The service worker may be serving a cached version. Try these steps in order:
+                <ul>
+                  <li>Switch to another browser tab and come back — the app checks for updates on tab focus</li>
+                  <li>Hard refresh: <kbd>Ctrl + Shift + R</kbd> (Windows) or <kbd>Cmd + Shift + R</kbd> (Mac)</li>
+                  <li>Clear site cache: Chrome → Settings → Privacy &amp; Security → Clear browsing data → Cached images and files</li>
+                </ul>
+              </div>
+            </details>
+
+            <details class="hc-faq">
+              <summary>The app is slow or won't load on mobile. How do I fix this?</summary>
+              <div class="faq-body">
+                Try these steps:
+                <ul>
+                  <li>Check your internet connection — ExpenseTrack requires a live connection to load expense data</li>
+                  <li>Close and reopen the app (if installed as a PWA on your home screen)</li>
+                  <li>Clear the app cache: long-press the app icon → App Info → Storage → Clear Cache</li>
+                  <li>Reinstall the PWA: remove the home screen icon and re-add it from the browser</li>
+                </ul>
+              </div>
+            </details>
+
+            <details class="hc-faq">
+              <summary>How are billing cycles calculated?</summary>
+              <div class="faq-body">
+                Expenses in the admin hierarchy view are grouped into <strong>billing cycles that run from the 15th to the 14th</strong> of the following month. For example:
+                <ul>
+                  <li>15 Apr – 14 May → "Apr–May Cycle"</li>
+                  <li>15 May – 14 Jun → "May–Jun Cycle"</li>
+                </ul>
+                This grouping makes it easy for admins to batch-approve a complete period's submissions in one go.
+              </div>
+            </details>
+
+            <details class="hc-faq">
+              <summary>What happens to an employee's expenses if their account is deleted?</summary>
+              <div class="faq-body">When a Super Admin deletes a user account, all historical expense records are <strong>retained</strong> in the database for audit purposes. The records are detached from the deleted user profile (shown as "Unknown Employee" in reports) but the financial data is never erased. This ensures complete audit trail integrity.</div>
+            </details>
+
+          </div>
+        </section>
+
+        <!-- No-results placeholder -->
+        <div class="hc-no-results" id="hc-no-results" style="display:none" aria-live="polite">
+          <div class="nri">🔍</div>
+          <p>No articles found for "<strong id="hc-search-term"></strong>"</p>
+          <p style="font-size:.8rem;margin-top:.35rem">Try a different keyword or <a href="#" onclick="return hcClearSearch()">clear the search</a>.</p>
+        </div>
+
+      </div><!-- .hc-articles -->
+    </div><!-- .hc-wrap -->
+
+  </div><!-- .app-main -->
+</div><!-- .app-layout -->
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="app.js"></script>
+<script>
+/* ============================================================
+   Help Center — Interactive JS
+   ============================================================ */
+
+// ── Auth ────────────────────────────────────────────────────
+(async () => {
+  const user = await requireAuth();
+  if (!user) return;
+  const p = await getUserProfile();
+  if (!p) return;
+  populateSidebar(p);
+})();
+
+// ── Section accordion ───────────────────────────────────────
+function hcToggle(hdr) {
+  hdr.closest('.hc-section').classList.toggle('open');
+}
+function hcOpen(id) {
+  const el = document.getElementById(id);
+  if (el) el.classList.add('open');
+}
+
+// ── Quick card navigation ────────────────────────────────────
+document.querySelectorAll('.hc-quick-card').forEach(card => {
+  card.addEventListener('click', e => {
+    e.preventDefault();
+    const target = document.querySelector(card.getAttribute('href'));
+    if (!target) return;
+    target.classList.add('open');
+    target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  });
+});
+
+// ── Platform tabs (PWA section) ─────────────────────────────
+function hcPlatform(name, btn) {
+  document.querySelectorAll('.hc-platform-tab').forEach(b => b.classList.remove('active'));
+  document.querySelectorAll('.hc-platform-pane').forEach(p => p.classList.remove('active'));
+  btn.classList.add('active');
+  document.getElementById('pwa-' + name).classList.add('active');
+}
+
+// ── Role filter ─────────────────────────────────────────────
+function hcFilterRole(role, btn) {
+  document.querySelectorAll('.hc-filter-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  let shown = 0;
+  document.querySelectorAll('.hc-section').forEach(sec => {
+    const roles = (sec.dataset.roles || 'all');
+    const visible = role === 'all' || roles === 'all' || roles.includes(role);
+    sec.style.display = visible ? '' : 'none';
+    if (visible) shown++;
+  });
+  document.getElementById('hc-no-results').style.display = shown === 0 ? 'block' : 'none';
+}
+
+// ── Search ──────────────────────────────────────────────────
+const _srch = document.getElementById('hc-search');
+_srch.addEventListener('input', () => {
+  const q = _srch.value.trim().toLowerCase();
+  if (!q) { hcClearSearch(); return; }
+  document.getElementById('hc-search-term').textContent = _srch.value.trim();
+  let found = 0;
+  document.querySelectorAll('.hc-section').forEach(sec => {
+    const match = sec.textContent.toLowerCase().includes(q);
+    sec.style.display = match ? '' : 'none';
+    if (match) { sec.classList.add('open'); found++; }
+  });
+  document.getElementById('hc-no-results').style.display = found === 0 ? 'block' : 'none';
+  // Reset role filter button to "All"
+  document.querySelectorAll('.hc-filter-btn').forEach(b => b.classList.remove('active'));
+  document.querySelector('.hc-filter-btn').classList.add('active');
+});
+
+function hcClearSearch() {
+  _srch.value = '';
+  document.querySelectorAll('.hc-section').forEach(s => { s.style.display = ''; });
+  document.getElementById('hc-no-results').style.display = 'none';
+  return false;
+}
+
+// ── TOC — active on scroll ──────────────────────────────────
+const tocLinks = document.querySelectorAll('.toc-link');
+const sections = document.querySelectorAll('.hc-section');
+
+const tocObserver = new IntersectionObserver(entries => {
+  entries.forEach(entry => {
+    if (entry.isIntersecting) {
+      const id = entry.target.id;
+      tocLinks.forEach(a => a.classList.toggle('active', a.getAttribute('href') === '#' + id));
+    }
+  });
+}, { rootMargin: '-15% 0px -75% 0px' });
+
+sections.forEach(s => tocObserver.observe(s));
+
+// ── TOC — smooth scroll + open section on click ─────────────
+tocLinks.forEach(a => {
+  a.addEventListener('click', e => {
+    e.preventDefault();
+    const target = document.querySelector(a.getAttribute('href'));
+    if (!target) return;
+    target.classList.add('open');
+    target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  });
+});
+</script>
+
+</body>
+</html>
