@@ -25,6 +25,64 @@ export default async function handler(req, res) {
     const body = req.body || {};
     const { _action, userId } = body;
 
+    // ── Purge All Expense Data (Super Admin only) ─────────────
+    if (_action === 'purge_expenses') {
+      if (profile.role !== 'super_admin')
+        return res.status(403).json({ error: 'Only Super Admin can purge expense data' });
+
+      // 1. Count rows before deletion (for success report)
+      const { count: totalCount } = await supabaseAdmin
+        .from('expenses')
+        .select('*', { count: 'exact', head: true });
+
+      // 2. Collect receipt_url values so we can clean storage after delete
+      const { data: receiptRows } = await supabaseAdmin
+        .from('expenses')
+        .select('receipt_url')
+        .not('receipt_url', 'is', null);
+
+      // 3. Delete ALL rows from expenses table
+      const { error: purgeErr } = await supabaseAdmin
+        .from('expenses')
+        .delete()
+        .not('id', 'is', null);
+
+      if (purgeErr) return res.status(500).json({ error: purgeErr.message });
+
+      // 4. Best-effort: clean up receipt files from storage
+      let storageDeleted = 0;
+      try {
+        if (receiptRows && receiptRows.length > 0) {
+          // Extract the storage path (everything after /receipts/ and before any query string)
+          const paths = [...new Set(
+            receiptRows
+              .map(r => {
+                if (!r.receipt_url) return null;
+                const m = r.receipt_url.match(/\/receipts\/(.+?)(\?|$)/);
+                return m ? decodeURIComponent(m[1]) : null;
+              })
+              .filter(Boolean)
+          )];
+
+          // Delete in batches of 100 (Supabase storage limit per call)
+          for (let i = 0; i < paths.length; i += 100) {
+            try {
+              const { data: removed } = await supabaseAdmin.storage
+                .from('receipts')
+                .remove(paths.slice(i, i + 100));
+              storageDeleted += (removed?.length ?? 0);
+            } catch { /* storage batch failure is non-fatal */ }
+          }
+        }
+      } catch { /* storage cleanup is best-effort — never fail the whole operation */ }
+
+      return res.status(200).json({
+        message: 'All expense data purged successfully',
+        deleted: totalCount ?? 0,
+        storage_files_deleted: storageDeleted,
+      });
+    }
+
     // ── Delete User ───────────────────────────────────────────
     if (_action === 'delete') {
       if (profile.role !== 'super_admin')

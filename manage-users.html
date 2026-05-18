@@ -137,6 +137,44 @@
         </div>
       </div>
 
+      <!-- ── Danger Zone (super_admin only) ───────────────── -->
+      <div id="danger-zone" style="display:none;margin-top:3.5rem">
+        <div style="display:flex;align-items:center;gap:.75rem;margin-bottom:1.25rem;padding-bottom:.875rem;border-bottom:2px solid #fca5a5">
+          <div style="width:36px;height:36px;border-radius:10px;background:#fef2f2;display:flex;align-items:center;justify-content:center;font-size:1.1rem;flex-shrink:0">⚠️</div>
+          <div>
+            <div style="font-size:1rem;font-weight:800;color:#dc2626">Danger Zone</div>
+            <div style="font-size:.78rem;color:var(--text-muted);margin-top:1px">These actions are permanent and cannot be undone. Super Admin access only.</div>
+          </div>
+        </div>
+
+        <!-- Clear expenses card -->
+        <div style="background:var(--surface,#fff);border:1.5px solid #fca5a5;border-radius:14px;padding:1.35rem 1.5rem;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:1.25rem">
+          <div style="flex:1;min-width:220px">
+            <div style="font-weight:800;font-size:.95rem;margin-bottom:.35rem;display:flex;align-items:center;gap:.5rem">
+              🗑️ Clear All Expense Data
+              <span style="background:#fef2f2;color:#dc2626;border-radius:20px;padding:1px 8px;font-size:.68rem;font-weight:700;text-transform:uppercase;letter-spacing:.04em;border:1px solid #fecaca">Irreversible</span>
+            </div>
+            <div style="font-size:.82rem;color:var(--text-muted);line-height:1.6">
+              Permanently removes all expense entries, L1/L2 approval records, remarks, and attached receipt files from storage.<br>
+              <strong style="color:var(--text-1)">User accounts, bank details, departments, and work plans are NOT affected.</strong>
+            </div>
+            <div style="margin-top:.75rem;display:flex;align-items:center;gap:.5rem;font-size:.82rem;color:var(--text-muted)">
+              📊 Current records:
+              <span id="dz-expense-count" style="font-weight:800;color:#dc2626">…</span>
+              expense entries
+              <button onclick="refreshExpenseCount()" title="Refresh count"
+                      style="background:none;border:none;cursor:pointer;color:var(--text-muted);padding:2px;font-size:.9rem;line-height:1" aria-label="Refresh count">↻</button>
+            </div>
+          </div>
+          <button id="dz-purge-btn" onclick="openPurgeModal()"
+                  style="background:#dc2626;color:#fff;border:none;border-radius:10px;padding:.8rem 1.5rem;font-weight:700;font-size:.875rem;cursor:pointer;white-space:nowrap;transition:background .15s,transform .15s;flex-shrink:0"
+                  onmouseover="this.style.background='#b91c1c';this.style.transform='translateY(-1px)'"
+                  onmouseout="this.style.background='#dc2626';this.style.transform=''">
+            🗑️ Clear All Expense Data
+          </button>
+        </div>
+      </div>
+
     </main>
   </div>
 </div>
@@ -349,6 +387,74 @@
   </div>
 </div>
 
+<!-- ── Purge Expenses Confirmation Modal ────────────────── -->
+<div id="purge-modal" class="modal-overlay" style="display:none;z-index:1200"
+     onclick="if(event.target===this)closePurgeModal()">
+  <div class="modal-card" style="max-width:500px;width:93vw" onclick="event.stopPropagation()">
+
+    <div class="modal-header">
+      <div style="display:flex;align-items:center;gap:.875rem">
+        <div style="width:48px;height:48px;border-radius:14px;background:#fef2f2;display:flex;align-items:center;justify-content:center;font-size:1.5rem;flex-shrink:0;border:2px solid #fecaca">🗑️</div>
+        <div>
+          <h3 style="margin:0;color:#dc2626;font-size:1.1rem">Clear All Expense Data</h3>
+          <p style="margin:.2rem 0 0;font-size:.78rem;color:var(--text-muted)">Permanent · Irreversible · Super Admin only</p>
+        </div>
+      </div>
+      <button class="modal-close" onclick="closePurgeModal()">✕</button>
+    </div>
+
+    <div class="modal-body" style="display:flex;flex-direction:column;gap:1rem">
+
+      <!-- What will be deleted -->
+      <div style="background:#fef2f2;border:1.5px solid #fecaca;border-radius:12px;padding:1rem 1.1rem;font-size:.855rem;color:#991b1b;line-height:1.65">
+        <div style="font-weight:800;margin-bottom:.5rem;font-size:.9rem;display:flex;align-items:center;gap:.4rem">
+          <span>⚠️</span> The following data will be permanently deleted:
+        </div>
+        <ul style="margin:.25rem 0;padding-left:1.25rem">
+          <li>All expense entries — every status (pending, approved, rejected)</li>
+          <li>All L1 and L2 approval timestamps, approver names, and remarks</li>
+          <li>All rejection reasons and approval comments</li>
+          <li>All receipt/proof files from the storage bucket</li>
+        </ul>
+        <div style="margin-top:.75rem;padding-top:.75rem;border-top:1px solid #fecaca;font-weight:700;color:#7f1d1d">
+          ✅ NOT deleted: User accounts · Bank details · Departments · Work plans · Site data
+        </div>
+      </div>
+
+      <!-- Record count -->
+      <div style="display:flex;align-items:center;justify-content:space-between;background:var(--bg,#f1f5f9);border-radius:10px;padding:.875rem 1rem;font-size:.875rem">
+        <span style="color:var(--text-2)">Records that will be deleted:</span>
+        <span id="purge-modal-count" style="font-weight:800;font-size:1.05rem;color:#dc2626">…</span>
+      </div>
+
+      <!-- Confirmation input -->
+      <div>
+        <label style="display:block;font-size:.82rem;font-weight:700;color:#dc2626;margin-bottom:.5rem">
+          Type exactly: <code id="purge-phrase" style="background:#fef2f2;padding:2px 8px;border-radius:5px;font-size:.85rem;color:#b91c1c;border:1px solid #fecaca;letter-spacing:.03em">DELETE ALL EXPENSES</code>
+        </label>
+        <input id="purge-confirm-input" class="form-input" type="text"
+               placeholder="DELETE ALL EXPENSES"
+               oninput="checkPurgeInput()"
+               autocomplete="off" autocorrect="off" autocapitalize="characters" spellcheck="false"
+               style="border:2px solid #fca5a5;font-family:monospace;font-size:.95rem;letter-spacing:.04em;transition:border-color .2s" />
+        <div id="purge-input-hint" style="margin-top:.4rem;font-size:.75rem;color:var(--text-muted)">
+          ↑ Must match exactly — case sensitive
+        </div>
+      </div>
+
+    </div>
+
+    <div class="modal-footer" style="flex-wrap:wrap;gap:.5rem">
+      <button class="btn btn-secondary" onclick="closePurgeModal()" style="flex:1;min-width:120px">Cancel</button>
+      <button id="purge-confirm-btn" onclick="executePurge()" disabled
+              style="flex:1;min-width:160px;background:#dc2626;color:#fff;border:none;border-radius:10px;font-weight:700;font-size:.875rem;padding:.8rem 1rem;opacity:.4;cursor:not-allowed;transition:opacity .2s,background .15s">
+        🗑️ Delete All Expense Data
+      </button>
+    </div>
+
+  </div>
+</div>
+
 <style>
   .detail-cell { display:flex; flex-direction:column; gap:2px; }
   .detail-label { font-size:.68rem; font-weight:700; text-transform:uppercase; letter-spacing:.04em; color:var(--text-muted); }
@@ -439,7 +545,12 @@
     });
 
     await loadUsers();
-    if (profile.role === 'super_admin') await loadCompanies();
+    if (profile.role === 'super_admin') {
+      await loadCompanies();
+      // Show danger zone and load expense count
+      document.getElementById('danger-zone').style.display = 'block';
+      refreshExpenseCount();
+    }
   })();
 
   // ── Companies ─────────────────────────────────────────────
@@ -801,6 +912,114 @@
       showMessage('User deleted successfully.', 'success');
     } catch (err) {
       showMessage(err.message, 'error');
+    } finally {
+      setLoading(btn, false);
+    }
+  }
+
+  // ── Danger Zone — Expense Count ───────────────────────────
+  async function refreshExpenseCount() {
+    const el = document.getElementById('dz-expense-count');
+    if (el) el.textContent = '…';
+    try {
+      await initSupabase();
+      const { count } = await db
+        .from('expenses')
+        .select('*', { count: 'exact', head: true });
+      if (el) el.textContent = (count ?? 0).toLocaleString();
+    } catch {
+      if (el) el.textContent = '—';
+    }
+  }
+
+  // ── Purge Modal ────────────────────────────────────────────
+  function openPurgeModal() {
+    // Reset input
+    const inp = document.getElementById('purge-confirm-input');
+    const btn = document.getElementById('purge-confirm-btn');
+    inp.value = '';
+    btn.disabled = true;
+    btn.style.opacity = '.4';
+    btn.style.cursor = 'not-allowed';
+    inp.style.borderColor = '#fca5a5';
+
+    // Show count in modal
+    const count = document.getElementById('dz-expense-count')?.textContent || '…';
+    document.getElementById('purge-modal-count').textContent = count;
+
+    document.getElementById('purge-modal').style.display = 'flex';
+    setTimeout(() => inp.focus(), 100);
+  }
+
+  function closePurgeModal() {
+    document.getElementById('purge-modal').style.display = 'none';
+    document.getElementById('purge-confirm-input').value = '';
+    checkPurgeInput(); // reset button
+  }
+
+  function checkPurgeInput() {
+    const val = document.getElementById('purge-confirm-input').value;
+    const btn = document.getElementById('purge-confirm-btn');
+    const inp = document.getElementById('purge-confirm-input');
+    const hint = document.getElementById('purge-input-hint');
+    const PHRASE = 'DELETE ALL EXPENSES';
+    const match = val === PHRASE;
+
+    btn.disabled = !match;
+    btn.style.opacity = match ? '1' : '.4';
+    btn.style.cursor = match ? 'pointer' : 'not-allowed';
+
+    if (val.length === 0) {
+      inp.style.borderColor = '#fca5a5';
+      hint.style.color = 'var(--text-muted)';
+      hint.textContent = '↑ Must match exactly — case sensitive';
+    } else if (match) {
+      inp.style.borderColor = '#22c55e';
+      hint.style.color = '#15803d';
+      hint.textContent = '✓ Confirmed — you may now proceed';
+    } else {
+      // Partial — check if it could still become the phrase
+      const couldMatch = PHRASE.startsWith(val.toUpperCase());
+      inp.style.borderColor = couldMatch ? '#f59e0b' : '#ef4444';
+      hint.style.color = couldMatch ? '#b45309' : '#dc2626';
+      hint.textContent = couldMatch ? 'Keep typing…' : '✗ Incorrect — check capitalisation';
+    }
+  }
+
+  async function executePurge() {
+    const btn = document.getElementById('purge-confirm-btn');
+    if (btn.disabled) return;
+    setLoading(btn, true);
+    try {
+      const { data: { session } } = await db.auth.getSession();
+      const res = await fetch('/api/update-user', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + session.access_token },
+        body: JSON.stringify({ _action: 'purge_expenses' })
+      });
+      const text = await res.text();
+      let data;
+      try { data = JSON.parse(text); } catch { throw new Error(text || 'Server error'); }
+      if (!res.ok) throw new Error(data.error || 'Purge failed');
+
+      closePurgeModal();
+
+      const n = data.deleted ?? 0;
+      const s = data.storage_files_deleted ?? 0;
+      const detail = s > 0
+        ? `${n.toLocaleString()} expense records and ${s} receipt file${s !== 1 ? 's' : ''} deleted.`
+        : `${n.toLocaleString()} expense records deleted.`;
+      showMessage(`✅ ${detail} Returning to dashboard…`, 'success');
+
+      // Update counter in the danger zone
+      const dzEl = document.getElementById('dz-expense-count');
+      if (dzEl) dzEl.textContent = '0';
+
+      // Redirect to dashboard so UI shows empty state
+      setTimeout(() => { window.location.href = 'dashboard.html'; }, 2800);
+
+    } catch (err) {
+      showMessage('Purge failed: ' + err.message, 'error');
     } finally {
       setLoading(btn, false);
     }
