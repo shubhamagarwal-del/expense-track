@@ -445,6 +445,7 @@
 
     let allExpensesFetched = [];
     let currentListFilter = 'all';
+    let activeFilteredExpenses = null; // set by month/cycle filter; null = no filter active
 
     let hierarchyMode = true; // hierarchy is the default view
     const hierExpanded = { depts: new Set(), mgrs: new Set(), emps: new Set() };
@@ -460,6 +461,46 @@
       'Unassigned':'#6b7280'
     };
     function deptColor(dept){ return DEPT_COLORS[dept] || '#6366f1'; }
+
+    // Extract the visited site from a pipe-encoded description field
+    function extractSite(e) {
+      const parts = (e.description || '').split('|');
+      const type  = parts[0];
+      if (['TRAVEL','TRAVEL_BUS','TRAVEL_TAXI','TRAVEL_TRAIN','TRAVEL_FLIGHT'].includes(type)) return parts[3] || '';
+      if (type === 'TRAVEL_BIKE') return parts[4] || '';
+      if (['FOOD','REGULAR','ROOM_RENT','BUS','TAXI','BIKE'].includes(type)) return parts[1] || '';
+      if (type === 'OTHER') return parts[2] || '';
+      return e.users?.site_name || '';
+    }
+
+    // Returns the currently visible/filtered expenses — respects ALL active filters
+    function getExportData() {
+      let base = activeFilteredExpenses !== null ? [...activeFilteredExpenses] : [...allExpensesFetched];
+
+      if (currentListFilter === 'rejected') {
+        base = base.filter(e => e.status === 'rejected' || e.status === 'l1_rejected');
+      } else if (currentListFilter !== 'all') {
+        base = base.filter(e => e.status === currentListFilter);
+      }
+
+      const search = (document.getElementById('f-user-search')?.value || '').toLowerCase().trim();
+      if (search) {
+        base = base.filter(e =>
+          (e.users?.email || '').toLowerCase().includes(search) ||
+          (e.users?.name  || '').toLowerCase().includes(search)
+        );
+      }
+
+      const managerFilter = (document.getElementById('f-manager')?.value || '').trim();
+      if (managerFilter) {
+        base = base.filter(e => {
+          const lms = getLM(e.users?.department);
+          return lms && lms.some(m => m.name === managerFilter);
+        });
+      }
+
+      return base;
+    }
 
     async function loadEmployeeExpenses() {
       try {
@@ -1043,26 +1084,38 @@
     }
 
     async function applyCycleFilter() {
-      const monthVal = document.getElementById('f-month').value;
+      const monthVal  = document.getElementById('f-month').value;
       const cyclePart = document.getElementById('f-cycle').value;
-      const search = document.getElementById('f-user-search')?.value.toLowerCase().trim() || '';
+      const search    = document.getElementById('f-user-search')?.value.toLowerCase().trim() || '';
 
       let filtered = allExpensesFetched;
 
       if (monthVal) {
-        const dateObj = new Date(monthVal);
-        const monthName = dateObj.toLocaleString('default', { month: 'long', year: 'numeric' });
-        filtered = filtered.filter(e => e.description && e.description.includes(monthName));
+        const [yr, mo] = monthVal.split('-').map(Number);
+        filtered = filtered.filter(e => {
+          const d = new Date(e.created_at);
+          return d.getFullYear() === yr && (d.getMonth() + 1) === mo;
+        });
       }
 
       if (cyclePart !== 'all') {
-        filtered = filtered.filter(e => e.description && e.description.includes(cyclePart));
+        filtered = filtered.filter(e => {
+          const day = new Date(e.created_at).getDate();
+          if (cyclePart === '1st - 15th') return day >= 1 && day <= 15;
+          if (cyclePart === '16th - End') return day >= 16;
+          return true;
+        });
       }
 
-      if (search) {
-        filtered = filtered.filter(e => e.users?.email.toLowerCase().includes(search));
+      // Save month+cycle filtered base so exports pick it up
+      activeFilteredExpenses = (monthVal || cyclePart !== 'all') ? filtered : null;
 
-        // If we have a specific month, cycle AND a single employee searched, show progress
+      if (search) {
+        filtered = filtered.filter(e =>
+          (e.users?.email || '').toLowerCase().includes(search) ||
+          (e.users?.name  || '').toLowerCase().includes(search)
+        );
+
         if (monthVal && cyclePart !== 'all') {
           showCycleProgress(filtered, monthVal, cyclePart);
         } else {
@@ -1186,6 +1239,7 @@
       if (document.getElementById('f-cycle')) document.getElementById('f-cycle').value = 'all';
       if (document.getElementById('f-user-search')) document.getElementById('f-user-search').value = '';
       if (document.getElementById('f-manager')) document.getElementById('f-manager').value = '';
+      activeFilteredExpenses = null;
       const spin = `<div class="loading-state"><div class="spinner"></div><span>Loading…</span></div>`;
       document.getElementById('admin-table').innerHTML = spin;
       document.getElementById('admin-cards').innerHTML = spin;
@@ -1211,6 +1265,20 @@
     }
 
     // ─── TEMPLATES ──────────────────────────────────────────────
+
+    function receiptCell(e) {
+      const urls = parseReceiptUrls(e.receipt_url);
+      if (!urls.length) return '<span style="color:var(--text-3)">—</span>';
+      const lbl = urls.length > 1 ? `📎 ${urls.length} Receipts` : '📎 View';
+      return `<a class="receipt-link" href="javascript:void(0)" onclick="viewExpenseReceipts('${escHtml(e.receipt_url)}')">${lbl}</a>`;
+    }
+
+    function receiptCardFooter(e, label = 'View Receipt') {
+      const urls = parseReceiptUrls(e.receipt_url);
+      if (!urls.length) return '';
+      const lbl = urls.length > 1 ? `View ${urls.length} Receipts` : label;
+      return `<div class="expense-card-footer"><a class="receipt-link" href="javascript:void(0)" onclick="viewExpenseReceipts('${escHtml(e.receipt_url)}')">📎 ${lbl}</a></div>`;
+    }
 
     function parseDescForDisplay(raw) {
       if (!raw) return '—';
@@ -1310,7 +1378,7 @@
         ${amtChanged ? `<div style="font-size:.68rem;color:#059669;font-weight:600">Adjusted</div>` : ''}
       </td>
       <td>${statusBadge(e.status)}<div style="margin-top:4px">${approvalStepper(e)}</div></td>
-      <td>${e.receipt_url ? `<a class="receipt-link" href="javascript:void(0)" onclick="viewReceipt('${escHtml(e.receipt_url)}')">📎 View</a>` : '<span style="color:var(--text-3)">—</span>'}</td>
+      <td>${receiptCell(e)}</td>
     </tr>`;
     }
 
@@ -1339,7 +1407,7 @@
       </td>
       <td class="td-amount ${isHighAmount ? 'budget-flag' : ''}">${formatCurrency(e.amount)}</td>
       <td>${statusBadge(e.status)}</td>
-      <td>${e.receipt_url ? `<a class="receipt-link" href="javascript:void(0)" onclick="viewReceipt('${escHtml(e.receipt_url)}')">📎 View</a>` : '<span style="color:var(--text-3)">—</span>'}</td>
+      <td>${receiptCell(e)}</td>
       <td>
         ${e.status === 'pending' ? `
           <button onclick="updateExpenseStatus('${e.id}', 'approved')" class="btn btn-primary btn-sm" style="padding: 0.2rem 0.5rem; font-size: 0.75rem; margin-bottom: 0.2rem; display:block; width: 100%;">Approve</button>
@@ -1377,7 +1445,7 @@
       </div>
       <div class="expense-card-desc">${parseDescForDisplay(e.description)}</div>
       ${e.rejection_reason ? `<div class="expense-card-desc" style="color: #dc2626; background: #fee2e2; padding: 0.5rem; border-radius: 4px; margin-top: 0.5rem;"><strong>Rejected:</strong> ${escHtml(e.rejection_reason)}</div>` : ''}
-      ${e.receipt_url ? `<div class="expense-card-footer"><a class="receipt-link" href="javascript:void(0)" onclick="viewReceipt('${escHtml(e.receipt_url)}')">📎 View Receipt</a></div>` : ''}
+      ${receiptCardFooter(e)}
     </div>`;
     }
 
@@ -1424,7 +1492,7 @@
       ${e.rejection_reason ? `<div class="expense-card-desc" style="color: var(--primary); background: var(--bg-2); padding: 0.5rem; border-radius: 4px; margin-top: 0.5rem; border-left: 3px solid var(--primary);"><strong>Admin Comment:</strong> ${escHtml(e.rejection_reason)}</div>` : ''}
       ${e.l1_remark ? `<div class="expense-card-desc" style="background:#eff6ff;padding:.4rem;border-radius:4px;margin-top:.25rem;font-size:.78rem;border-left:3px solid #3b82f6"><strong>L1 Remark:</strong> ${escHtml(e.l1_remark)}</div>` : ''}
       ${e.l2_remark ? `<div class="expense-card-desc" style="background:#f0fdf4;padding:.4rem;border-radius:4px;margin-top:.25rem;font-size:.78rem;border-left:3px solid #22c55e"><strong>L2 Remark:</strong> ${escHtml(e.l2_remark)}</div>` : ''}
-      ${e.receipt_url ? `<div class="expense-card-footer"><a class="receipt-link" href="javascript:void(0)" onclick="viewReceipt('${escHtml(e.receipt_url)}')">📎 View Receipt</a></div>` : ''}
+      ${receiptCardFooter(e)}
       <div class="expense-card-footer" style="display:grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; margin-top: 0.5rem; border-top: 1px solid var(--border); padding-top: 0.5rem;">
         ${showL1Btn ? `<button onclick="openApprovalModal('${e.id}')" class="btn btn-primary btn-sm" style="grid-column:1/-1">Review (L1)</button>` : ''}
         ${showL2Btn ? `<button onclick="openApprovalModal('${e.id}')" class="btn btn-primary btn-sm" style="grid-column:1/-1;background:#7c3aed">Final Approval (L2)</button>` : ''}
@@ -1471,9 +1539,12 @@
 
       const receiptRow  = document.getElementById('am-receipt-row');
       const receiptLink = document.getElementById('am-receipt-link');
-      if (e.receipt_url) {
+      const receiptUrls = parseReceiptUrls(e.receipt_url);
+      if (receiptUrls.length > 0) {
         receiptRow.style.display = 'flex';
-        receiptLink.onclick = () => viewReceipt(e.receipt_url);
+        receiptRow.querySelector('span').textContent = receiptUrls.length > 1 ? `📎 ${receiptUrls.length} Receipts attached` : '📎 Receipt attached';
+        receiptLink.textContent = receiptUrls.length > 1 ? 'View All →' : 'View Receipt →';
+        receiptLink.onclick = () => viewExpenseReceipts(e.receipt_url);
       } else {
         receiptRow.style.display = 'none';
       }
@@ -1733,33 +1804,67 @@
         const u = e.users || {};
         const parts = (e.description || '').split('|');
         const type = parts[0];
-        let d = e.description, s = u.site_name || '—', f = '—', t = '—';
-        if (type === 'TRAVEL') { f = parts[1]; t = parts[2]; s = parts[3]; d = parts[4]; }
-        else if (type === 'OTHER') { d = `(${parts[1]}) ${parts[3]}`; s = parts[2]; }
-        else if (type === 'REGULAR') { s = parts[1]; d = parts[2]; }
+        let d = e.description, f = '', t = '';
+        if (type === 'TRAVEL') { f = parts[1]; t = parts[2]; d = parts[4]; }
+        else if (['TRAVEL_BUS','TRAVEL_TAXI','TRAVEL_TRAIN','TRAVEL_FLIGHT'].includes(type)) { f = parts[1]; t = parts[2]; d = parts[4]; }
+        else if (type === 'TRAVEL_BIKE') { d = parts[5]; }
+        else if (type === 'OTHER') { d = `(${parts[1]}) ${parts[3]}`; }
+        else if (type === 'REGULAR') { d = parts[2]; }
+        else if (type === 'FOOD') { d = parts[2]; }
+        else if (type === 'ROOM_RENT') { d = parts[2]; }
+        const s = extractSite(e) || u.site_name || '';
 
         const date = new Date(e.created_at);
         const cycle = date.getDate() <= 15 ? "1st - 15th" : "16th - End";
         const approvedAmt = e.approved_amount != null ? e.approved_amount : e.amount;
-        const bankAcct = u.bank_account ? '****' + u.bank_account.slice(-4) : '—';
+        const bankAcct = u.bank_account ? '****' + u.bank_account.slice(-4) : '';
 
         return [
           formatDate(e.created_at), cycle, formatDateTime(e.created_at),
-          u.name || '—', u.emp_no || '—', u.phone || '—', u.department || '—',
+          u.name || '', u.emp_no || '', u.phone || '', u.department || '',
           s, e.category, f, t, d, e.amount, approvedAmt, e.status,
-          u.bank_holder || '—', u.bank_name || '—', u.bank_ifsc || '—', bankAcct,
-          e.l1_by_name || '—', e.l1_at ? formatDateTime(e.l1_at) : '—', e.l1_remark || '—',
-          e.l2_by_name || '—', e.l2_at ? formatDateTime(e.l2_at) : '—', e.l2_remark || '—',
+          u.bank_holder || '', u.bank_name || '', u.bank_ifsc || '', bankAcct,
+          e.l1_by_name || '', e.l1_at ? formatDateTime(e.l1_at) : '', e.l1_remark || '',
+          e.l2_by_name || '', e.l2_at ? formatDateTime(e.l2_at) : '', e.l2_remark || '',
           e.rejection_reason || ''
         ];
       });
 
       const ws = XLSX.utils.aoa_to_sheet([headers, ...rows]);
+
+      // ── Site Summary sheet ─────────────────────────────────
+      const siteMap = {};
+      sorted.forEach(e => {
+        if (e.status === 'rejected' || e.status === 'l1_rejected') return;
+        const u = e.users || {};
+        const empKey = (u.name || u.email || e.user_id);
+        const site   = extractSite(e) || u.site_name || 'Unassigned';
+        const amt    = e.approved_amount != null ? +e.approved_amount : +e.amount;
+        if (!siteMap[empKey]) siteMap[empKey] = { name: u.name || '', emp_no: u.emp_no || '', dept: u.department || '', sites: {} };
+        if (!siteMap[empKey].sites[site]) siteMap[empKey].sites[site] = { total: 0, days: new Set(), count: 0 };
+        siteMap[empKey].sites[site].total += amt;
+        siteMap[empKey].sites[site].days.add(new Date(e.created_at).toDateString());
+        siteMap[empKey].sites[site].count++;
+      });
+
+      const siteHeaders = ['Employee', 'Emp No', 'Department', 'Site', 'Visits', 'Days Worked', 'Total Amount'];
+      const siteRows = [];
+      Object.values(siteMap).forEach(emp => {
+        let empTotal = 0;
+        Object.entries(emp.sites).sort(([a],[b]) => a.localeCompare(b)).forEach(([site, data]) => {
+          siteRows.push([emp.name, emp.emp_no, emp.dept, site, data.count, data.days.size, data.total]);
+          empTotal += data.total;
+        });
+        siteRows.push(['', '', '', `TOTAL — ${emp.name}`, '', '', empTotal]);
+        siteRows.push([]);
+      });
+
+      const wsSite = XLSX.utils.aoa_to_sheet([siteHeaders, ...siteRows]);
       const wb = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(wb, ws, "Expenses");
+      XLSX.utils.book_append_sheet(wb, wsSite, "Site Summary");
 
       try {
-        // Generate buffer and create Blob
         const wbout = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
         const blob = new Blob([wbout], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
         triggerDownload(blob, safeFilename.endsWith('.xlsx') ? safeFilename : safeFilename + '.xlsx');
@@ -1771,16 +1876,7 @@
 
     /** Export exactly what's currently in allExpensesFetched (honoring UI filters) */
     function exportToExcel() {
-      const search = document.getElementById('f-user-search')?.value.toLowerCase().trim() || '';
-      let filtered = allExpensesFetched;
-
-      if (currentListFilter !== 'all') {
-        filtered = filtered.filter(e => e.status === currentListFilter);
-      }
-      if (search && (currentProfile.role === 'admin' || currentProfile.role === 'super_admin')) {
-        filtered = filtered.filter(e => e.users?.email.toLowerCase().includes(search));
-      }
-
+      const filtered = getExportData();
       const timestamp = new Date().toISOString().split('T')[0];
       performExcelExport(filtered, `ExpenseReport_Filtered_${timestamp}.xlsx`);
     }
@@ -1805,10 +1901,14 @@
       const monthVal = document.getElementById('f-month').value;
       if (!monthVal) return showMessage('Please select a month first to use Month Export.', 'error');
 
-      const dateObj = new Date(monthVal);
-      const monthName = dateObj.toLocaleString('default', { month: 'long', year: 'numeric' });
-
-      const filtered = allExpensesFetched.filter(e => e.description && e.description.includes(monthName));
+      const [yr, mo] = monthVal.split('-').map(Number);
+      // Start from current export data (respects status/search/manager filters) then narrow to month
+      const base = getExportData();
+      const filtered = base.filter(e => {
+        const d = new Date(e.created_at);
+        return d.getFullYear() === yr && (d.getMonth() + 1) === mo;
+      });
+      const monthName = new Date(monthVal).toLocaleString('default', { month: 'long', year: 'numeric' });
       performExcelExport(filtered, `ExpenseReport_FullMonth_${monthName}.xlsx`);
     }
 
@@ -1835,37 +1935,38 @@
         const u = e.users || {};
         const parts = (e.description || '').split('|');
         const type = parts[0];
-        let d = e.description, s = u.site_name || '—', f = '—', t = '—';
-        if (type === 'TRAVEL') { f = parts[1]; t = parts[2]; s = parts[3]; d = parts[4]; }
-        else if (type === 'OTHER') { d = `(${parts[1]}) ${parts[3]}`; s = parts[2]; }
-        else if (type === 'REGULAR') { s = parts[1]; d = parts[2]; }
+        let d = e.description, f = '', t = '';
+        if (type === 'TRAVEL') { f = parts[1]; t = parts[2]; d = parts[4]; }
+        else if (['TRAVEL_BUS','TRAVEL_TAXI','TRAVEL_TRAIN','TRAVEL_FLIGHT'].includes(type)) { f = parts[1]; t = parts[2]; d = parts[4]; }
+        else if (type === 'TRAVEL_BIKE') { d = parts[5]; }
+        else if (type === 'OTHER') { d = `(${parts[1]}) ${parts[3]}`; }
+        else if (type === 'REGULAR') { d = parts[2]; }
+        else if (type === 'FOOD') { d = parts[2]; }
+        else if (type === 'ROOM_RENT') { d = parts[2]; }
+        const s = extractSite(e) || u.site_name || '';
         const date = new Date(e.created_at);
         const cycle = date.getDate() <= 15 ? "1st - 15th" : "16th - End";
         const approvedAmt = e.approved_amount != null ? e.approved_amount : e.amount;
-        const bankAcct = u.bank_account ? '****' + u.bank_account.slice(-4) : '—';
+        const bankAcct = u.bank_account ? '****' + u.bank_account.slice(-4) : '';
         const clean = str => `"${String(str || '').replace(/"/g, '""')}"`;
         return [
           formatDate(e.created_at), cycle, formatDateTime(e.created_at),
-          u.name || '—', u.emp_no || '—', u.phone || '—', u.department || '—',
+          u.name || '', u.emp_no || '', u.phone || '', u.department || '',
           s, e.category, f, t, d, e.amount, approvedAmt, e.status,
-          u.bank_holder || '—', u.bank_name || '—', u.bank_ifsc || '—', bankAcct,
-          e.l1_by_name || '—', e.l1_at ? formatDateTime(e.l1_at) : '—', e.l1_remark || '—',
-          e.l2_by_name || '—', e.l2_at ? formatDateTime(e.l2_at) : '—', e.l2_remark || '—',
+          u.bank_holder || '', u.bank_name || '', u.bank_ifsc || '', bankAcct,
+          e.l1_by_name || '', e.l1_at ? formatDateTime(e.l1_at) : '', e.l1_remark || '',
+          e.l2_by_name || '', e.l2_at ? formatDateTime(e.l2_at) : '', e.l2_remark || '',
           e.rejection_reason || ''
         ].map(clean).join(',');
       });
 
       const csvContent = headers.join(',') + "\n" + rows.join('\n');
-      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+      const blob = new Blob(['﻿' + csvContent], { type: 'text/csv;charset=utf-8;' });
       triggerDownload(blob, finalFilename);
     }
 
     function exportToCSV() {
-      const search = document.getElementById('f-user-search')?.value.toLowerCase().trim() || '';
-      let filtered = allExpensesFetched;
-      if (currentListFilter !== 'all') filtered = filtered.filter(e => e.status === currentListFilter);
-      if (search) filtered = filtered.filter(e => e.users?.email.toLowerCase().includes(search));
-
+      const filtered = getExportData();
       const ts = new Date().toISOString().split('T')[0];
       performCSVExport(filtered, `ExpenseReport_${ts}.csv`);
     }
@@ -2179,6 +2280,37 @@
              ['Acct No',user.bank_account?'****'+user.bank_account.slice(-4):null]
             ].map(([l,v])=>v?`<div><div style="font-size:.6rem;text-transform:uppercase;font-weight:700;color:#3b82f6;margin-bottom:2px">${l}</div><div style="font-weight:700;color:#1e3a8a">${escHtml(String(v))}</div></div>`:'').filter(Boolean).join('')}
         </div>` : ''}
+        <!-- Site-wise summary -->
+        ${(()=>{
+          const siteData = {};
+          expenses.forEach(e => {
+            if (e.status === 'rejected' || e.status === 'l1_rejected') return;
+            const site = extractSite(e) || user.site_name || 'Unassigned';
+            const amt  = e.approved_amount != null ? +e.approved_amount : +e.amount;
+            if (!siteData[site]) siteData[site] = { total: 0, days: new Set(), count: 0 };
+            siteData[site].total += amt;
+            siteData[site].days.add(new Date(e.created_at).toDateString());
+            siteData[site].count++;
+          });
+          const sites = Object.entries(siteData).sort(([a],[b]) => a.localeCompare(b));
+          if (!sites.length) return '';
+          const overallTotal = sites.reduce((s,[,d]) => s + d.total, 0);
+          return `
+          <div style="border:1px solid #e0e7ff;border-radius:10px;overflow:hidden;margin-bottom:.75rem">
+            <div style="background:linear-gradient(135deg,#4f46e5,#7c3aed);padding:.6rem 1rem;display:flex;justify-content:space-between;align-items:center">
+              <span style="color:#fff;font-weight:700;font-size:.8rem">📍 Site-wise Summary</span>
+              <span style="color:rgba(255,255,255,.85);font-size:.75rem;font-weight:600">Overall: ${formatCurrency(overallTotal)}</span>
+            </div>
+            <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:.5rem;padding:.75rem;background:#f5f3ff">
+              ${sites.map(([site, d]) => `
+              <div style="background:#fff;border:1px solid #c4b5fd;border-radius:8px;padding:.6rem .75rem">
+                <div style="font-size:.72rem;font-weight:700;color:#5b21b6;margin-bottom:.25rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${escHtml(site)}">📍 ${escHtml(site)}</div>
+                <div style="font-size:1rem;font-weight:800;color:#4f46e5">${formatCurrency(d.total)}</div>
+                <div style="font-size:.65rem;color:#7c3aed;margin-top:.15rem">${d.count} entries · ${d.days.size} day${d.days.size!==1?'s':''}</div>
+              </div>`).join('')}
+            </div>
+          </div>`;
+        })()}
         <!-- Cycle groups -->
         ${sorted.map(g => {
           const safeKey = `${user.id}|${g.mY}|${g.cT}`;
@@ -2237,7 +2369,7 @@
                         ${approvalStepper(e)}
                         ${e.l1_by_name?`<div style="font-size:.62rem;color:var(--text-muted);margin-top:.2rem">L1: ${escHtml(e.l1_by_name)}</div>`:''}
                         ${e.l2_by_name?`<div style="font-size:.62rem;color:var(--text-muted)">L2: ${escHtml(e.l2_by_name)}</div>`:''}
-                        ${e.receipt_url?`<a href="javascript:void(0)" onclick="viewReceipt('${escHtml(e.receipt_url)}')" style="font-size:.68rem;color:var(--primary);font-weight:600">📎 Receipt</a>`:''}
+                        ${parseReceiptUrls(e.receipt_url).length?`<a href="javascript:void(0)" onclick="viewExpenseReceipts('${escHtml(e.receipt_url)}')" style="font-size:.68rem;color:var(--primary);font-weight:600">📎 ${parseReceiptUrls(e.receipt_url).length>1?parseReceiptUrls(e.receipt_url).length+' Receipts':'Receipt'}</a>`:''}
                       </td>
                       <td style="padding:.5rem .75rem;text-align:right">
                         <div style="display:flex;gap:.2rem;justify-content:flex-end;flex-wrap:wrap">

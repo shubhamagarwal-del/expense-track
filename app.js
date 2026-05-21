@@ -410,6 +410,42 @@ async function fetchExpenses({ from, to, userId, companyId, limit = 500 } = {}) 
   return data;
 }
 
+/** Parse receipt_url: handles a legacy single URL string and a new JSON array string. */
+function parseReceiptUrls(val) {
+  if (!val) return [];
+  if (typeof val === 'string' && val.trim().startsWith('[')) {
+    try { return JSON.parse(val).filter(Boolean); } catch {}
+  }
+  return [val];
+}
+
+/** Open expense receipt(s). Shows a picker modal when there are multiple. */
+function viewExpenseReceipts(urlOrJson) {
+  const urls = parseReceiptUrls(urlOrJson);
+  if (!urls.length) return;
+  if (urls.length === 1) { viewReceipt(urls[0]); return; }
+
+  let picker = document.getElementById('_rcpt-picker');
+  if (picker) picker.remove();
+  picker = document.createElement('div');
+  picker.id = '_rcpt-picker';
+  picker.style.cssText = 'position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.5);display:flex;align-items:center;justify-content:center;padding:1rem';
+  picker.innerHTML = `
+    <div style="background:#fff;border-radius:16px;padding:1.5rem;width:100%;max-width:320px;box-shadow:0 8px 32px rgba(0,0,0,.25)">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem">
+        <h3 style="margin:0;font-size:1rem;font-weight:700">View Receipts</h3>
+        <button onclick="document.getElementById('_rcpt-picker').remove()" style="background:none;border:none;font-size:1.2rem;cursor:pointer;color:#6b7280">✕</button>
+      </div>
+      ${urls.map((u, i) => `<button data-url="${escHtml(u)}" style="display:block;width:100%;text-align:left;padding:.6rem .8rem;margin-bottom:.4rem;border:1px solid #e5e7eb;border-radius:8px;cursor:pointer;background:#f9fafb;font-size:.85rem">📎 Receipt ${i + 1}</button>`).join('')}
+    </div>`;
+  picker.addEventListener('click', (ev) => {
+    const btn = ev.target.closest('[data-url]');
+    if (btn) { viewReceipt(btn.dataset.url); picker.remove(); return; }
+    if (ev.target === picker) picker.remove();
+  });
+  document.body.appendChild(picker);
+}
+
 /**
  * Open a receipt URL safely.
  * Extracts the storage path from the stored URL and fetches a short-lived

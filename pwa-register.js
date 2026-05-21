@@ -33,6 +33,7 @@
     navigator.serviceWorker.addEventListener('controllerchange', () => {
       if (refreshing) return;
       refreshing = true;
+      if (window.__preventAutoReload) { window.__deferredSwReload = true; return; }
       // Brief toast before reload so the user knows what's happening
       _showUpdateToast(() => window.location.reload());
     });
@@ -42,6 +43,7 @@
     navigator.serviceWorker.addEventListener('message', (event) => {
       if (event.data?.type === 'SW_UPDATED' && !refreshing) {
         refreshing = true;
+        if (window.__preventAutoReload) { window.__deferredSwReload = true; return; }
         _showUpdateToast(() => window.location.reload());
       }
     });

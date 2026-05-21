@@ -649,6 +649,7 @@
     let currentUser = null;
     let expensesForMonth = [];
     let currentDayPendingIds = [];  // IDs of all pending entries loaded when panel was opened
+    const _rowNewFiles = {};        // rowId → File[] for new files picked per row
 
     // Configurable per-category expense limits (null = no limit)
     const CATEGORY_LIMITS = {
@@ -913,6 +914,8 @@
       card.style.background = '#f8fafc';
       card.style.border = '1px solid var(--border)';
 
+      const existingUrls = parseReceiptUrls(data.receipt_url || '');
+
       card.innerHTML = `
       <div class="flex justify-between items-center mb-3">
         <span class="font-bold text-xs" style="color:var(--text-3); text-transform:uppercase; letter-spacing:0.05em">Entry Details</span>
@@ -1006,28 +1009,26 @@
       </div>
 
       <div class="form-group mb-0">
-        <label class="form-label receipt-label">Receipt (Optional)</label>
+        <label class="form-label receipt-label">Receipts (Optional)</label>
 
         <!-- Upload trigger bar -->
         <div class="receipt-upload-box flex items-center gap-2 p-2 rounded-xl" style="position:relative;background:white;border:1px solid var(--border);overflow:hidden;transition:border-color 0.2s;cursor:pointer">
           <svg style="width:14px;height:14px;flex-shrink:0;color:var(--text-3)" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z"/><path stroke-linecap="round" stroke-linejoin="round" d="M15 13a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
-          <span class="file-name flex-1 text-xs truncate" style="color:var(--text-3)">${data.receipt_url ? 'Receipt attached · tap to change' : 'Tap to upload receipt'}</span>
-          <input type="file" class="row-file" accept="image/*,application/pdf" style="position:absolute;inset:0;opacity:0;cursor:pointer" onchange="updateFileLabel(this)">
-          <input type="hidden" class="row-old-url" value="${data.receipt_url || ''}">
+          <span class="file-name flex-1 text-xs truncate" style="color:var(--text-3)">${existingUrls.length > 0 ? existingUrls.length + ' receipt' + (existingUrls.length > 1 ? 's' : '') + ' attached · tap to add more' : 'Tap to upload receipts'}</span>
+          <input type="file" class="row-file" accept="image/*,application/pdf" multiple style="position:absolute;inset:0;opacity:0;cursor:pointer" onchange="updateFileLabel(this)">
+          <input type="hidden" class="row-old-url" value="${escHtml(data.receipt_url || '')}">
         </div>
 
-        <!-- Inline preview (shown once a file is chosen or an existing receipt exists) -->
-        <div class="receipt-preview-area" style="display:${data.receipt_url ? 'flex' : 'none'};margin-top:.5rem;gap:.75rem;align-items:center;background:#f8fafc;border:1px solid var(--border);border-radius:12px;padding:.7rem">
-          <div class="preview-thumb" data-src="${escHtml(data.receipt_url || '')}" style="width:64px;height:64px;border-radius:9px;overflow:hidden;background:#e5e7eb;flex-shrink:0;cursor:zoom-in;display:flex;align-items:center;justify-content:center" onclick="openReceiptLightbox(this)">
-            ${data.receipt_url ? `<img src="${escHtml(data.receipt_url)}" data-stored-url="${escHtml(data.receipt_url)}" style="width:100%;height:100%;object-fit:cover" onerror="loadSignedThumb(this)">` : ''}
-          </div>
-          <div style="flex:1;min-width:0">
-            <div class="preview-fname" style="font-size:.78rem;font-weight:600;color:#374151;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${data.receipt_url ? 'Saved receipt' : ''}</div>
-            <div style="font-size:.72rem;color:#9ca3af;margin-top:.1rem" class="preview-size"></div>
-            <div style="display:flex;gap:.4rem;margin-top:.45rem">
-              <button type="button" class="btn btn-secondary btn-sm" style="padding:.25rem .7rem;font-size:.73rem" onclick="openReceiptLightbox(this.closest('.receipt-preview-area').querySelector('.preview-thumb'))">🔍 View</button>
-              <button type="button" class="btn btn-secondary btn-sm" style="padding:.25rem .7rem;font-size:.73rem;color:#ef4444;border-color:#fca5a5" onclick="clearReceipt(this)">✕ Remove</button>
-            </div>
+        <!-- Multi-receipt thumbnail strip -->
+        <div class="receipt-preview-area" style="display:${existingUrls.length > 0 ? 'block' : 'none'};margin-top:.5rem;background:#f8fafc;border:1px solid var(--border);border-radius:12px;padding:.65rem .7rem">
+          <div class="receipt-thumbs-wrap" style="display:flex;flex-wrap:wrap;gap:.5rem">
+            ${existingUrls.map((url) => `
+              <div class="receipt-thumb-card" data-existing-url="${escHtml(url)}" style="position:relative;width:64px;flex-shrink:0">
+                <div style="width:64px;height:64px;border-radius:9px;overflow:hidden;background:#e5e7eb;cursor:pointer;display:flex;align-items:center;justify-content:center" onclick="viewReceipt('${escHtml(url)}')">
+                  <img src="${escHtml(url)}" data-stored-url="${escHtml(url)}" style="width:100%;height:100%;object-fit:cover" onerror="loadSignedThumb(this)">
+                </div>
+                <button type="button" onclick="removeExistingThumb(this)" style="position:absolute;top:-5px;right:-5px;background:#ef4444;color:white;border:none;border-radius:50%;width:18px;height:18px;font-size:10px;cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0;line-height:1;z-index:1">✕</button>
+              </div>`).join('')}
           </div>
         </div>
       </div>
@@ -1165,61 +1166,109 @@
     }
 
     function updateFileLabel(input) {
-      const box    = input.closest('.receipt-upload-box');
-      const label  = box.querySelector('.file-name');
-      const area   = box.parentElement.querySelector('.receipt-preview-area');
-      const thumb  = area.querySelector('.preview-thumb');
-      const fname  = area.querySelector('.preview-fname');
-      const fsize  = area.querySelector('.preview-size');
+      if (!input.files || !input.files.length) return;
+      const row = input.closest('.expense-row-card');
+      const rowId = row.id;
+      if (!_rowNewFiles[rowId]) _rowNewFiles[rowId] = [];
+      Array.from(input.files).forEach(f => _rowNewFiles[rowId].push(f));
+      input.value = ''; // allow re-picking the same file
+      _reRenderNewThumbs(rowId);
+      _syncReceiptLabel(rowId);
+    }
 
-      if (input.files && input.files[0]) {
-        const file = input.files[0];
-        label.textContent = file.name;
-        label.style.color = 'var(--primary)';
-        fname.textContent = file.name;
-        fsize.textContent = file.size < 1024 * 1024
-          ? (file.size / 1024).toFixed(0) + ' KB'
-          : (file.size / (1024 * 1024)).toFixed(1) + ' MB';
-
-        // Revoke any previous blob URL to avoid memory leak
-        const prev = thumb.querySelector('img');
-        if (prev && prev.src.startsWith('blob:')) URL.revokeObjectURL(prev.src);
-
+    function _reRenderNewThumbs(rowId) {
+      const row = document.getElementById(rowId);
+      const wrap = row.querySelector('.receipt-thumbs-wrap');
+      wrap.querySelectorAll('.new-file-thumb').forEach(el => {
+        const img = el.querySelector('img');
+        if (img?.src.startsWith('blob:')) URL.revokeObjectURL(img.src);
+        el.remove();
+      });
+      (_rowNewFiles[rowId] || []).forEach((file, idx) => {
+        const card = document.createElement('div');
+        card.className = 'receipt-thumb-card new-file-thumb';
+        card.style.cssText = 'position:relative;width:64px;flex-shrink:0';
+        const inner = document.createElement('div');
+        inner.style.cssText = 'width:64px;height:64px;border-radius:9px;overflow:hidden;background:#e5e7eb;display:flex;align-items:center;justify-content:center';
         if (file.type.startsWith('image/')) {
-          const blobUrl = URL.createObjectURL(file);
-          thumb.dataset.src = blobUrl;
-          thumb.innerHTML = `<img src="${blobUrl}" style="width:100%;height:100%;object-fit:cover">`;
-          thumb.style.cursor = 'zoom-in';
+          const blob = URL.createObjectURL(file);
+          inner.style.cursor = 'zoom-in';
+          inner.dataset.blobSrc = blob;
+          inner.innerHTML = `<img src="${blob}" style="width:100%;height:100%;object-fit:cover;pointer-events:none">`;
+          inner.onclick = () => openBlobLightbox(inner.dataset.blobSrc);
         } else {
-          // PDF or other — no image preview
-          thumb.dataset.src = '';
-          thumb.innerHTML = '<span style="font-size:1.8rem">📄</span>';
-          thumb.style.cursor = 'default';
+          inner.innerHTML = '<span style="font-size:1.8rem">📄</span>';
         }
+        const xBtn = document.createElement('button');
+        xBtn.type = 'button';
+        xBtn.textContent = '✕';
+        xBtn.style.cssText = 'position:absolute;top:-5px;right:-5px;background:#ef4444;color:white;border:none;border-radius:50%;width:18px;height:18px;font-size:10px;cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0;line-height:1;z-index:1';
+        const capturedIdx = idx;
+        xBtn.onclick = () => {
+          const img = inner.querySelector('img');
+          if (img?.src.startsWith('blob:')) URL.revokeObjectURL(img.src);
+          _rowNewFiles[rowId].splice(capturedIdx, 1);
+          _reRenderNewThumbs(rowId);
+          _syncReceiptLabel(rowId);
+        };
+        card.appendChild(inner);
+        card.appendChild(xBtn);
+        wrap.appendChild(card);
+      });
+      _checkAreaVisibility(rowId);
+    }
 
-        area.style.display = 'flex';
+    function _checkAreaVisibility(rowId) {
+      const row = document.getElementById(rowId);
+      const area = row.querySelector('.receipt-preview-area');
+      const count = area.querySelectorAll('.receipt-thumb-card').length;
+      area.style.display = count > 0 ? 'block' : 'none';
+    }
+
+    function _syncReceiptLabel(rowId) {
+      const row = document.getElementById(rowId);
+      const label = row.querySelector('.file-name');
+      const existCount = row.querySelectorAll('.receipt-thumb-card[data-existing-url]').length;
+      const newFiles = _rowNewFiles[rowId] || [];
+      if (newFiles.length > 0) {
+        label.textContent = newFiles.length === 1 ? newFiles[0].name : `${newFiles.length} new files selected`;
+        label.style.color = 'var(--primary)';
+      } else if (existCount > 0) {
+        label.textContent = existCount + ' receipt' + (existCount > 1 ? 's' : '') + ' attached · tap to add more';
+        label.style.color = 'var(--text-3)';
+      } else {
+        label.textContent = 'Tap to upload receipts';
+        label.style.color = '';
       }
     }
 
-    function clearReceipt(btn) {
-      const area      = btn.closest('.receipt-preview-area');
-      const box       = area.parentElement.querySelector('.receipt-upload-box');
-      const fileInput = box.querySelector('.row-file');
-      const oldUrl    = box.querySelector('.row-old-url');
-      const label     = box.querySelector('.file-name');
-      const thumb     = area.querySelector('.preview-thumb');
+    function removeExistingThumb(btn) {
+      const card = btn.closest('.receipt-thumb-card[data-existing-url]');
+      const row = btn.closest('.expense-row-card');
+      const url = card.dataset.existingUrl;
+      card.remove();
+      const oldUrlInput = row.querySelector('.row-old-url');
+      const remaining = parseReceiptUrls(oldUrlInput.value).filter(u => u !== url);
+      oldUrlInput.value = remaining.length === 0 ? '' : remaining.length === 1 ? remaining[0] : JSON.stringify(remaining);
+      _checkAreaVisibility(row.id);
+      _syncReceiptLabel(row.id);
+    }
 
-      // Release blob URL
-      const img = thumb.querySelector('img');
-      if (img && img.src.startsWith('blob:')) URL.revokeObjectURL(img.src);
-
-      fileInput.value   = '';
-      oldUrl.value      = '';
-      label.textContent = 'Tap to upload receipt';
-      label.style.color = '';
-      thumb.innerHTML   = '';
-      thumb.dataset.src = '';
-      area.style.display = 'none';
+    function openBlobLightbox(src) {
+      let lb = document.getElementById('_rcpt-lightbox');
+      if (!lb) {
+        lb = document.createElement('div');
+        lb.id = '_rcpt-lightbox';
+        lb.style.cssText = 'position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.92);display:flex;align-items:center;justify-content:center;padding:1.25rem;cursor:zoom-out';
+        lb.innerHTML = `
+          <button type="button" style="position:absolute;top:1rem;right:1rem;width:40px;height:40px;border-radius:50%;background:rgba(255,255,255,.15);border:none;color:white;font-size:1.2rem;cursor:pointer;display:flex;align-items:center;justify-content:center" onclick="document.getElementById('_rcpt-lightbox').style.display='none'">✕</button>
+          <img id="_rcpt-img" style="max-width:100%;max-height:90vh;border-radius:14px;box-shadow:0 30px 60px rgba(0,0,0,.6);object-fit:contain">`;
+        lb.addEventListener('click', e => { if (e.target === lb) lb.style.display = 'none'; });
+        document.addEventListener('keydown', e => { if (e.key === 'Escape') { const el = document.getElementById('_rcpt-lightbox'); if (el) el.style.display = 'none'; } });
+        document.body.appendChild(lb);
+      }
+      document.getElementById('_rcpt-img').src = src;
+      lb.style.display = 'flex';
     }
 
     function openReceiptLightbox(thumbEl) {
@@ -1289,6 +1338,7 @@
     }
 
     function openEntryPanel(dateIso) {
+      window.__preventAutoReload = true;
       const date = new Date(dateIso);
       document.getElementById('entry-subtitle').textContent = date.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
       document.getElementById('entry-date').value = dateIso;
@@ -1325,6 +1375,9 @@
     function closeEntryPanel() {
       document.getElementById('entry-panel').classList.remove('open');
       document.getElementById('drawer-overlay').classList.remove('active');
+      window.__preventAutoReload = false;
+      if (window.__deferredSwReload) { window.__deferredSwReload = false; window.location.reload(); }
+      Object.keys(_rowNewFiles).forEach(k => delete _rowNewFiles[k]);
     }
 
     async function saveDailyEntries(e) {
@@ -1352,27 +1405,30 @@
         const category = row.querySelector('.row-cat').value;
         const site = row.querySelector('.row-site').value.trim();
         const desc = row.querySelector('.row-desc').value.trim();
-        const fileInput = row.querySelector('.row-file');
+        const rowId = row.id;
         const oldUrl = row.querySelector('.row-old-url').value;
-
-        let receipt_url = oldUrl;
-        if (fileInput.files && fileInput.files[0]) {
-          receipt_url = await uploadReceipt(fileInput.files[0], currentUser.id);
-        }
+        const newFiles = _rowNewFiles[rowId] || [];
+        const existingUrlsForRow = parseReceiptUrls(oldUrl);
 
         // Room Rent above limit requires proof
         if (category === 'Room Rent') {
           const roomLimit = CATEGORY_LIMITS['Room Rent'];
-          if (amount > roomLimit) {
-            const hasFile = fileInput.files && fileInput.files[0];
-            const hasOldUrl = oldUrl && oldUrl.trim() !== '';
-            if (!hasFile && !hasOldUrl) {
-              setLoading(btn, false);
-              showMessage('Room Rent above ₹700 requires proof. Please upload a document before saving.', 'error');
-              return;
-            }
+          if (amount > roomLimit && newFiles.length === 0 && existingUrlsForRow.length === 0) {
+            setLoading(btn, false);
+            showMessage('Room Rent above ₹700 requires proof. Please upload a document before saving.', 'error');
+            return;
           }
         }
+
+        const uploadedUrls = [];
+        for (const file of newFiles) {
+          const url = await uploadReceipt(file, currentUser.id);
+          if (url) uploadedUrls.push(url);
+        }
+        const allUrls = [...existingUrlsForRow, ...uploadedUrls];
+        const receipt_url = allUrls.length === 0 ? null
+          : allUrls.length === 1 ? allUrls[0]
+          : JSON.stringify(allUrls);
 
         let finalDescription = '';
         if (category === 'Travel') {
