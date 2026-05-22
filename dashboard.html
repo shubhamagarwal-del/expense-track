@@ -275,18 +275,26 @@
     }
 
     /**
-     * Rebuild the #f-manager dropdown from currently loaded expenses.
-     * Only shows managers whose employees appear in the current data set.
+     * Rebuild the #f-manager dropdown.
+     * Super Admin: shows all managers from DEPT_MANAGERS (not limited to fetched data).
+     * Admin: shows managers whose employees appear in the current data set.
      */
     function populateManagerFilter(expenses) {
       const sel = document.getElementById('f-manager');
       if (!sel) return;
       const current = sel.value;
       const names = new Set();
-      expenses.forEach(e => {
-        const lms = getLM(e.users?.department);
-        if (lms) lms.forEach(m => names.add(m.name));
-      });
+
+      if (currentProfile.role === 'super_admin') {
+        // Populate from full DEPT_MANAGERS so no manager is ever missing
+        Object.values(DEPT_MANAGERS).forEach(arr => arr.forEach(m => names.add(m.name)));
+      } else {
+        expenses.forEach(e => {
+          const lms = getLM(e.users?.department);
+          if (lms) lms.forEach(m => names.add(m.name));
+        });
+      }
+
       sel.innerHTML = '<option value="">All Managers</option>';
       [...names].sort().forEach(managerName => {
         const opt = document.createElement('option');
@@ -347,7 +355,8 @@
             try {
               if (isAdmin) {
                 const companyId = currentProfile.role !== 'super_admin' ? (currentProfile.company_id || undefined) : undefined;
-                const expenses = deptFilter(await fetchExpenses({ companyId }));
+                const limit = currentProfile.role === 'super_admin' ? 5000 : 1000;
+                const expenses = deptFilter(await fetchExpenses({ companyId, limit }));
                 allExpensesFetched = expenses;
                 updateAdminStats(expenses);
                 refreshListView();
@@ -499,6 +508,8 @@
         });
       }
 
+      base = applyDeptSelectFilter(base);
+
       return base;
     }
 
@@ -555,6 +566,9 @@
           return lms && lms.some(m => m.name === managerFilter);
         });
       }
+
+      // Filter by department (super_admin UI)
+      if (isAdmin) filtered = applyDeptSelectFilter(filtered);
 
       if (isAdmin) {
         if (hierarchyMode) {
@@ -683,6 +697,43 @@
         </div>
       </div>
 
+      ${!isDeptAdmin ? `
+      <!-- Super Admin extra stats row -->
+      <div class="stats-grid" style="margin-top:-.25rem">
+        <div class="stat-card" style="border-left:3px solid #6366f1">
+          <div class="stat-top">
+            <span class="stat-label">Total Employees</span>
+            <div class="stat-icon ic-indigo">👥</div>
+          </div>
+          <div class="stat-value" id="sa-emp">—</div>
+          <div class="stat-sub">Unique submitters</div>
+        </div>
+        <div class="stat-card" style="border-left:3px solid #f59e0b">
+          <div class="stat-top">
+            <span class="stat-label">Pending Actions</span>
+            <div class="stat-icon ic-amber">⏳</div>
+          </div>
+          <div class="stat-value" id="sa-pending">—</div>
+          <div class="stat-sub">Awaiting approval</div>
+        </div>
+        <div class="stat-card" style="border-left:3px solid #10b981">
+          <div class="stat-top">
+            <span class="stat-label">Approved Amount</span>
+            <div class="stat-icon ic-green">✅</div>
+          </div>
+          <div class="stat-value" id="sa-approved">—</div>
+          <div class="stat-sub">Total approved</div>
+        </div>
+        <div class="stat-card" style="border-left:3px solid #8b5cf6">
+          <div class="stat-top">
+            <span class="stat-label">Departments</span>
+            <div class="stat-icon ic-violet">🏢</div>
+          </div>
+          <div class="stat-value" id="sa-depts">—</div>
+          <div class="stat-sub">Active departments</div>
+        </div>
+      </div>` : ''}
+
       <!-- Filter bar -->
       <div class="filter-bar p-4 mb-6 shadow-sm rounded-xl grid gap-4 items-center" style="position:sticky;top:56px;z-index:10;background:var(--card-bg,#fff);border-radius:14px;border:1px solid var(--border);box-shadow:0 2px 8px rgba(0,0,0,.06);grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));">
         <div class="form-group mb-0">
@@ -701,6 +752,14 @@
           <label class="form-label" for="f-user-search">Search</label>
           <input class="form-input" type="text" id="f-user-search" placeholder="Name / Email..." oninput="refreshListView(true)" />
         </div>
+        ${!isDeptAdmin ? `
+        <div class="form-group mb-0">
+          <label class="form-label" for="f-dept">Department</label>
+          <select class="form-select" id="f-dept" onchange="refreshListView(true)">
+            <option value="">All Departments</option>
+            ${Object.keys(DEPT_MANAGERS).sort().map(d => `<option value="${escHtml(d)}">${escHtml(d)}</option>`).join('')}
+          </select>
+        </div>` : ''}
         <div class="form-group mb-0">
           <label class="form-label" for="f-manager">Line Manager</label>
           <select class="form-select" id="f-manager" onchange="refreshListView(true)">
@@ -794,11 +853,21 @@
       );
     }
 
+    /** Apply the #f-dept dropdown filter (super_admin UI department selector). */
+    function applyDeptSelectFilter(expenses) {
+      const sel = (document.getElementById('f-dept')?.value || '').trim();
+      if (!sel) return expenses;
+      return expenses.filter(e => (e.users?.department || '').trim() === sel);
+    }
+
     async function loadAdminExpenses(from, to) {
       try {
         // super_admin sees all companies; admin scoped to their company
         const companyId = currentProfile.role !== 'super_admin' ? (currentProfile.company_id || undefined) : undefined;
-        const raw = await fetchExpenses({ from, to, companyId });
+        // Raise limit significantly for super_admin so all-company data comes through
+        // NOTE: Supabase max_rows in API settings must be ≥ 5000 for this to work fully
+        const limit = currentProfile.role === 'super_admin' ? 5000 : 1000;
+        const raw = await fetchExpenses({ from, to, companyId, limit });
         const expenses = deptFilter(raw);
         allExpensesFetched = expenses;
         populateManagerFilter(expenses);
@@ -828,6 +897,20 @@
       document.getElementById('s-month').textContent = formatCurrency(monthTotal);
       document.getElementById('s-count').textContent = expenses.length;
       document.getElementById('s-total').textContent = formatCurrency(allTotal);
+
+      // Super Admin — extra stat cards
+      if (currentProfile.role === 'super_admin') {
+        const uniqueEmps   = new Set(expenses.map(e => e.user_id)).size;
+        const pendingAct   = expenses.filter(e => e.status === 'pending' || e.status === 'l1_approved').length;
+        const approvedAmt  = expenses.filter(e => e.status === 'approved')
+          .reduce((s, e) => s + (e.approved_amount != null ? +e.approved_amount : +e.amount), 0);
+        const activeDepts  = new Set(expenses.map(e => e.users?.department).filter(Boolean)).size;
+        const el = id => document.getElementById(id);
+        if (el('sa-emp'))     el('sa-emp').textContent     = uniqueEmps;
+        if (el('sa-pending')) el('sa-pending').textContent = pendingAct;
+        if (el('sa-approved'))el('sa-approved').textContent= formatCurrency(approvedAmt);
+        if (el('sa-depts'))   el('sa-depts').textContent   = activeDepts;
+      }
     }
 
     function renderAdminTable(expenses) {
@@ -1225,6 +1308,8 @@
         });
       }
 
+      if (isAdmin) filtered = applyDeptSelectFilter(filtered);
+
       if (isAdmin) {
         renderAdminTable(filtered);
         renderAdminCards(filtered);
@@ -1239,6 +1324,7 @@
       if (document.getElementById('f-cycle')) document.getElementById('f-cycle').value = 'all';
       if (document.getElementById('f-user-search')) document.getElementById('f-user-search').value = '';
       if (document.getElementById('f-manager')) document.getElementById('f-manager').value = '';
+      if (document.getElementById('f-dept'))    document.getElementById('f-dept').value = '';
       activeFilteredExpenses = null;
       const spin = `<div class="loading-state"><div class="spinner"></div><span>Loading…</span></div>`;
       document.getElementById('admin-table').innerHTML = spin;
@@ -2091,6 +2177,7 @@
         const lms = getLM(e.users?.department);
         return lms && lms.some(m => m.name === mgrFilter);
       });
+      filtered = applyDeptSelectFilter(filtered);
 
       const tree = buildHierarchyTree(filtered);
       const depts = Object.keys(tree).sort((a, b) =>
