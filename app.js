@@ -6,7 +6,7 @@
 const DEPARTMENTS = [
   'Account', 'Compliance', 'Export Improvements', 'Finance', 'HR',
   'Lease', 'Legal', 'Liaison', 'Logistics', 'O&M',
-  'Procurement', 'Project', 'Purchase', 'Sales', 'Tender',
+  'Procurement', 'Project', 'Purchase', 'Sales', 'Tender', 'TL',
 ];
 
 // ── CONFIG ────────────────────────────────────────────────
