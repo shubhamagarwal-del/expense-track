@@ -355,7 +355,7 @@
             try {
               if (isAdmin) {
                 const companyId = currentProfile.role !== 'super_admin' ? (currentProfile.company_id || undefined) : undefined;
-                const limit = currentProfile.role === 'super_admin' ? 5000 : 1000;
+                const limit = currentProfile.role === 'super_admin' ? undefined : 1000;
                 const expenses = deptFilter(await fetchExpenses({ companyId, limit }));
                 allExpensesFetched = expenses;
                 updateAdminStats(expenses);
@@ -864,9 +864,9 @@
       try {
         // super_admin sees all companies; admin scoped to their company
         const companyId = currentProfile.role !== 'super_admin' ? (currentProfile.company_id || undefined) : undefined;
-        // Raise limit significantly for super_admin so all-company data comes through
-        // NOTE: Supabase max_rows in API settings must be ≥ 5000 for this to work fully
-        const limit = currentProfile.role === 'super_admin' ? 5000 : 1000;
+        // super_admin: no limit (unlimited — bounded only by Supabase max_rows setting)
+        // admin: capped at 1000 (only their dept)
+        const limit = currentProfile.role === 'super_admin' ? undefined : 1000;
         const raw = await fetchExpenses({ from, to, companyId, limit });
         const expenses = deptFilter(raw);
         allExpensesFetched = expenses;

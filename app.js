@@ -392,18 +392,21 @@ async function fetchLineManagers() {
  * employees only get their own rows, admins get every row.
  * @param {{ from?: string, to?: string, userId?: string }} opts
  */
-async function fetchExpenses({ from, to, userId, companyId, limit = 500 } = {}) {
+async function fetchExpenses({ from, to, userId, companyId, limit } = {}) {
   await initSupabase();
   let q = db
     .from('expenses')
     .select('*, users(id,email,name,role,department,site_name,emp_no,phone,bank_holder,bank_name,bank_ifsc,bank_account)')
-    .order('created_at', { ascending: false })
-    .limit(limit);
+    .order('created_at', { ascending: false });
 
-  if (userId) q = q.eq('user_id', userId);
+  // Only apply a row cap when explicitly requested.
+  // Super Admin calls omit `limit` so Supabase returns up to max_rows (set 100 000 in dashboard).
+  if (limit) q = q.limit(limit);
+
+  if (userId)    q = q.eq('user_id', userId);
   if (companyId) q = q.eq('company_id', companyId);
-  if (from) q = q.gte('created_at', from);
-  if (to) q = q.lte('created_at', to + 'T23:59:59');
+  if (from)      q = q.gte('created_at', from);
+  if (to)        q = q.lte('created_at', to + 'T23:59:59');
 
   const { data, error } = await q;
   if (error) throw error;
