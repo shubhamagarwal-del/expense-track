@@ -324,7 +324,9 @@
             </div>
             <div class="form-group" style="margin:0">
               <label class="form-label">TL (Team Leader)</label>
-              <input class="form-input" type="text" id="edit-tl" placeholder="Team Leader name" />
+              <select class="form-select" id="edit-tl">
+                <option value="">Select TL…</option>
+              </select>
             </div>
           </div>
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:.75rem">
@@ -619,6 +621,7 @@
     });
 
     await loadUsers();
+    loadTLOptions();
     if (profile.role === 'super_admin') {
       await loadCompanies();
       // Show danger zone and load expense count
@@ -809,7 +812,7 @@
     document.getElementById('edit-empno').value    = u.emp_no     || '';
     document.getElementById('edit-phone').value    = u.phone      || '';
     document.getElementById('edit-site').value     = u.site_name  || '';
-    document.getElementById('edit-tl').value       = u.tl_name    || '';
+    populateEditTLDropdown(u.department || '', u.tl_name || '');
 
     // Populate dept dropdown if not already done
     const deptSel = document.getElementById('edit-dept');
@@ -1101,6 +1104,31 @@
       showMessage('Purge failed: ' + err.message, 'error');
     } finally {
       setLoading(btn, false);
+    }
+  }
+
+  // ── TL Dropdown ──────────────────────────────────────────
+  let _allLM = [];
+
+  async function loadTLOptions() {
+    try {
+      await initSupabase();
+      const { data } = await db.from('line_managers').select('manager_name,department').order('manager_name');
+      _allLM = data || [];
+    } catch {}
+  }
+
+  function populateEditTLDropdown(dept, selectedTL) {
+    const sel = document.getElementById('edit-tl');
+    if (!sel) return;
+    const filtered = dept
+      ? _allLM.filter(m => m.department.toLowerCase().trim() === dept.toLowerCase().trim())
+      : _allLM;
+    sel.innerHTML = '<option value="">Select TL…</option>' +
+      filtered.map(m => `<option value="${escHtml(m.manager_name)}" ${m.manager_name===selectedTL?'selected':''}>${escHtml(m.manager_name)} — ${escHtml(m.department)}</option>`).join('');
+    // If selectedTL not in filtered, add it to avoid losing data
+    if (selectedTL && !filtered.find(m => m.manager_name === selectedTL)) {
+      sel.innerHTML += `<option value="${escHtml(selectedTL)}" selected>${escHtml(selectedTL)}</option>`;
     }
   }
 
