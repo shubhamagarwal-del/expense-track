@@ -137,6 +137,37 @@
         </div>
       </div>
 
+      <!-- ── Line Managers (super_admin only) ─────────────── -->
+      <div id="lm-section" style="display:none;margin-top:3rem">
+        <div style="display:flex;align-items:center;gap:.75rem;margin-bottom:1.25rem;padding-bottom:.875rem;border-bottom:2px solid #c7d2fe">
+          <div style="width:36px;height:36px;border-radius:10px;background:#eef2ff;display:flex;align-items:center;justify-content:font-size:1.1rem;flex-shrink:0;align-items:center;justify-content:center;font-size:1.1rem">👔</div>
+          <div>
+            <div style="font-size:1rem;font-weight:800;color:#4338ca">Line Managers</div>
+            <div style="font-size:.78rem;color:var(--text-muted);margin-top:1px">Department-wise manager assignments. Add, edit or remove managers.</div>
+          </div>
+          <button onclick="openLMModal()" class="btn btn-primary btn-sm" style="margin-left:auto;border-radius:8px;font-size:.82rem">+ Add Manager</button>
+        </div>
+
+        <div style="background:var(--surface,#fff);border:1.5px solid #c7d2fe;border-radius:14px;overflow:hidden">
+          <div style="overflow-x:auto">
+            <table style="width:100%;border-collapse:collapse;font-size:.875rem" id="lm-table">
+              <thead>
+                <tr style="background:#eef2ff;border-bottom:2px solid #c7d2fe">
+                  <th style="padding:.7rem 1rem;text-align:left;font-weight:700;color:#4338ca;font-size:.75rem;text-transform:uppercase;letter-spacing:.04em">Department</th>
+                  <th style="padding:.7rem 1rem;text-align:left;font-weight:700;color:#4338ca;font-size:.75rem;text-transform:uppercase;letter-spacing:.04em">Manager Name</th>
+                  <th style="padding:.7rem 1rem;text-align:left;font-weight:700;color:#4338ca;font-size:.75rem;text-transform:uppercase;letter-spacing:.04em">Emp Code</th>
+                  <th style="padding:.7rem 1rem;text-align:left;font-weight:700;color:#4338ca;font-size:.75rem;text-transform:uppercase;letter-spacing:.04em">Phone</th>
+                  <th style="padding:.7rem 1rem;text-align:center;font-weight:700;color:#4338ca;font-size:.75rem;text-transform:uppercase;letter-spacing:.04em">Actions</th>
+                </tr>
+              </thead>
+              <tbody id="lm-tbody">
+                <tr><td colspan="5" style="text-align:center;padding:2.5rem;color:var(--text-muted)"><div class="spinner" style="margin:0 auto"></div></td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
       <!-- ── Danger Zone (super_admin only) ───────────────── -->
       <div id="danger-zone" style="display:none;margin-top:3.5rem">
         <div style="display:flex;align-items:center;gap:.75rem;margin-bottom:1.25rem;padding-bottom:.875rem;border-bottom:2px solid #fca5a5">
@@ -387,6 +418,38 @@
   </div>
 </div>
 
+<!-- ── Line Manager Add/Edit Modal ──────────────────────── -->
+<div id="lm-modal" style="display:none;position:fixed;inset:0;z-index:9000;background:rgba(0,0,0,.45);align-items:center;justify-content:center;padding:1rem" onclick="if(event.target===this)closeLMModal()">
+  <div style="background:var(--card-bg,#fff);border-radius:16px;padding:1.75rem;width:100%;max-width:460px;box-shadow:0 20px 60px rgba(0,0,0,.2)">
+    <h3 id="lm-modal-title" style="margin:0 0 1.25rem;font-size:1.05rem;font-weight:700">Add Line Manager</h3>
+    <input type="hidden" id="lm-edit-id">
+    <div style="display:grid;gap:1rem">
+      <div>
+        <label style="font-size:.8rem;font-weight:600;color:var(--text-muted);display:block;margin-bottom:.35rem">Department *</label>
+        <input id="lm-dept" type="text" class="form-input" placeholder="e.g. O&M" list="lm-dept-list" style="border-radius:8px">
+        <datalist id="lm-dept-list"></datalist>
+      </div>
+      <div>
+        <label style="font-size:.8rem;font-weight:600;color:var(--text-muted);display:block;margin-bottom:.35rem">Manager Name *</label>
+        <input id="lm-name" type="text" class="form-input" placeholder="Full name" style="border-radius:8px">
+      </div>
+      <div>
+        <label style="font-size:.8rem;font-weight:600;color:var(--text-muted);display:block;margin-bottom:.35rem">Employee Code *</label>
+        <input id="lm-code" type="text" class="form-input" placeholder="e.g. SSS_0160" style="border-radius:8px">
+      </div>
+      <div>
+        <label style="font-size:.8rem;font-weight:600;color:var(--text-muted);display:block;margin-bottom:.35rem">Phone</label>
+        <input id="lm-phone" type="text" class="form-input" placeholder="10-digit number" style="border-radius:8px">
+      </div>
+    </div>
+    <div id="lm-modal-err" style="display:none;color:#dc2626;font-size:.8rem;margin-top:.75rem;padding:.5rem .75rem;background:#fef2f2;border-radius:8px"></div>
+    <div style="display:flex;gap:.75rem;justify-content:flex-end;margin-top:1.5rem">
+      <button class="btn btn-secondary btn-sm" onclick="closeLMModal()" style="border-radius:8px">Cancel</button>
+      <button class="btn btn-primary btn-sm" onclick="saveLM()" id="lm-save-btn" style="border-radius:8px">Save</button>
+    </div>
+  </div>
+</div>
+
 <!-- ── Purge Expenses Confirmation Modal ────────────────── -->
 <div id="purge-modal" class="modal-overlay" style="display:none;z-index:1200"
      onclick="if(event.target===this)closePurgeModal()">
@@ -550,6 +613,9 @@
       // Show danger zone and load expense count
       document.getElementById('danger-zone').style.display = 'block';
       refreshExpenseCount();
+      // Show line managers section and load data
+      document.getElementById('lm-section').style.display = 'block';
+      loadLMData();
     }
   })();
 
@@ -1022,6 +1088,133 @@
       showMessage('Purge failed: ' + err.message, 'error');
     } finally {
       setLoading(btn, false);
+    }
+  }
+
+  // ── Line Managers CRUD ───────────────────────────────────
+  let _lmRows = [];
+
+  async function loadLMData() {
+    const tbody = document.getElementById('lm-tbody');
+    if (!tbody) return;
+    tbody.innerHTML = `<tr><td colspan="5" style="text-align:center;padding:2.5rem"><div class="spinner" style="margin:0 auto"></div></td></tr>`;
+    try {
+      await initSupabase();
+      const { data, error } = await db.from('line_managers').select('*').order('department');
+      if (error) throw error;
+      _lmRows = data || [];
+      renderLMTable(_lmRows);
+      const dl = document.getElementById('lm-dept-list');
+      if (dl) {
+        const depts = [...new Set(_lmRows.map(r => r.department))].sort();
+        dl.innerHTML = depts.map(d => `<option value="${escHtml(d)}">`).join('');
+      }
+    } catch (err) {
+      tbody.innerHTML = `<tr><td colspan="5" style="text-align:center;padding:2rem;color:#dc2626">Failed to load: ${escHtml(err.message)}</td></tr>`;
+    }
+  }
+
+  function renderLMTable(rows) {
+    const tbody = document.getElementById('lm-tbody');
+    if (!tbody) return;
+    if (!rows.length) {
+      tbody.innerHTML = `<tr><td colspan="5" style="text-align:center;padding:2.5rem;color:var(--text-muted)">No managers found. Click "+ Add Manager" to get started.</td></tr>`;
+      return;
+    }
+    tbody.innerHTML = rows.map(r => `
+      <tr style="border-bottom:1px solid var(--border)" onmouseover="this.style.background='var(--bg-page,#f9fafb)'" onmouseout="this.style.background=''">
+        <td style="padding:.75rem 1rem;font-weight:600">${escHtml(r.department)}</td>
+        <td style="padding:.75rem 1rem">${escHtml(r.manager_name)}</td>
+        <td style="padding:.75rem 1rem"><span style="font-family:monospace;background:var(--bg-page,#f1f5f9);padding:.2rem .5rem;border-radius:6px;font-size:.82rem">${escHtml(r.emp_code)}</span></td>
+        <td style="padding:.75rem 1rem;color:var(--text-muted)">${escHtml(r.contact_number || '—')}</td>
+        <td style="padding:.75rem 1rem;text-align:center">
+          <button onclick="openLMModal('${escHtml(r.id)}')" style="background:none;border:none;cursor:pointer;font-size:1rem;padding:.25rem .5rem;border-radius:6px;transition:background .15s" title="Edit" onmouseover="this.style.background='#eef2ff'" onmouseout="this.style.background=''">✏️</button>
+          <button onclick="deleteLM('${escHtml(r.id)}')" style="background:none;border:none;cursor:pointer;font-size:1rem;padding:.25rem .5rem;border-radius:6px;transition:background .15s" title="Delete" onmouseover="this.style.background='#fef2f2'" onmouseout="this.style.background=''">🗑️</button>
+        </td>
+      </tr>
+    `).join('');
+  }
+
+  function openLMModal(id) {
+    const modal = document.getElementById('lm-modal');
+    if (!modal) return;
+    const errEl = document.getElementById('lm-modal-err');
+    if (errEl) { errEl.style.display = 'none'; errEl.textContent = ''; }
+    if (id) {
+      const row = _lmRows.find(r => r.id === id);
+      if (!row) return;
+      document.getElementById('lm-modal-title').textContent = 'Edit Line Manager';
+      document.getElementById('lm-edit-id').value  = row.id;
+      document.getElementById('lm-dept').value     = row.department;
+      document.getElementById('lm-name').value     = row.manager_name;
+      document.getElementById('lm-code').value     = row.emp_code;
+      document.getElementById('lm-phone').value    = row.contact_number || '';
+    } else {
+      document.getElementById('lm-modal-title').textContent = 'Add Line Manager';
+      document.getElementById('lm-edit-id').value = '';
+      document.getElementById('lm-dept').value    = '';
+      document.getElementById('lm-name').value    = '';
+      document.getElementById('lm-code').value    = '';
+      document.getElementById('lm-phone').value   = '';
+    }
+    modal.style.display = 'flex';
+    setTimeout(() => document.getElementById('lm-dept').focus(), 100);
+  }
+
+  function closeLMModal() {
+    const modal = document.getElementById('lm-modal');
+    if (modal) modal.style.display = 'none';
+  }
+
+  async function saveLM() {
+    const dept  = (document.getElementById('lm-dept')?.value  || '').trim();
+    const name  = (document.getElementById('lm-name')?.value  || '').trim();
+    const code  = (document.getElementById('lm-code')?.value  || '').trim();
+    const phone = (document.getElementById('lm-phone')?.value || '').trim();
+    const id    = (document.getElementById('lm-edit-id')?.value || '').trim();
+    const errEl = document.getElementById('lm-modal-err');
+    const saveBtn = document.getElementById('lm-save-btn');
+
+    if (!dept || !name || !code) {
+      if (errEl) { errEl.textContent = 'Department, Name and Emp Code are required.'; errEl.style.display = 'block'; }
+      return;
+    }
+    if (errEl) errEl.style.display = 'none';
+    if (saveBtn) { saveBtn.disabled = true; saveBtn.textContent = 'Saving…'; }
+
+    try {
+      await initSupabase();
+      let error;
+      if (id) {
+        ({ error } = await db.from('line_managers').update({ department: dept, manager_name: name, emp_code: code, contact_number: phone || null }).eq('id', id));
+      } else {
+        ({ error } = await db.from('line_managers').insert({ department: dept, manager_name: name, emp_code: code, contact_number: phone || null }));
+      }
+      if (error) throw error;
+      closeLMModal();
+      try { sessionStorage.removeItem('_lmdata'); } catch {}
+      await loadLMData();
+      showMessage(id ? 'Manager updated!' : 'Manager added!', 'success');
+    } catch (err) {
+      if (errEl) { errEl.textContent = 'Error: ' + (err.message || 'Save failed'); errEl.style.display = 'block'; }
+    } finally {
+      if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = 'Save'; }
+    }
+  }
+
+  async function deleteLM(id) {
+    const row = _lmRows.find(r => r.id === id);
+    if (!row) return;
+    if (!confirm(`Delete manager "${row.manager_name}" (${row.department})?\nThis cannot be undone.`)) return;
+    try {
+      await initSupabase();
+      const { error } = await db.from('line_managers').delete().eq('id', id);
+      if (error) throw error;
+      try { sessionStorage.removeItem('_lmdata'); } catch {}
+      await loadLMData();
+      showMessage('Manager deleted.', 'success');
+    } catch (err) {
+      showMessage('Delete failed: ' + (err.message || 'Unknown error'), 'error');
     }
   }
 
