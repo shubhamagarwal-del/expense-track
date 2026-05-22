@@ -205,6 +205,11 @@
             </div>
 
             <div class="form-group">
+              <label class="form-label" for="cu-tl">TL (Team Leader)</label>
+              <input class="form-input" type="text" id="cu-tl" placeholder="Team Leader name (optional)" />
+            </div>
+
+            <div class="form-group">
               <label class="form-label" for="cu-role">Role</label>
               <select class="form-select" id="cu-role" onchange="updateRoleHint()">
                 <option value="employee">Employee — Can submit expenses</option>
@@ -381,6 +386,7 @@
       const phone = document.getElementById('cu-mobile').value.trim();
       const site_name = document.getElementById('cu-site').value.trim();
       const department = document.getElementById('cu-dept').value.trim();
+      const tl_name = document.getElementById('cu-tl').value.trim() || null;
 
       if (!phone) { showMessage('Mobile number is required', 'error'); return; }
 
@@ -397,7 +403,7 @@
             'Authorization': 'Bearer ' + session.access_token
           },
           body: JSON.stringify({
-            role, name, emp_no, phone, site_name, department, company_id
+            role, name, emp_no, phone, site_name, department, tl_name, company_id
           })
         });
 

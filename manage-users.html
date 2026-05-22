@@ -322,6 +322,12 @@
                 <option value="">Select…</option>
               </select>
             </div>
+            <div class="form-group" style="margin:0">
+              <label class="form-label">TL (Team Leader)</label>
+              <input class="form-input" type="text" id="edit-tl" placeholder="Team Leader name" />
+            </div>
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:.75rem">
             <div class="form-group" style="margin:0" id="edit-role-group">
               <label class="form-label">Role</label>
               <select class="form-select" id="edit-role">
@@ -803,6 +809,7 @@
     document.getElementById('edit-empno').value    = u.emp_no     || '';
     document.getElementById('edit-phone').value    = u.phone      || '';
     document.getElementById('edit-site').value     = u.site_name  || '';
+    document.getElementById('edit-tl').value       = u.tl_name    || '';
 
     // Populate dept dropdown if not already done
     const deptSel = document.getElementById('edit-dept');
@@ -866,6 +873,7 @@
       phone:      document.getElementById('edit-phone').value.trim(),
       site_name:  document.getElementById('edit-site').value.trim(),
       department: document.getElementById('edit-dept').value,
+      tl_name:    document.getElementById('edit-tl').value.trim() || null,
       role:       document.getElementById('edit-role').value,
     };
     if (currentProfile.role === 'super_admin') {

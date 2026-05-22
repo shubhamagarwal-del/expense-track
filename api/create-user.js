@@ -46,7 +46,7 @@ export default async function handler(req, res) {
     return res.status(403).json({ error: 'Forbidden: Only administrators can create users' });
   }
 
-  const { role, name, emp_no, phone, site_name, department, company_id } = req.body;
+  const { role, name, emp_no, phone, site_name, department, tl_name, company_id } = req.body;
 
   if (!phone || !role) {
     return res.status(400).json({ error: `Missing phone or role — received: phone=${JSON.stringify(phone)}, role=${JSON.stringify(role)}, bodyType=${typeof req.body}` });
@@ -78,6 +78,7 @@ export default async function handler(req, res) {
       phone,
       site_name,
       department,
+      tl_name: tl_name || null,
       company_id: company_id || null,
       must_change_password: true
     });

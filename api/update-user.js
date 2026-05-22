@@ -129,13 +129,14 @@ export default async function handler(req, res) {
     // ── Update User ───────────────────────────────────────────
     if (!userId) return res.status(400).json({ error: 'userId is required' });
 
-    const { name, emp_no, phone, site_name, department, role, company_id } = body;
+    const { name, emp_no, phone, site_name, department, tl_name, role, company_id } = body;
     const update = {};
     if (name       !== undefined) update.name       = name.trim();
     if (emp_no     !== undefined) update.emp_no     = emp_no.trim();
     if (phone      !== undefined) update.phone      = phone.trim();
     if (site_name  !== undefined) update.site_name  = site_name.trim();
     if (department !== undefined) update.department = department.trim();
+    if (tl_name    !== undefined) update.tl_name    = tl_name ? tl_name.trim() : null;
 
     // Only super_admin can change company assignment
     if (company_id !== undefined) {
