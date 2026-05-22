@@ -198,24 +198,12 @@
               </div>
               <div class="form-group flex-1">
                 <label class="form-label" for="cu-dept">Department</label>
-                <select class="form-select" id="cu-dept" required onchange="populateTLDropdown(this.value)">
+                <select class="form-select" id="cu-dept" required>
                   <option value="">Select department…</option>
                 </select>
               </div>
             </div>
 
-            <div class="form-row">
-              <div class="form-group flex-1">
-                <label class="form-label" for="cu-tl">TL (Team Leader)</label>
-                <select class="form-select" id="cu-tl" disabled>
-                  <option value="">— Select department first —</option>
-                </select>
-              </div>
-              <div class="form-group flex-1">
-                <label class="form-label">&nbsp;</label>
-                <div style="height:42px"></div>
-              </div>
-            </div>
 
             <div class="form-group">
               <label class="form-label" for="cu-role">Role</label>
@@ -289,38 +277,7 @@
 
       loadRegisteredUsers();
       loadCompanies();
-      loadTLOptions();
     })();
-
-    // ── TL Dropdown ─────────────────────────────────────────
-    let _allLM = []; // all line_managers rows
-
-    async function loadTLOptions() {
-      try {
-        await initSupabase();
-        const { data } = await db.from('line_managers').select('manager_name,department').order('manager_name');
-        _allLM = data || [];
-        populateTLDropdown('');
-      } catch { /* silently ignore — TL remains empty dropdown */ }
-    }
-
-    function populateTLDropdown(dept) {
-      const sel = document.getElementById('cu-tl');
-      if (!sel) return;
-      if (!dept) {
-        sel.innerHTML = '<option value="">— Select department first —</option>';
-        sel.disabled = true;
-        return;
-      }
-      const filtered = _allLM.filter(m => m.department.toLowerCase().trim() === dept.toLowerCase().trim());
-      sel.disabled = false;
-      if (!filtered.length) {
-        sel.innerHTML = '<option value="">No TL assigned for this dept</option>';
-      } else {
-        sel.innerHTML = '<option value="">Select TL…</option>' +
-          filtered.map(m => `<option value="${escHtml(m.manager_name)}">${escHtml(m.manager_name)}</option>`).join('');
-      }
-    }
 
     // ── Companies ───────────────────────────────────────────
     async function loadCompanies() {
@@ -425,7 +382,6 @@
       const phone = document.getElementById('cu-mobile').value.trim();
       const site_name = document.getElementById('cu-site').value.trim();
       const department = document.getElementById('cu-dept').value.trim();
-      const tl_name = document.getElementById('cu-tl').value.trim() || null;
 
       if (!phone) { showMessage('Mobile number is required', 'error'); return; }
 
@@ -442,7 +398,7 @@
             'Authorization': 'Bearer ' + session.access_token
           },
           body: JSON.stringify({
-            role, name, emp_no, phone, site_name, department, tl_name, company_id
+            role, name, emp_no, phone, site_name, department, company_id
           })
         });
 
