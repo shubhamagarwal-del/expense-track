@@ -335,6 +335,11 @@
         document.getElementById('topbar-title').textContent =
           profile.role === 'super_admin' ? 'Super Admin Panel' : `Manager Dashboard${titleSuffix}`;
         renderAdminDashboard();
+        // Show "Line Managers" tab only for super_admin
+        if (profile.role === 'super_admin') {
+          const lmBtn = document.getElementById('btn-view-lm');
+          if (lmBtn) lmBtn.style.display = 'inline-flex';
+        }
       } else {
         document.getElementById('topbar-title').textContent = 'My Expenses';
         renderEmployeeDashboard();
@@ -781,6 +786,7 @@
           <span style="font-size:.78rem;color:var(--text-muted);font-weight:600">View Mode:</span>
           <button id="btn-view-hier" class="btn btn-primary btn-sm" onclick="setViewMode('hierarchy')" style="border-radius:8px">🏗️ Hierarchy</button>
           <button id="btn-view-list" class="btn btn-secondary btn-sm" onclick="setViewMode('list')" style="border-radius:8px">📋 List</button>
+          <button id="btn-view-lm" class="btn btn-secondary btn-sm" onclick="setViewMode('lm')" style="border-radius:8px;display:none">👔 Line Managers</button>
         </div>
       </div>
 
@@ -789,6 +795,67 @@
         <div id="hier-summary"></div>
         <div id="hier-container">
           <div class="loading-state"><div class="spinner"></div><span>Building hierarchy…</span></div>
+        </div>
+      </div>
+
+      <!-- ── Line Managers View (super_admin only) ─────────── -->
+      <div id="lm-view" style="display:none">
+        <div class="card" style="margin-bottom:1.25rem">
+          <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:.75rem;margin-bottom:1.25rem">
+            <div>
+              <h3 style="margin:0;font-size:1.1rem;font-weight:700">👔 Line Managers</h3>
+              <p style="margin:.25rem 0 0;font-size:.82rem;color:var(--text-muted)">Department-wise manager assignments</p>
+            </div>
+            <button class="btn btn-primary btn-sm" onclick="openLMModal()" style="border-radius:8px;font-size:.82rem">+ Add Manager</button>
+          </div>
+          <div style="overflow-x:auto">
+            <table style="width:100%;border-collapse:collapse;font-size:.85rem" id="lm-table">
+              <thead>
+                <tr style="border-bottom:2px solid var(--border)">
+                  <th style="padding:.6rem .75rem;text-align:left;font-weight:700;color:var(--text-muted);font-size:.75rem;text-transform:uppercase;letter-spacing:.04em">Department</th>
+                  <th style="padding:.6rem .75rem;text-align:left;font-weight:700;color:var(--text-muted);font-size:.75rem;text-transform:uppercase;letter-spacing:.04em">Manager Name</th>
+                  <th style="padding:.6rem .75rem;text-align:left;font-weight:700;color:var(--text-muted);font-size:.75rem;text-transform:uppercase;letter-spacing:.04em">Emp Code</th>
+                  <th style="padding:.6rem .75rem;text-align:left;font-weight:700;color:var(--text-muted);font-size:.75rem;text-transform:uppercase;letter-spacing:.04em">Phone</th>
+                  <th style="padding:.6rem .75rem;text-align:center;font-weight:700;color:var(--text-muted);font-size:.75rem;text-transform:uppercase;letter-spacing:.04em">Actions</th>
+                </tr>
+              </thead>
+              <tbody id="lm-tbody">
+                <tr><td colspan="5" style="text-align:center;padding:2rem;color:var(--text-muted)"><div class="spinner" style="margin:0 auto"></div></td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── Line Manager Add/Edit Modal ───────────────────── -->
+      <div id="lm-modal" style="display:none;position:fixed;inset:0;z-index:9000;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;padding:1rem" onclick="if(event.target===this)closeLMModal()">
+        <div style="background:var(--card-bg,#fff);border-radius:16px;padding:1.75rem;width:100%;max-width:460px;box-shadow:0 20px 60px rgba(0,0,0,.2)">
+          <h3 id="lm-modal-title" style="margin:0 0 1.25rem;font-size:1.05rem;font-weight:700">Add Line Manager</h3>
+          <input type="hidden" id="lm-edit-id">
+          <div style="display:grid;gap:1rem">
+            <div>
+              <label style="font-size:.8rem;font-weight:600;color:var(--text-muted);display:block;margin-bottom:.35rem">Department *</label>
+              <input id="lm-dept" type="text" class="form-control" placeholder="e.g. O&M" list="lm-dept-list" style="border-radius:8px">
+              <datalist id="lm-dept-list"></datalist>
+            </div>
+            <div>
+              <label style="font-size:.8rem;font-weight:600;color:var(--text-muted);display:block;margin-bottom:.35rem">Manager Name *</label>
+              <input id="lm-name" type="text" class="form-control" placeholder="Full name" style="border-radius:8px">
+            </div>
+            <div>
+              <label style="font-size:.8rem;font-weight:600;color:var(--text-muted);display:block;margin-bottom:.35rem">Employee Code *</label>
+              <input id="lm-code" type="text" class="form-control" placeholder="e.g. SSS_0160" style="border-radius:8px">
+            </div>
+            <div>
+              <label style="font-size:.8rem;font-weight:600;color:var(--text-muted);display:block;margin-bottom:.35rem">Phone</label>
+              <input id="lm-phone" type="text" class="form-control" placeholder="10-digit number" style="border-radius:8px">
+            </div>
+          </div>
+          <div id="lm-modal-err" style="display:none;color:#dc2626;font-size:.8rem;margin-top:.75rem;padding:.5rem .75rem;background:#fef2f2;border-radius:8px"></div>
+          <div style="display:flex;gap:.75rem;justify-content:flex-end;margin-top:1.5rem">
+            <button class="btn btn-secondary btn-sm" onclick="closeLMModal()" style="border-radius:8px">Cancel</button>
+            <button class="btn btn-primary btn-sm" onclick="saveLM()" id="lm-save-btn" style="border-radius:8px">Save</button>
+          </div>
         </div>
       </div>
 
@@ -1335,17 +1402,155 @@
       hierarchyMode = mode === 'hierarchy';
       const hierView = document.getElementById('hier-view');
       const listWrap = document.getElementById('list-view-wrap');
+      const lmView   = document.getElementById('lm-view');
       const hierBtn  = document.getElementById('btn-view-hier');
       const listBtn  = document.getElementById('btn-view-list');
-      if (hierView) hierView.style.display = hierarchyMode ? 'block' : 'none';
-      if (listWrap) listWrap.style.display = hierarchyMode ? 'none'  : 'block';
-      if (hierBtn)  { hierBtn.className  = hierarchyMode ? 'btn btn-primary btn-sm'   : 'btn btn-secondary btn-sm'; hierBtn.style.borderRadius='8px'; }
-      if (listBtn)  { listBtn.className  = hierarchyMode ? 'btn btn-secondary btn-sm' : 'btn btn-primary btn-sm';   listBtn.style.borderRadius='8px'; }
-      if (hierarchyMode) {
+      const lmBtn    = document.getElementById('btn-view-lm');
+
+      if (hierView) hierView.style.display = mode === 'hierarchy' ? 'block' : 'none';
+      if (listWrap) listWrap.style.display = mode === 'list'      ? 'block' : 'none';
+      if (lmView)   lmView.style.display   = mode === 'lm'        ? 'block' : 'none';
+
+      [hierBtn, listBtn, lmBtn].forEach(b => { if (b) { b.className = 'btn btn-secondary btn-sm'; b.style.borderRadius = '8px'; } });
+      const activeBtn = mode === 'hierarchy' ? hierBtn : mode === 'list' ? listBtn : lmBtn;
+      if (activeBtn) activeBtn.className = 'btn btn-primary btn-sm';
+
+      if (mode === 'hierarchy') {
         renderHierarchyView(allExpensesFetched);
-      } else {
+      } else if (mode === 'list') {
         refreshListView();
         renderAdminCharts(allExpensesFetched);
+      } else if (mode === 'lm') {
+        loadLMData();
+      }
+    }
+
+    // ─── LINE MANAGERS CRUD ──────────────────────────────────────
+
+    let _lmRows = []; // in-memory cache of fetched LM rows
+
+    async function loadLMData() {
+      const tbody = document.getElementById('lm-tbody');
+      if (!tbody) return;
+      tbody.innerHTML = `<tr><td colspan="5" style="text-align:center;padding:2rem"><div class="spinner" style="margin:0 auto"></div></td></tr>`;
+      try {
+        await initSupabase();
+        const { data, error } = await db.from('line_managers').select('*').order('department');
+        if (error) throw error;
+        _lmRows = data || [];
+        renderLMTable(_lmRows);
+        // Populate dept datalist for add/edit modal
+        const dl = document.getElementById('lm-dept-list');
+        if (dl) {
+          const depts = [...new Set(_lmRows.map(r => r.department))].sort();
+          dl.innerHTML = depts.map(d => `<option value="${escHtml(d)}">`).join('');
+        }
+      } catch (err) {
+        tbody.innerHTML = `<tr><td colspan="5" style="text-align:center;padding:2rem;color:#dc2626">Failed to load: ${escHtml(err.message)}</td></tr>`;
+      }
+    }
+
+    function renderLMTable(rows) {
+      const tbody = document.getElementById('lm-tbody');
+      if (!tbody) return;
+      if (!rows.length) {
+        tbody.innerHTML = `<tr><td colspan="5" style="text-align:center;padding:2rem;color:var(--text-muted)">No managers found. Click "Add Manager" to get started.</td></tr>`;
+        return;
+      }
+      tbody.innerHTML = rows.map(r => `
+        <tr style="border-bottom:1px solid var(--border)" onmouseover="this.style.background='var(--bg-2)'" onmouseout="this.style.background=''">
+          <td style="padding:.7rem .75rem;font-weight:600">${escHtml(r.department)}</td>
+          <td style="padding:.7rem .75rem">${escHtml(r.manager_name)}</td>
+          <td style="padding:.7rem .75rem"><span style="font-family:monospace;background:var(--bg-2);padding:.15rem .5rem;border-radius:6px;font-size:.82rem">${escHtml(r.emp_code)}</span></td>
+          <td style="padding:.7rem .75rem;color:var(--text-muted)">${escHtml(r.contact_number || '—')}</td>
+          <td style="padding:.7rem .75rem;text-align:center">
+            <button onclick="openLMModal('${escHtml(r.id)}')" style="background:none;border:none;cursor:pointer;font-size:1rem;padding:.25rem .4rem;border-radius:6px" title="Edit" onmouseover="this.style.background='var(--bg-2)'" onmouseout="this.style.background=''">✏️</button>
+            <button onclick="deleteLM('${escHtml(r.id)}')" style="background:none;border:none;cursor:pointer;font-size:1rem;padding:.25rem .4rem;border-radius:6px" title="Delete" onmouseover="this.style.background='#fef2f2'" onmouseout="this.style.background=''">🗑️</button>
+          </td>
+        </tr>
+      `).join('');
+    }
+
+    function openLMModal(id) {
+      const modal = document.getElementById('lm-modal');
+      if (!modal) return;
+      const errEl = document.getElementById('lm-modal-err');
+      if (errEl) { errEl.style.display = 'none'; errEl.textContent = ''; }
+      if (id) {
+        const row = _lmRows.find(r => r.id === id);
+        if (!row) return;
+        document.getElementById('lm-modal-title').textContent = 'Edit Line Manager';
+        document.getElementById('lm-edit-id').value  = row.id;
+        document.getElementById('lm-dept').value     = row.department;
+        document.getElementById('lm-name').value     = row.manager_name;
+        document.getElementById('lm-code').value     = row.emp_code;
+        document.getElementById('lm-phone').value    = row.contact_number || '';
+      } else {
+        document.getElementById('lm-modal-title').textContent = 'Add Line Manager';
+        document.getElementById('lm-edit-id').value = '';
+        document.getElementById('lm-dept').value    = '';
+        document.getElementById('lm-name').value    = '';
+        document.getElementById('lm-code').value    = '';
+        document.getElementById('lm-phone').value   = '';
+      }
+      modal.style.display = 'flex';
+    }
+
+    function closeLMModal() {
+      const modal = document.getElementById('lm-modal');
+      if (modal) modal.style.display = 'none';
+    }
+
+    async function saveLM() {
+      const dept  = (document.getElementById('lm-dept')?.value  || '').trim();
+      const name  = (document.getElementById('lm-name')?.value  || '').trim();
+      const code  = (document.getElementById('lm-code')?.value  || '').trim();
+      const phone = (document.getElementById('lm-phone')?.value || '').trim();
+      const id    = (document.getElementById('lm-edit-id')?.value || '').trim();
+      const errEl = document.getElementById('lm-modal-err');
+      const saveBtn = document.getElementById('lm-save-btn');
+
+      if (!dept || !name || !code) {
+        if (errEl) { errEl.textContent = 'Department, Name and Emp Code are required.'; errEl.style.display = 'block'; }
+        return;
+      }
+      if (errEl) { errEl.style.display = 'none'; }
+      if (saveBtn) { saveBtn.disabled = true; saveBtn.textContent = 'Saving…'; }
+
+      try {
+        await initSupabase();
+        let error;
+        if (id) {
+          // Update
+          ({ error } = await db.from('line_managers').update({ department: dept, manager_name: name, emp_code: code, contact_number: phone || null }).eq('id', id));
+        } else {
+          // Insert
+          ({ error } = await db.from('line_managers').insert({ department: dept, manager_name: name, emp_code: code, contact_number: phone || null }));
+        }
+        if (error) throw error;
+        closeLMModal();
+        // Invalidate session cache so fetchLineManagers re-fetches
+        try { sessionStorage.removeItem('_lmdata'); } catch {}
+        await loadLMData();
+      } catch (err) {
+        if (errEl) { errEl.textContent = 'Error: ' + (err.message || 'Save failed'); errEl.style.display = 'block'; }
+      } finally {
+        if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = 'Save'; }
+      }
+    }
+
+    async function deleteLM(id) {
+      const row = _lmRows.find(r => r.id === id);
+      if (!row) return;
+      if (!confirm(`Delete manager "${row.manager_name}" (${row.department})?\nThis cannot be undone.`)) return;
+      try {
+        await initSupabase();
+        const { error } = await db.from('line_managers').delete().eq('id', id);
+        if (error) throw error;
+        try { sessionStorage.removeItem('_lmdata'); } catch {}
+        await loadLMData();
+      } catch (err) {
+        alert('Delete failed: ' + (err.message || 'Unknown error'));
       }
     }
 
