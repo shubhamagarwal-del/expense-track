@@ -198,7 +198,7 @@
               </div>
               <div class="form-group flex-1">
                 <label class="form-label" for="cu-dept">Department</label>
-                <select class="form-select" id="cu-dept" required>
+                <select class="form-select" id="cu-dept" required onchange="populateTLDropdown(this.value)">
                   <option value="">Select department…</option>
                 </select>
               </div>
@@ -207,8 +207,8 @@
             <div class="form-row">
               <div class="form-group flex-1">
                 <label class="form-label" for="cu-tl">TL (Team Leader)</label>
-                <select class="form-select" id="cu-tl">
-                  <option value="">Select TL…</option>
+                <select class="form-select" id="cu-tl" disabled>
+                  <option value="">— Select department first —</option>
                 </select>
               </div>
               <div class="form-group flex-1">
@@ -307,20 +307,20 @@
     function populateTLDropdown(dept) {
       const sel = document.getElementById('cu-tl');
       if (!sel) return;
-      const current = sel.value;
-      const filtered = dept
-        ? _allLM.filter(m => m.department.toLowerCase().trim() === dept.toLowerCase().trim())
-        : _allLM;
-      sel.innerHTML = '<option value="">Select TL…</option>' +
-        filtered.map(m => `<option value="${escHtml(m.manager_name)}" ${m.manager_name===current?'selected':''}>${escHtml(m.manager_name)} — ${escHtml(m.department)}</option>`).join('');
-    }
-
-    // Filter TL when department changes
-    document.addEventListener('change', e => {
-      if (e.target && e.target.id === 'cu-dept') {
-        populateTLDropdown(e.target.value);
+      if (!dept) {
+        sel.innerHTML = '<option value="">— Select department first —</option>';
+        sel.disabled = true;
+        return;
       }
-    });
+      const filtered = _allLM.filter(m => m.department.toLowerCase().trim() === dept.toLowerCase().trim());
+      sel.disabled = false;
+      if (!filtered.length) {
+        sel.innerHTML = '<option value="">No TL assigned for this dept</option>';
+      } else {
+        sel.innerHTML = '<option value="">Select TL…</option>' +
+          filtered.map(m => `<option value="${escHtml(m.manager_name)}">${escHtml(m.manager_name)}</option>`).join('');
+      }
+    }
 
     // ── Companies ───────────────────────────────────────────
     async function loadCompanies() {
