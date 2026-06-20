@@ -1,6 +1,8 @@
 /* ============================================================
    pwa-register.js — SW registration + update detection
    ============================================================ */
+
+
 (() => {
   if (!('serviceWorker' in navigator)) return;
 

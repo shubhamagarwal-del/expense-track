@@ -5,9 +5,12 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>ExpenseTrack — Dashboard</title>
+
   <link rel="stylesheet" href="style.css" />
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/jspdf-autotable@3.8.2/dist/jspdf.plugin.autotable.min.js"></script>
 
   <!-- PWA -->
   <link rel="manifest" href="/manifest.json" />
@@ -15,8 +18,11 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="dns-prefetch" href="https://cdn.jsdelivr.net" />
   <meta name="theme-color" content="#6366f1" />
+  <link rel="icon" type="image/png" sizes="192x192" href="/icon-192.png" />
+  <link rel="icon" type="image/png" sizes="512x512" href="/icon-512.png" />
   <link rel="icon" type="image/svg+xml" href="/icon.svg" />
-  <link rel="apple-touch-icon" href="/icon.svg" />
+  <link rel="apple-touch-icon" href="/icon-192.png" />
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@700&display=swap" rel="stylesheet" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <meta name="apple-mobile-web-app-title" content="ExpenseTrack" />
@@ -25,6 +31,41 @@
 </head>
 
 <body>
+
+  <!-- ── Splash Screen ─────────────────────────────────────── -->
+  <div id="splash-screen" style="position:fixed;inset:0;background:#ffffff;z-index:99999;display:flex;flex-direction:column;align-items:center;justify-content:center;transition:opacity 0.5s ease;">
+    <img src="/logo/logo.png" id="splash-logo"
+      style="width:150px;height:150px;border-radius:28px;opacity:0;transform:scale(0.3);transition:opacity 0.5s ease,transform 0.7s cubic-bezier(.34,1.56,.64,1);box-shadow:0 8px 32px rgba(99,102,241,0.18);"
+      alt="ExpenseTrack" />
+    <div id="splash-name"
+      style="margin-top:18px;font-family:'Space Grotesk',system-ui,sans-serif;font-size:17px;font-weight:700;color:#1e3a8a;opacity:0;transition:opacity 0.5s ease 0.4s;">
+      ExpenseTrack
+    </div>
+    <div id="splash-sub"
+      style="margin-top:5px;font-family:system-ui,sans-serif;font-size:11px;color:#64748b;letter-spacing:0.18em;opacity:0;transition:opacity 0.5s ease 0.6s;">
+      PORTAL
+    </div>
+  </div>
+  <script>
+    (function () {
+      var s = document.getElementById('splash-screen');
+      var logo = document.getElementById('splash-logo');
+      var name = document.getElementById('splash-name');
+      var sub = document.getElementById('splash-sub');
+      requestAnimationFrame(function () {
+        requestAnimationFrame(function () {
+          logo.style.opacity = '1';
+          logo.style.transform = 'scale(1)';
+          name.style.opacity = '1';
+          sub.style.opacity = '1';
+        });
+      });
+      setTimeout(function () {
+        s.style.opacity = '0';
+        setTimeout(function () { s.style.display = 'none'; }, 500);
+      }, 2200);
+    })();
+  </script>
 
   <div class="app-layout">
 
@@ -176,6 +217,23 @@
           <span style="font-size:.82rem;color:#065f46;font-weight:600">📎 Receipt attached</span>
           <a id="am-receipt-link" href="javascript:void(0)" style="font-size:.82rem;font-weight:700;color:var(--primary);margin-left:auto">View Receipt →</a>
         </div>
+        <!-- Super Admin: Add / Replace Receipt -->
+        <div id="am-sa-receipt-section" style="display:none">
+          <label style="font-size:.8rem;font-weight:600;color:var(--text-muted);display:block;margin-bottom:.35rem">
+            📎 Add / Replace Receipt <span style="font-weight:400;color:#9ca3af">(optional)</span>
+          </label>
+          <div id="am-sa-receipt-preview" style="display:none;margin-bottom:.5rem;position:relative;max-width:200px">
+            <img id="am-sa-receipt-img" style="max-width:100%;max-height:110px;border-radius:8px;object-fit:cover;border:1px solid var(--border)">
+            <span id="am-sa-receipt-pdf" style="display:none;font-size:2rem">📄</span>
+            <button type="button" onclick="clearSAReceiptFile()" style="position:absolute;top:4px;right:4px;background:rgba(0,0,0,.5);color:white;border:none;border-radius:50%;width:20px;height:20px;font-size:.6rem;cursor:pointer;line-height:20px;text-align:center">✕</button>
+          </div>
+          <label style="display:flex;align-items:center;gap:.5rem;background:var(--bg-page,#f9fafb);border:1.5px dashed var(--border);border-radius:10px;padding:.65rem 1rem;cursor:pointer;font-size:.82rem;color:var(--text-muted);font-weight:600;transition:border-color .15s"
+                 onmouseover="this.style.borderColor='var(--primary)'" onmouseout="this.style.borderColor='var(--border)'">
+            <input type="file" id="am-sa-receipt-file" accept="image/*,application/pdf" style="display:none" onchange="onSAReceiptSelected(this)">
+            <span id="am-sa-receipt-lbl">📎 Click to choose image or PDF</span>
+          </label>
+        </div>
+
         <!-- Approved amount -->
         <div class="form-group" style="margin:0">
           <label class="form-label">Approved Amount (₹)
@@ -305,6 +363,46 @@
       });
     }
 
+    /** Populate #f-employee dropdown — scoped to the currently selected department, if any. */
+    function populateEmployeeFilter() {
+      const sel = document.getElementById('f-employee');
+      if (!sel) return;
+      const current = sel.value;
+      const deptSel = (document.getElementById('f-dept')?.value || '').trim();
+      const source = deptSel
+        ? allExpensesFetched.filter(e => (e.users?.department || '').trim() === deptSel)
+        : allExpensesFetched;
+
+      const empMap = new Map();
+      source.forEach(e => {
+        if (e.user_id && e.users?.name) empMap.set(e.user_id, e.users.name);
+      });
+
+      sel.innerHTML = '<option value="">All Employees</option>';
+      [...empMap.entries()].sort((a, b) => a[1].localeCompare(b[1])).forEach(([id, name]) => {
+        const opt = document.createElement('option');
+        opt.value = id;
+        opt.textContent = name;
+        sel.appendChild(opt);
+      });
+      if (empMap.has(current)) sel.value = current;
+    }
+
+    /** Department dropdown changed — reset employee filter (now stale) and repopulate it. */
+    function onDeptFilterChange() {
+      const empSel = document.getElementById('f-employee');
+      if (empSel) empSel.value = '';
+      populateEmployeeFilter();
+      refreshListView(true);
+    }
+
+    /** Apply the #f-employee dropdown filter. */
+    function applyEmployeeSelectFilter(expenses) {
+      const sel = (document.getElementById('f-employee')?.value || '').trim();
+      if (!sel) return expenses;
+      return expenses.filter(e => e.user_id === sel);
+    }
+
     // ─── Boot ─────────────────────────────────────────────────
     (async () => {
       const user = await requireAuth();
@@ -427,12 +525,19 @@
       </div>
 
       <div style="max-width: 1200px; margin: 0 auto; padding: 0 1rem;">
+
+        <!-- Month & Cycle Breakdown -->
+        <div id="emp-cycle-breakdown" style="margin-bottom:1.5rem"></div>
+
         <!-- Filter Tabs -->
-        <div class="filter-tabs p-2 mb-4" style="background: #f1f5f9; border-radius: 12px; display: flex; gap: 0.25rem; overflow-x: auto;">
-          <button class="filter-tab active" id="btn-f-all" onclick="setListFilter('all')" style="padding: 0.5rem 1rem; border-radius: 8px; font-weight: 700; flex: 1; min-width: 80px;">All</button>
-          <button class="filter-tab" id="btn-f-approved" onclick="setListFilter('approved')" style="padding: 0.5rem 1rem; border-radius: 8px; font-weight: 700; flex: 1; min-width: 80px;">Approved</button>
-          <button class="filter-tab" id="btn-f-pending" onclick="setListFilter('pending')" style="padding: 0.5rem 1rem; border-radius: 8px; font-weight: 700; flex: 1; min-width: 80px;">Pending</button>
-          <button class="filter-tab" id="btn-f-rejected" onclick="setListFilter('rejected')" style="padding: 0.5rem 1rem; border-radius: 8px; font-weight: 700; flex: 1; min-width: 80px;">Rejected</button>
+        <div style="display:flex;align-items:center;gap:.75rem;margin-bottom:.75rem">
+          <div class="filter-tabs p-2" style="background:#f1f5f9;border-radius:12px;display:flex;gap:.25rem;overflow-x:auto;flex:1">
+            <button class="filter-tab active" id="btn-f-all" onclick="setListFilter('all')" style="padding:.5rem 1rem;border-radius:8px;font-weight:700;flex:1;min-width:80px">All</button>
+            <button class="filter-tab" id="btn-f-approved" onclick="setListFilter('approved')" style="padding:.5rem 1rem;border-radius:8px;font-weight:700;flex:1;min-width:80px">Approved</button>
+            <button class="filter-tab" id="btn-f-pending" onclick="setListFilter('pending')" style="padding:.5rem 1rem;border-radius:8px;font-weight:700;flex:1;min-width:80px">Pending</button>
+            <button class="filter-tab" id="btn-f-rejected" onclick="setListFilter('rejected')" style="padding:.5rem 1rem;border-radius:8px;font-weight:700;flex:1;min-width:80px">Rejected</button>
+          </div>
+          <button id="btn-clear-cycle" onclick="clearCycleFilter()" style="display:none;background:#6366f1;color:white;border:none;border-radius:10px;padding:.5rem .875rem;font-size:.78rem;font-weight:700;cursor:pointer;white-space:nowrap">✕ Clear Filter</button>
         </div>
 
         <!-- Desktop table -->
@@ -459,17 +564,7 @@
     let hierarchyMode = true; // hierarchy is the default view
     const hierExpanded = { depts: new Set(), mgrs: new Set(), emps: new Set() };
 
-    const DEPT_COLORS = {
-      'O&M':'#6366f1','Project':'#ea580c','Procurement':'#16a34a',
-      'Account':'#0891b2','Accounts':'#0891b2','HR':'#db2777','HR & Admin':'#db2777',
-      'Purchase':'#0284c7','Finance':'#7c3aed','Sales':'#c026d3',
-      'Logistics':'#0284c7','Logistics & Supply Chain':'#0284c7',
-      'Lease':'#2563eb','Legal':'#dc2626','Liaison':'#65a30d',
-      'Compliance':'#059669','Tender':'#0d9488','Export Improvements':'#d97706',
-      'Transmission Line':'#92400e','Internal Audit & A/C Payable':'#1d4ed8',
-      'Unassigned':'#6b7280'
-    };
-    function deptColor(dept){ return DEPT_COLORS[dept] || '#6366f1'; }
+    function deptColor(dept){ return '#6366f1'; }
 
     // Extract the visited site from a pipe-encoded description field
     function extractSite(e) {
@@ -486,10 +581,14 @@
     function getExportData() {
       let base = activeFilteredExpenses !== null ? [...activeFilteredExpenses] : [...allExpensesFetched];
 
-      if (currentListFilter === 'rejected') {
+      // Status: filter-bar dropdown takes priority over the tab selection
+      const statusDropdown = (document.getElementById('f-status')?.value || 'all');
+      const effectiveStatus = statusDropdown !== 'all' ? statusDropdown : currentListFilter;
+
+      if (effectiveStatus === 'rejected') {
         base = base.filter(e => e.status === 'rejected' || e.status === 'l1_rejected');
-      } else if (currentListFilter !== 'all') {
-        base = base.filter(e => e.status === currentListFilter);
+      } else if (effectiveStatus !== 'all') {
+        base = base.filter(e => e.status === effectiveStatus);
       }
 
       const search = (document.getElementById('f-user-search')?.value || '').toLowerCase().trim();
@@ -509,6 +608,7 @@
       }
 
       base = applyDeptSelectFilter(base);
+      base = applyEmployeeSelectFilter(base);
 
       return base;
     }
@@ -569,6 +669,7 @@
 
       // Filter by department (super_admin UI)
       if (isAdmin) filtered = applyDeptSelectFilter(filtered);
+      if (isAdmin) filtered = applyEmployeeSelectFilter(filtered);
 
       if (isAdmin) {
         if (hierarchyMode) {
@@ -595,6 +696,92 @@
       document.getElementById('s-count').textContent = expenses.length;
       document.getElementById('s-total').textContent = formatCurrency(total);
       document.getElementById('s-month').textContent = formatCurrency(month);
+      renderCycleBreakdown(expenses);
+    }
+
+    function renderCycleBreakdown(expenses) {
+      const el = document.getElementById('emp-cycle-breakdown');
+      if (!el) return;
+      if (!expenses.length) { el.innerHTML = ''; return; }
+
+      // Build month+cycle groups
+      const groups = {};
+      expenses.forEach(e => {
+        const d = new Date(e.created_at);
+        const monthKey = d.toLocaleString('default', { month: 'long', year: 'numeric' });
+        const cNum = d.getDate() <= 15 ? 1 : 2;
+        const cLabel = cNum === 1 ? '1st–15th' : '16th–End';
+        const key = monthKey + '||' + cLabel;
+        if (!groups[key]) groups[key] = {
+          month: monthKey, cycle: cLabel, cNum,
+          sortKey: d.getFullYear() * 1000 + d.getMonth() * 10 + cNum,
+          expenses: []
+        };
+        groups[key].expenses.push(e);
+      });
+
+      const sorted = Object.values(groups).sort((a, b) => b.sortKey - a.sortKey);
+      const effectiveAmt = e => e.approved_amount != null ? +e.approved_amount : +e.amount;
+
+      el.innerHTML = `
+        <div style="font-size:.78rem;font-weight:700;color:#6b7280;text-transform:uppercase;letter-spacing:.05em;margin-bottom:.75rem">
+          📅 Month & Cycle Breakdown
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:.75rem">
+          ${sorted.map(g => {
+            const pending  = g.expenses.filter(e => e.status === 'pending').length;
+            const inReview = g.expenses.filter(e => e.status === 'l1_approved').length;
+            const approved = g.expenses.filter(e => e.status === 'approved').length;
+            const rejected = g.expenses.filter(e => e.status === 'rejected' || e.status === 'l1_rejected').length;
+            const totalAmt = g.expenses.reduce((s, e) => s + effectiveAmt(e), 0);
+            const col = g.cNum === 1 ? '#6366f1' : '#7c3aed';
+            const tagBg  = g.cNum === 1 ? '#ede9fe' : '#f3e8ff';
+            const tagCol = g.cNum === 1 ? '#6366f1' : '#7c3aed';
+            return `
+              <div onclick="filterByCycle('${g.month}','${g.cycle}')"
+                   style="background:white;border-radius:14px;padding:1.1rem 1.25rem;border:1.5px solid #e5e7eb;cursor:pointer;transition:all .15s"
+                   onmouseover="this.style.borderColor='${col}';this.style.boxShadow='0 4px 16px rgba(99,102,241,.12)'"
+                   onmouseout="this.style.borderColor='#e5e7eb';this.style.boxShadow='none'">
+                <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:.6rem">
+                  <div style="font-weight:700;font-size:.92rem;color:#1f2937">${g.month}</div>
+                  <span style="background:${tagBg};color:${tagCol};border-radius:6px;padding:2px 8px;font-size:.68rem;font-weight:800;white-space:nowrap">${g.cycle}</span>
+                </div>
+                <div style="font-size:1.45rem;font-weight:800;color:#111827;margin-bottom:.4rem">${formatCurrency(totalAmt)}</div>
+                <div style="font-size:.72rem;color:#9ca3af;margin-bottom:.6rem">${g.expenses.length} record${g.expenses.length !== 1 ? 's' : ''}</div>
+                <div style="display:flex;flex-wrap:wrap;gap:.3rem">
+                  ${pending  ? `<span style="background:#fef3c7;color:#92400e;border-radius:5px;padding:1px 6px;font-size:.68rem;font-weight:700">⏳ ${pending}</span>` : ''}
+                  ${inReview ? `<span style="background:#ede9fe;color:#5b21b6;border-radius:5px;padding:1px 6px;font-size:.68rem;font-weight:700">🔍 ${inReview}</span>` : ''}
+                  ${approved ? `<span style="background:#dcfce7;color:#166534;border-radius:5px;padding:1px 6px;font-size:.68rem;font-weight:700">✅ ${approved}</span>` : ''}
+                  ${rejected ? `<span style="background:#fee2e2;color:#991b1b;border-radius:5px;padding:1px 6px;font-size:.68rem;font-weight:700">❌ ${rejected}</span>` : ''}
+                </div>
+              </div>`;
+          }).join('')}
+        </div>`;
+    }
+
+    function filterByCycle(month, cycle) {
+      activeFilteredExpenses = allExpensesFetched.filter(e => {
+        const d = new Date(e.created_at);
+        const mY = d.toLocaleString('default', { month: 'long', year: 'numeric' });
+        const cNum = d.getDate() <= 15 ? 1 : 2;
+        const cLabel = cNum === 1 ? '1st–15th' : '16th–End';
+        return mY === month && cLabel === cycle;
+      });
+      setListFilter('all');
+      const clearBtn = document.getElementById('btn-clear-cycle');
+      if (clearBtn) {
+        clearBtn.style.display = 'block';
+        clearBtn.textContent = `✕ ${month} · ${cycle}`;
+      }
+      document.getElementById('emp-table')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      document.getElementById('emp-cards')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+
+    function clearCycleFilter() {
+      activeFilteredExpenses = null;
+      const clearBtn = document.getElementById('btn-clear-cycle');
+      if (clearBtn) clearBtn.style.display = 'none';
+      setListFilter('all');
     }
 
     function renderEmpTable(expenses) {
@@ -734,54 +921,109 @@
         </div>
       </div>` : ''}
 
-      <!-- Filter bar -->
-      <div class="filter-bar p-4 mb-6 shadow-sm rounded-xl grid gap-4 items-center" style="position:sticky;top:56px;z-index:10;background:var(--card-bg,#fff);border-radius:14px;border:1px solid var(--border);box-shadow:0 2px 8px rgba(0,0,0,.06);grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));">
-        <div class="form-group mb-0">
-          <label class="form-label" for="f-month">Month</label>
-          <input class="form-input" type="month" id="f-month" onchange="autoUpdateCycleFilter()" />
-        </div>
-        <div class="form-group mb-0">
-          <label class="form-label" for="f-cycle">Cycle</label>
-          <select class="form-select" id="f-cycle">
-            <option value="all">All Cycles</option>
-            <option value="1st - 15th">Cycle 1 (1st - 15th)</option>
-            <option value="16th - End">Cycle 2 (16th - End)</option>
-          </select>
-        </div>
-        <div class="form-group mb-0">
-          <label class="form-label" for="f-user-search">Search</label>
-          <input class="form-input" type="text" id="f-user-search" placeholder="Name / Email..." oninput="refreshListView(true)" />
-        </div>
-        ${!isDeptAdmin ? `
-        <div class="form-group mb-0">
-          <label class="form-label" for="f-dept">Department</label>
-          <select class="form-select" id="f-dept" onchange="refreshListView(true)">
-            <option value="">All Departments</option>
-            ${Object.keys(DEPT_MANAGERS).sort().map(d => `<option value="${escHtml(d)}">${escHtml(d)}</option>`).join('')}
-          </select>
-        </div>` : ''}
-        <div class="form-group mb-0">
-          <label class="form-label" for="f-manager">Line Manager</label>
-          <select class="form-select" id="f-manager" onchange="refreshListView(true)">
-            <option value="">All Managers</option>
-          </select>
-        </div>
-        <div class="flex gap-2 items-center" style="align-self: end;">
-          <button class="btn btn-primary btn-sm flex-1" onclick="applyCycleFilter()">Filter</button>
-          <button class="btn btn-secondary btn-sm" onclick="clearFilter()">✕</button>
+      <!-- ── Filter & Export Bar ─────────────────────────────────── -->
+      <div style="position:sticky;top:56px;z-index:10;background:var(--card-bg,#fff);border-radius:16px;border:1px solid var(--border);box-shadow:0 4px 16px rgba(0,0,0,.07);margin-bottom:1.5rem;overflow:hidden;">
+
+        <!-- Section A: Filters -->
+        <div style="padding:1rem 1.25rem;display:grid;gap:.75rem;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));align-items:end;">
+          <div>
+            <label style="display:block;font-size:.7rem;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:.35rem">Month</label>
+            <input class="form-input" type="month" id="f-month" onchange="autoUpdateCycleFilter()" style="height:38px;font-size:.875rem" />
+          </div>
+          <div>
+            <label style="display:block;font-size:.7rem;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:.35rem">Cycle</label>
+            <select class="form-select" id="f-cycle" style="height:38px;font-size:.875rem">
+              <option value="all">All Cycles</option>
+              <option value="1st - 15th">1st – 15th</option>
+              <option value="16th - End">16th – End</option>
+            </select>
+          </div>
+          <div>
+            <label style="display:block;font-size:.7rem;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:.35rem">Search</label>
+            <div style="position:relative">
+              <svg style="position:absolute;left:.6rem;top:50%;transform:translateY(-50%);width:15px;height:15px;color:var(--text-muted);pointer-events:none" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path stroke-linecap="round" stroke-linejoin="round" d="m21 21-4.35-4.35"/></svg>
+              <input class="form-input" type="text" id="f-user-search" placeholder="Name or Email…" oninput="refreshListView(true)" style="height:38px;font-size:.875rem;padding-left:2rem" />
+            </div>
+          </div>
+          ${!isDeptAdmin ? `
+          <div>
+            <label style="display:block;font-size:.7rem;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:.35rem">Department</label>
+            <select class="form-select" id="f-dept" onchange="onDeptFilterChange()" style="height:38px;font-size:.875rem">
+              <option value="">All Departments</option>
+              ${Object.keys(DEPT_MANAGERS).sort().map(d => `<option value="${escHtml(d)}">${escHtml(d)}</option>`).join('')}
+            </select>
+          </div>` : ''}
+          <div>
+            <label style="display:block;font-size:.7rem;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:.35rem">Employee</label>
+            <select class="form-select" id="f-employee" onchange="refreshListView(true)" style="height:38px;font-size:.875rem">
+              <option value="">All Employees</option>
+            </select>
+          </div>
+          <div>
+            <label style="display:block;font-size:.7rem;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:.35rem">Line Manager</label>
+            <select class="form-select" id="f-manager" onchange="refreshListView(true)" style="height:38px;font-size:.875rem">
+              <option value="">All Managers</option>
+            </select>
+          </div>
+          <div>
+            <label style="display:block;font-size:.7rem;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:.35rem">Status</label>
+            <select class="form-select" id="f-status" onchange="refreshListView(true)" style="height:38px;font-size:.875rem">
+              <option value="all">All Statuses</option>
+              <option value="pending">Pending</option>
+              <option value="l1_approved">In Review (L1)</option>
+              <option value="approved">Approved</option>
+              <option value="rejected">Rejected</option>
+            </select>
+          </div>
+          <!-- Filter / Clear actions -->
+          <div style="display:flex;gap:.5rem;align-items:flex-end">
+            <button class="btn btn-primary" onclick="applyCycleFilter()" style="height:38px;flex:1;font-size:.875rem;font-weight:600;border-radius:10px">
+              <svg style="width:14px;height:14px;margin-right:5px;display:inline;vertical-align:-2px" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M3 4h18M7 10h10M11 16h2"/></svg>Apply
+            </button>
+            <button onclick="clearFilter()" title="Clear all filters" style="height:38px;width:38px;border-radius:10px;border:1px solid var(--border);background:transparent;cursor:pointer;display:flex;align-items:center;justify-content:center;color:var(--text-muted);flex-shrink:0;font-size:1.1rem" onmouseover="this.style.background='#f1f5f9'" onmouseout="this.style.background='transparent'">✕</button>
+          </div>
         </div>
 
-        <div class="flex gap-2 sm-w-full" style="align-self: end; justify-content: flex-end;">
-          <button class="btn btn-primary btn-sm" onclick="exportMonthToExcel()">Month Excel</button>
-          <button class="btn btn-secondary btn-sm" onclick="exportToCSV()" style="background: #0f172a; color: white; border: none;">CSV</button>
+        <!-- Section B: Export & View bar -->
+        <div style="background:var(--bg,#f8fafc);border-top:1px solid var(--border);padding:.75rem 1.25rem;display:flex;flex-wrap:wrap;gap:.625rem;align-items:center;justify-content:space-between;">
+          <!-- Export buttons -->
+          <div style="display:flex;gap:.5rem;align-items:center;flex-wrap:wrap;">
+            <span style="font-size:.72rem;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.06em;margin-right:.25rem">Export:</span>
+            <button id="btn-export-excel" onclick="exportMonthToExcel()"
+              style="display:inline-flex;align-items:center;gap:.4rem;height:34px;padding:0 .875rem;background:var(--primary,#6366f1);color:white;border:none;border-radius:8px;font-size:.8rem;font-weight:600;cursor:pointer;white-space:nowrap"
+              onmouseover="this.style.opacity='.85'" onmouseout="this.style.opacity='1'">
+              <svg style="width:14px;height:14px;flex-shrink:0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 16v-8m0 8-3-3m3 3 3-3M3 17v2a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-2"/></svg>
+              Month Excel
+            </button>
+            <button id="btn-export-csv" onclick="exportToCSV()"
+              style="display:inline-flex;align-items:center;gap:.4rem;height:34px;padding:0 .875rem;background:#0f172a;color:white;border:none;border-radius:8px;font-size:.8rem;font-weight:600;cursor:pointer;white-space:nowrap"
+              onmouseover="this.style.opacity='.85'" onmouseout="this.style.opacity='1'">
+              <svg style="width:14px;height:14px;flex-shrink:0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12h6m-3-3v6M3 7V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v2M3 7h18v13a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7Z"/></svg>
+              CSV
+            </button>
+            <button id="btn-export-pdf" onclick="downloadDeptPDF()"
+              style="display:inline-flex;align-items:center;gap:.4rem;height:34px;padding:0 .875rem;background:#dc2626;color:white;border:none;border-radius:8px;font-size:.8rem;font-weight:600;cursor:pointer;white-space:nowrap"
+              onmouseover="this.style.opacity='.85'" onmouseout="this.style.opacity='1'">
+              <svg style="width:14px;height:14px;flex-shrink:0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 16v-8m0 8-3-3m3 3 3-3M3 17v2a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-2"/></svg>
+              PDF + Receipts
+            </button>
+          </div>
+          <!-- View toggle -->
+          <div style="display:flex;align-items:center;gap:.4rem">
+            <span style="font-size:.72rem;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.06em;margin-right:.1rem">View:</span>
+            <button id="btn-view-hier" onclick="setViewMode('hierarchy')"
+              style="display:inline-flex;align-items:center;gap:.35rem;height:34px;padding:0 .8rem;border-radius:8px;border:1.5px solid var(--primary,#6366f1);background:var(--primary,#6366f1);color:white;font-size:.8rem;font-weight:600;cursor:pointer">
+              <svg style="width:13px;height:13px" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M3 12h4m10 0h4M7 12a5 5 0 1 0 10 0 5 5 0 0 0-10 0M12 7V3m0 18v-4"/></svg>
+              Hierarchy
+            </button>
+            <button id="btn-view-list" onclick="setViewMode('list')"
+              style="display:inline-flex;align-items:center;gap:.35rem;height:34px;padding:0 .8rem;border-radius:8px;border:1.5px solid var(--border);background:transparent;color:var(--text-2,#374151);font-size:.8rem;font-weight:600;cursor:pointer">
+              <svg style="width:13px;height:13px" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 12h16M4 18h16"/></svg>
+              List
+            </button>
+          </div>
         </div>
 
-        <!-- View toggle -->
-        <div style="grid-column:1/-1;display:flex;gap:.5rem;justify-content:flex-end;flex-wrap:wrap;align-items:center;padding-top:.625rem;border-top:1px solid var(--border);margin-top:.25rem">
-          <span style="font-size:.78rem;color:var(--text-muted);font-weight:600">View Mode:</span>
-          <button id="btn-view-hier" class="btn btn-primary btn-sm" onclick="setViewMode('hierarchy')" style="border-radius:8px">🏗️ Hierarchy</button>
-          <button id="btn-view-list" class="btn btn-secondary btn-sm" onclick="setViewMode('list')" style="border-radius:8px">📋 List</button>
-        </div>
       </div>
 
       <!-- ── Hierarchy View ─────────────────────────────────── -->
@@ -870,6 +1112,7 @@
         const expenses = deptFilter(raw);
         allExpensesFetched = expenses;
         populateManagerFilter(expenses);
+        populateEmployeeFilter();
         updateAdminStats(expenses);
         refreshListView();
         renderAdminCharts(expenses);
@@ -1058,7 +1301,7 @@
                       <!-- Bank Details -->
                       <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 1rem; margin-bottom: 1.5rem; background: #eff6ff; padding: 1rem; border-radius: 8px; border: 1px solid #bfdbfe;">
                         <div style="grid-column:1/-1;font-size:.75rem;font-weight:700;color:#1e40af;text-transform:uppercase;margin-bottom:.25rem">🏦 Bank Details</div>
-                        ${[['Account Holder', g.user.bank_holder],['Bank Name', g.user.bank_name],['IFSC Code', g.user.bank_ifsc],['Account Number', g.user.bank_account ? '****'+g.user.bank_account.slice(-4) : null]].map(([l,v])=>`
+                        ${[['Account Holder', g.user.bank_holder],['Bank Name', g.user.bank_name],['IFSC Code', g.user.bank_ifsc],['Account Number', g.user.bank_account || null]].map(([l,v])=>`
                         <div>
                           <p style="font-size:.7rem;text-transform:uppercase;color:#3b82f6;margin-bottom:.2rem">${l}</p>
                           <p style="font-weight:700;color:#1e3a8a">${escHtml(v||'Not Added')}</p>
@@ -1068,7 +1311,7 @@
                       <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 1rem;">
                         <p style="font-weight:700; font-size:1.1rem">Cycle Breakdown</p>
                         <div style="display:flex; gap:0.5rem">
-                          <button class="btn btn-primary btn-sm" onclick="approveEntireCycle('${safeKey}')">Approve Entire Cycle</button>
+                          <button class="btn btn-primary btn-sm" onclick="approveEntireCycle('${safeKey}',this)">Approve Entire Cycle</button>
                           <button class="btn btn-secondary btn-sm" onclick="exportCycleToExcel('${safeKey}')">Excel</button>
                           <button class="btn btn-secondary btn-sm" onclick="exportCycleToCSV('${safeKey}')" style="background:#0f172a; color:white; border:none">CSV</button>
                         </div>
@@ -1166,6 +1409,15 @@
     }
 
     async function applyCycleFilter() {
+      // ── Button feedback ────────────────────────────────────
+      const applyBtn = document.querySelector('[onclick="applyCycleFilter()"]');
+      if (applyBtn) {
+        const orig = applyBtn.innerHTML;
+        applyBtn.innerHTML = `<svg style="width:14px;height:14px;margin-right:5px;display:inline;vertical-align:-2px" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>Applied!`;
+        applyBtn.style.background = '#16a34a';
+        setTimeout(() => { applyBtn.innerHTML = orig; applyBtn.style.background = ''; }, 1800);
+      }
+
       const monthVal  = document.getElementById('f-month').value;
       const cyclePart = document.getElementById('f-cycle').value;
       const search    = document.getElementById('f-user-search')?.value.toLowerCase().trim() || '';
@@ -1308,6 +1560,7 @@
       }
 
       if (isAdmin) filtered = applyDeptSelectFilter(filtered);
+      if (isAdmin) filtered = applyEmployeeSelectFilter(filtered);
 
       if (isAdmin) {
         renderAdminTable(filtered);
@@ -1324,6 +1577,8 @@
       if (document.getElementById('f-user-search')) document.getElementById('f-user-search').value = '';
       if (document.getElementById('f-manager')) document.getElementById('f-manager').value = '';
       if (document.getElementById('f-dept'))    document.getElementById('f-dept').value = '';
+      if (document.getElementById('f-employee')) document.getElementById('f-employee').value = '';
+      if (document.getElementById('f-status'))  document.getElementById('f-status').value = 'all';
       activeFilteredExpenses = null;
       const spin = `<div class="loading-state"><div class="spinner"></div><span>Loading…</span></div>`;
       document.getElementById('admin-table').innerHTML = spin;
@@ -1355,16 +1610,25 @@
 
     function receiptCell(e) {
       const urls = parseReceiptUrls(e.receipt_url);
-      if (!urls.length) return '<span style="color:var(--text-3)">—</span>';
+      const isSA = currentProfile?.role === 'super_admin';
+      const editBtn = isSA
+        ? `<button data-sa-edit="${e.id}" onclick="saEditReceipt('${e.id}')" title="${urls.length ? 'Replace Receipt' : 'Add Receipt'}"
+             style="margin-left:.35rem;background:none;border:1px solid var(--border);border-radius:5px;padding:1px 6px;font-size:.7rem;cursor:pointer;color:var(--text-muted)">📎 ${urls.length ? 'Edit' : 'Add'}</button>`
+        : '';
+      if (!urls.length) return `<span style="color:var(--text-3)">—</span>${editBtn}`;
       const lbl = urls.length > 1 ? `📎 ${urls.length} Receipts` : '📎 View';
-      return `<a class="receipt-link" href="javascript:void(0)" onclick="viewExpenseReceipts('${escHtml(e.receipt_url)}')">${lbl}</a>`;
+      return `<a class="receipt-link" href="javascript:void(0)" onclick="viewExpenseReceipts('${escHtml(e.receipt_url)}')">${lbl}</a>${editBtn}`;
     }
 
     function receiptCardFooter(e, label = 'View Receipt') {
       const urls = parseReceiptUrls(e.receipt_url);
-      if (!urls.length) return '';
+      const isSA = currentProfile?.role === 'super_admin';
+      const editBtn = isSA
+        ? `<button data-sa-edit="${e.id}" onclick="saEditReceipt('${e.id}')" style="background:none;border:1px solid var(--border);border-radius:6px;padding:2px 8px;font-size:.72rem;cursor:pointer;color:var(--text-muted);font-weight:600">📎 ${urls.length ? 'Edit Receipt' : 'Add Receipt'}</button>`
+        : '';
+      if (!urls.length) return isSA ? `<div class="expense-card-footer">${editBtn}</div>` : '';
       const lbl = urls.length > 1 ? `View ${urls.length} Receipts` : label;
-      return `<div class="expense-card-footer"><a class="receipt-link" href="javascript:void(0)" onclick="viewExpenseReceipts('${escHtml(e.receipt_url)}')">📎 ${lbl}</a></div>`;
+      return `<div class="expense-card-footer"><a class="receipt-link" href="javascript:void(0)" onclick="viewExpenseReceipts('${escHtml(e.receipt_url)}')">📎 ${lbl}</a>${editBtn}</div>`;
     }
 
     function parseDescForDisplay(raw) {
@@ -1644,11 +1908,78 @@
           ? 'L1 already approved — this is the final sign-off'
           : '⚠️ L1 pending — approving here will auto-complete L1 and finalise';
 
+      // Super Admin receipt upload section
+      const saSection = document.getElementById('am-sa-receipt-section');
+      if (saSection) {
+        saSection.style.display = currentProfile.role === 'super_admin' ? 'block' : 'none';
+        const fi = document.getElementById('am-sa-receipt-file');
+        if (fi) fi.value = '';
+        document.getElementById('am-sa-receipt-preview').style.display = 'none';
+        document.getElementById('am-sa-receipt-lbl').textContent = '📎 Click to choose image or PDF';
+      }
+
       document.getElementById('approval-modal').style.display = 'flex';
     }
 
     function closeApprovalModal() {
       document.getElementById('approval-modal').style.display = 'none';
+    }
+
+    // ── Super Admin Receipt Helpers ──────────────────────────────
+
+    function onSAReceiptSelected(input) {
+      if (!input.files?.length) return;
+      const file = input.files[0];
+      const preview = document.getElementById('am-sa-receipt-preview');
+      const img     = document.getElementById('am-sa-receipt-img');
+      const pdf     = document.getElementById('am-sa-receipt-pdf');
+      document.getElementById('am-sa-receipt-lbl').textContent = '📎 ' + file.name;
+      if (file.type === 'application/pdf') {
+        img.style.display = 'none'; pdf.style.display = 'inline';
+      } else {
+        img.src = URL.createObjectURL(file); img.style.display = 'block'; pdf.style.display = 'none';
+      }
+      preview.style.display = 'block';
+    }
+
+    function clearSAReceiptFile() {
+      const fi = document.getElementById('am-sa-receipt-file');
+      if (fi) fi.value = '';
+      document.getElementById('am-sa-receipt-preview').style.display = 'none';
+      document.getElementById('am-sa-receipt-lbl').textContent = '📎 Click to choose image or PDF';
+    }
+
+    async function uploadAndAttachReceipt(expenseId, file) {
+      try {
+        const url = await uploadReceipt(file, currentProfile.id);
+        if (!url) throw new Error('Upload failed');
+        const { error } = await db.from('expenses').update({ receipt_url: url }).eq('id', expenseId);
+        if (error) throw error;
+        const local = allExpensesFetched.find(e => e.id === expenseId);
+        if (local) local.receipt_url = url;
+        showMessage('Receipt saved!', 'success');
+      } catch (err) {
+        showMessage('Receipt upload failed: ' + err.message, 'error');
+      }
+    }
+
+    async function saEditReceipt(expenseId) {
+      const input = document.createElement('input');
+      input.type = 'file';
+      input.accept = 'image/*,application/pdf';
+      input.onchange = async () => {
+        if (!input.files?.length) return;
+        const btn = document.querySelector(`[data-sa-edit="${expenseId}"]`);
+        const orig = btn?.textContent;
+        if (btn) { btn.disabled = true; btn.textContent = '⏳'; }
+        try {
+          await uploadAndAttachReceipt(expenseId, input.files[0]);
+          await loadAdminExpenses();
+        } finally {
+          if (btn) { btn.disabled = false; btn.textContent = orig; }
+        }
+      };
+      input.click();
     }
 
     function onAmountChange() {
@@ -1701,6 +2032,13 @@
         if (!res.ok) throw new Error(data.error || 'Approval failed');
 
         showMessage(`Expense ${action === 'approved' ? 'approved' : 'rejected'} successfully!`, 'success');
+
+        // Super Admin: upload receipt if one was selected
+        if (currentProfile.role === 'super_admin') {
+          const fi = document.getElementById('am-sa-receipt-file');
+          if (fi?.files?.length) await uploadAndAttachReceipt(expenseId, fi.files[0]);
+        }
+
         closeApprovalModal();
         await loadAdminExpenses();
       } catch (err) {
@@ -1710,7 +2048,7 @@
       }
     }
 
-    async function approveEntireCycle(safeKey) {
+    async function approveEntireCycle(safeKey, triggerBtn) {
       const [userId, monthYear, cycleText] = safeKey.split('|');
       const isL1 = currentProfile.role === 'admin';
       const isL2 = currentProfile.role === 'super_admin';
@@ -1731,27 +2069,46 @@
         return;
       }
 
-      if (!confirm(`Approve all ${toApprove.length} expenses in this cycle?`)) return;
+      if (!confirm(`Approve all ${toApprove.length} expense${toApprove.length !== 1 ? 's' : ''} in this cycle?`)) return;
+
+      // ── Button loading state ────────────────────────────────
+      const btn = triggerBtn || event?.currentTarget || null;
+      const origText = btn?.innerHTML;
+      if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = `<span style="display:inline-flex;align-items:center;gap:.35rem"><span style="width:12px;height:12px;border:2px solid rgba(255,255,255,.4);border-top-color:white;border-radius:50%;display:inline-block;animation:spin .7s linear infinite"></span>Approving ${toApprove.length}…</span>`;
+      }
 
       try {
         const { data: { session } } = await db.auth.getSession();
         const token = session?.access_token;
         if (!token) throw new Error('Not authenticated');
 
-        let successCount = 0;
-        for (const e of toApprove) {
-          const res = await fetch('/api/approve-expense', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-            body: JSON.stringify({ expense_id: e.id, action: 'approved', remark: 'Bulk cycle approval' })
-          });
-          if (res.ok) successCount++;
-        }
+        const res = await fetch('/api/approve-expense', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+          body: JSON.stringify({ expense_ids: toApprove.map(e => e.id) })
+        });
 
-        showMessage(`Successfully approved ${successCount} of ${toApprove.length} expenses!`, 'success');
+        const json = await res.json();
+        if (!res.ok) throw new Error(json.error || 'Bulk approval failed');
+
+        const { approved, skipped, elapsed_ms } = json;
+        const elapsed = elapsed_ms < 1000 ? `${elapsed_ms}ms` : `${(elapsed_ms/1000).toFixed(1)}s`;
+        showMessage(
+          `✅ ${approved} expense${approved !== 1 ? 's' : ''} approved successfully` +
+          (skipped ? ` (${skipped} skipped)` : '') +
+          ` · ${elapsed}`,
+          'success'
+        );
+
         await loadAdminExpenses();
       } catch (err) {
         showMessage(err.message, 'error');
+        if (btn) {
+          btn.disabled = false;
+          btn.innerHTML = origText;
+        }
       }
     }
 
@@ -1863,6 +2220,30 @@
       showMessage(`Download started: ${filename} 📊`, 'success');
     }
 
+    /** Set export button to loading state; returns restore function */
+    function setExportLoading(btnId, loadingText) {
+      const btn = document.getElementById(btnId);
+      if (!btn) return () => {};
+      const orig = btn.innerHTML;
+      btn.disabled = true;
+      btn.innerHTML = `<span class="spinner" style="width:14px;height:14px;border-width:2px;display:inline-block;vertical-align:middle;margin-right:4px"></span>${loadingText}`;
+      return () => { btn.disabled = false; btn.innerHTML = orig; };
+    }
+
+    /** Auto-fit column widths for a SheetJS worksheet */
+    function autoFitCols(ws, headerRow, dataRows) {
+      const allRows = [headerRow, ...dataRows];
+      const widths = headerRow.map((_, ci) => {
+        let max = 8;
+        allRows.forEach(row => {
+          const len = String(row[ci] ?? '').length;
+          if (len > max) max = len;
+        });
+        return { wch: Math.min(max + 2, 60) };
+      });
+      ws['!cols'] = widths;
+    }
+
     /** Internal helper to perform Excel generation from a list of expenses */
     function performExcelExport(expenses, filename = 'Export.xlsx') {
       if (typeof XLSX === 'undefined') {
@@ -1870,13 +2251,13 @@
       }
       if (!expenses.length) return showMessage('No data to export', 'error');
 
-      const safeFilename = filename.replace(/[^a-z0-9.]/gi, '_');
-      if (!safeFilename.endsWith('.xlsx')) filename += '.xlsx';
+      const safeFilename = (filename.replace(/[^a-z0-9._\- ]/gi, '_'));
+      const finalFilename = safeFilename.endsWith('.xlsx') ? safeFilename : safeFilename + '.xlsx';
 
       // Sort oldest → newest before writing rows
       const sorted = [...expenses].sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
 
-      // Define clear headers
+      // ── Sheet 1: Expenses ──────────────────────────────────
       const headers = [
         "Date", "Cycle", "Submitted At", "Name", "Emp No", "Mobile",
         "Department", "Site", "Category", "From (Travel)", "To (Travel)",
@@ -1886,7 +2267,6 @@
         "L2 Approver", "L2 Date", "L2 Remark", "Admin Comment"
       ];
 
-      // Map data to rows
       const rows = sorted.map(e => {
         const u = e.users || {};
         const parts = (e.description || '').split('|');
@@ -1900,16 +2280,15 @@
         else if (type === 'FOOD') { d = parts[2]; }
         else if (type === 'ROOM_RENT') { d = parts[2]; }
         const s = extractSite(e) || u.site_name || '';
-
         const date = new Date(e.created_at);
         const cycle = date.getDate() <= 15 ? "1st - 15th" : "16th - End";
         const approvedAmt = e.approved_amount != null ? e.approved_amount : e.amount;
-        const bankAcct = u.bank_account ? '****' + u.bank_account.slice(-4) : '';
-
+        const bankAcct = u.bank_account || '';
         return [
           formatDate(e.created_at), cycle, formatDateTime(e.created_at),
           u.name || '', u.emp_no || '', u.phone || '', u.department || '',
-          s, e.category, f, t, d, e.amount, approvedAmt, e.status,
+          s, e.category, f, t, d,
+          Number(e.amount) || 0, Number(approvedAmt) || 0, e.status,
           u.bank_holder || '', u.bank_name || '', u.bank_ifsc || '', bankAcct,
           e.l1_by_name || '', e.l1_at ? formatDateTime(e.l1_at) : '', e.l1_remark || '',
           e.l2_by_name || '', e.l2_at ? formatDateTime(e.l2_at) : '', e.l2_remark || '',
@@ -1918,8 +2297,11 @@
       });
 
       const ws = XLSX.utils.aoa_to_sheet([headers, ...rows]);
+      // Freeze header row
+      ws['!freeze'] = { xSplit: 0, ySplit: 1 };
+      autoFitCols(ws, headers, rows);
 
-      // ── Site Summary sheet ─────────────────────────────────
+      // ── Sheet 2: Site Summary ──────────────────────────────
       const siteMap = {};
       sorted.forEach(e => {
         if (e.status === 'rejected' || e.status === 'l1_rejected') return;
@@ -1942,19 +2324,82 @@
           siteRows.push([emp.name, emp.emp_no, emp.dept, site, data.count, data.days.size, data.total]);
           empTotal += data.total;
         });
-        siteRows.push(['', '', '', `TOTAL — ${emp.name}`, '', '', empTotal]);
+        siteRows.push(['', '', '', `★ TOTAL — ${emp.name}`, '', '', empTotal]);
         siteRows.push([]);
       });
 
       const wsSite = XLSX.utils.aoa_to_sheet([siteHeaders, ...siteRows]);
+      ws['!freeze'] = { xSplit: 0, ySplit: 1 };
+      autoFitCols(wsSite, siteHeaders, siteRows);
+
+      // ── Sheet 3: Employee Summary ──────────────────────────
+      // Group by employee → cycle → total + approval info
+      const empMap = {};
+      sorted.forEach(e => {
+        if (e.status === 'rejected' || e.status === 'l1_rejected') return;
+        const u = e.users || {};
+        const empKey = u.emp_no || u.name || e.user_id;
+        const date = new Date(e.created_at);
+        const cycle = date.getDate() <= 15 ? '1st - 15th' : '16th - End';
+        const amt = e.approved_amount != null ? +e.approved_amount : +e.amount;
+        if (!empMap[empKey]) empMap[empKey] = { name: u.name || '', emp_no: u.emp_no || '', dept: u.department || '', cycles: {} };
+        if (!empMap[empKey].cycles[cycle]) empMap[empKey].cycles[cycle] = { total: 0, l1_name: '', l1_at: '', l2_name: '', l2_at: '' };
+        empMap[empKey].cycles[cycle].total += amt;
+        // Track latest approval info (overwrite with each expense — last one wins)
+        if (e.l1_by_name) empMap[empKey].cycles[cycle].l1_name = e.l1_by_name;
+        if (e.l1_at)      empMap[empKey].cycles[cycle].l1_at   = formatDateTime(e.l1_at);
+        if (e.l2_by_name) empMap[empKey].cycles[cycle].l2_name = e.l2_by_name;
+        if (e.l2_at)      empMap[empKey].cycles[cycle].l2_at   = formatDateTime(e.l2_at);
+      });
+
+      const empSumHeaders = [
+        'Employee Name', 'Emp No', 'Department', 'Cycle',
+        'L1 By', 'L1 At', 'L2 By', 'L2 At',
+        'Total Amount'
+      ];
+      const empSumRows = [];
+      let grandTotal = 0;
+
+      Object.values(empMap)
+        .sort((a, b) => (a.name || '').localeCompare(b.name || ''))
+        .forEach(emp => {
+          let empTotal = 0;
+          const cycleOrder = ['1st - 15th', '16th - End'];
+          cycleOrder.forEach(cycle => {
+            if (emp.cycles[cycle] !== undefined) {
+              const c = emp.cycles[cycle];
+              empSumRows.push([emp.name, emp.emp_no, emp.dept, cycle, c.l1_name, c.l1_at, c.l2_name, c.l2_at, c.total]);
+              empTotal += c.total;
+            }
+          });
+          Object.entries(emp.cycles).forEach(([cycle, c]) => {
+            if (!cycleOrder.includes(cycle)) {
+              empSumRows.push([emp.name, emp.emp_no, emp.dept, cycle, c.l1_name, c.l1_at, c.l2_name, c.l2_at, c.total]);
+              empTotal += c.total;
+            }
+          });
+          empSumRows.push(['', '', '', `★ Total — ${emp.name}`, '', '', '', '', empTotal]);
+          empSumRows.push([]);
+          grandTotal += empTotal;
+        });
+
+      empSumRows.push(['', '', '', '★★ GRAND TOTAL', '', '', '', '', grandTotal]);
+
+      const wsEmpSum = XLSX.utils.aoa_to_sheet([empSumHeaders, ...empSumRows]);
+      wsEmpSum['!freeze'] = { xSplit: 0, ySplit: 1 };
+      autoFitCols(wsEmpSum, empSumHeaders, empSumRows);
+
+      // ── Build workbook ─────────────────────────────────────
       const wb = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(wb, ws, "Expenses");
       XLSX.utils.book_append_sheet(wb, wsSite, "Site Summary");
+      XLSX.utils.book_append_sheet(wb, wsEmpSum, "Employee Summary");
 
       try {
         const wbout = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
         const blob = new Blob([wbout], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
-        triggerDownload(blob, safeFilename.endsWith('.xlsx') ? safeFilename : safeFilename + '.xlsx');
+        triggerDownload(blob, finalFilename);
+        showMessage(`✅ Excel exported — ${expenses.length} records across 3 sheets`, 'success');
       } catch (err) {
         console.error('Excel Export Error:', err);
         showMessage('Failed to generate Excel file.', 'error');
@@ -1963,9 +2408,14 @@
 
     /** Export exactly what's currently in allExpensesFetched (honoring UI filters) */
     function exportToExcel() {
-      const filtered = getExportData();
-      const timestamp = new Date().toISOString().split('T')[0];
-      performExcelExport(filtered, `ExpenseReport_Filtered_${timestamp}.xlsx`);
+      const restore = setExportLoading('btn-export-excel', 'Exporting…');
+      setTimeout(() => {
+        try {
+          const filtered = getExportData();
+          const timestamp = new Date().toISOString().split('T')[0];
+          performExcelExport(filtered, `ExpenseReport_Filtered_${timestamp}.xlsx`);
+        } finally { restore(); }
+      }, 50);
     }
 
     /** Export a specific user's specific cycle */
@@ -1988,15 +2438,20 @@
       const monthVal = document.getElementById('f-month').value;
       if (!monthVal) return showMessage('Please select a month first to use Month Export.', 'error');
 
-      const [yr, mo] = monthVal.split('-').map(Number);
-      // Start from current export data (respects status/search/manager filters) then narrow to month
-      const base = getExportData();
-      const filtered = base.filter(e => {
-        const d = new Date(e.created_at);
-        return d.getFullYear() === yr && (d.getMonth() + 1) === mo;
-      });
-      const monthName = new Date(monthVal).toLocaleString('default', { month: 'long', year: 'numeric' });
-      performExcelExport(filtered, `ExpenseReport_FullMonth_${monthName}.xlsx`);
+      const restore = setExportLoading('btn-export-excel', 'Generating…');
+      setTimeout(() => {
+        try {
+          const [yr, mo] = monthVal.split('-').map(Number);
+          // Start from current export data (respects status/search/manager filters) then narrow to month
+          const base = getExportData();
+          const filtered = base.filter(e => {
+            const d = new Date(e.created_at);
+            return d.getFullYear() === yr && (d.getMonth() + 1) === mo;
+          });
+          const monthName = new Date(monthVal + '-01').toLocaleString('default', { month: 'long', year: 'numeric' });
+          performExcelExport(filtered, `ExpenseReport_${monthName}.xlsx`);
+        } finally { restore(); }
+      }, 50);
     }
 
     // ─── CSV EXPORT (ULTRA ROBUST) ──────────────────────────────
@@ -2034,7 +2489,7 @@
         const date = new Date(e.created_at);
         const cycle = date.getDate() <= 15 ? "1st - 15th" : "16th - End";
         const approvedAmt = e.approved_amount != null ? e.approved_amount : e.amount;
-        const bankAcct = u.bank_account ? '****' + u.bank_account.slice(-4) : '';
+        const bankAcct = u.bank_account || '';
         const clean = str => `"${String(str || '').replace(/"/g, '""')}"`;
         return [
           formatDate(e.created_at), cycle, formatDateTime(e.created_at),
@@ -2053,9 +2508,15 @@
     }
 
     function exportToCSV() {
-      const filtered = getExportData();
-      const ts = new Date().toISOString().split('T')[0];
-      performCSVExport(filtered, `ExpenseReport_${ts}.csv`);
+      const restore = setExportLoading('btn-export-csv', 'Exporting…');
+      setTimeout(() => {
+        try {
+          const filtered = getExportData();
+          const ts = new Date().toISOString().split('T')[0];
+          performCSVExport(filtered, `ExpenseReport_${ts}.csv`);
+          if (filtered.length) showMessage(`✅ CSV exported — ${filtered.length} records`, 'success');
+        } finally { restore(); }
+      }, 50);
     }
 
     function exportCycleToCSV(safeKey) {
@@ -2069,6 +2530,350 @@
       });
       const name = filtered[0]?.users?.name || 'User';
       performCSVExport(filtered, `CycleReport_${name}_${monthYear}.csv`);
+    }
+
+    // ─── PDF WITH RECEIPTS ─────────────────────────────────────
+    async function downloadDeptPDF() {
+      const jspdfLib = window.jspdf || window.jsPDF;
+      if (!jspdfLib) return showMessage('PDF library not loaded. Please refresh and try again.', 'error');
+
+      const btn = document.getElementById('btn-export-pdf');
+      const origHTML = btn.innerHTML;
+      btn.disabled = true;
+
+      // ── Persistent progress bar (visible even after tab switch) ──
+      let overlay = document.getElementById('pdf-progress-overlay');
+      if (!overlay) {
+        overlay = document.createElement('div');
+        overlay.id = 'pdf-progress-overlay';
+        overlay.style.cssText = 'position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:#1e293b;color:#fff;padding:14px 20px;border-radius:14px;box-shadow:0 8px 32px rgba(0,0,0,.4);z-index:99999;min-width:300px;max-width:90vw;font-family:system-ui,sans-serif;font-size:13px;display:flex;flex-direction:column;gap:8px;';
+        document.body.appendChild(overlay);
+      }
+      if (!document.getElementById('_pdf_spin')) {
+        const s = document.createElement('style');
+        s.id = '_pdf_spin';
+        s.textContent = '@keyframes _pdfSpin{to{transform:rotate(360deg)}}';
+        document.head.appendChild(s);
+      }
+      function setProg(msg, pct) {
+        document.title = `(${Math.round(pct)}%) Generating PDF…`;
+        overlay.innerHTML = `<div style="display:flex;align-items:center;gap:10px;"><svg style="width:16px;height:16px;flex-shrink:0;animation:_pdfSpin 1s linear infinite" viewBox="0 0 24 24" fill="none" stroke="#818cf8" stroke-width="2.5"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg><span style="flex:1">${msg}</span><span style="color:#94a3b8;font-size:11px">${Math.round(pct)}%</span></div><div style="height:3px;background:#334155;border-radius:2px;overflow:hidden"><div style="height:100%;width:${pct}%;background:linear-gradient(90deg,#6366f1,#a5b4fc);border-radius:2px;transition:width .25s ease"></div></div>`;
+      }
+      function doneProg(msg, isErr) {
+        document.title = document.title.replace(/^\(\d+%\)\s*/, '');
+        overlay.innerHTML = `<div style="display:flex;align-items:center;gap:10px;"><span style="font-size:16px">${isErr ? '❌' : '✅'}</span><span>${msg}</span></div>`;
+        setTimeout(() => overlay.remove(), 3500);
+        btn.disabled = false; btn.innerHTML = origHTML;
+      }
+
+      try {
+        setProg('Loading expenses…', 2);
+        const expenses = getExportData();
+        if (!expenses.length) { doneProg('No data to export', true); return; }
+
+        const token = (await db.auth.getSession()).data.session?.access_token;
+        const { jsPDF } = jspdfLib;
+        const dept = expenses[0]?.users?.department || 'All Departments';
+        const monthVal = document.getElementById('f-month')?.value || '';
+        const monthLabel = monthVal ? new Date(monthVal + '-01').toLocaleString('default', { month: 'long', year: 'numeric' }) : 'All';
+
+        // ── Extract path from Supabase URL ──────────────────
+        function extractPath(url) {
+          const m = url.match(/\/storage\/v1\/object\/(?:public|sign)\/receipts\/(.+?)(?:\?|$)/);
+          if (m) return m[1];
+          const m2 = url.match(/receipts\/(.+?)(?:\?|$)/);
+          return m2 ? m2[1] : null;
+        }
+
+        // ── Read EXIF orientation from raw JPEG bytes ────────
+        function getExifOrientation(buf) {
+          try {
+            const v = new DataView(buf);
+            if (v.getUint16(0) !== 0xFFD8) return 1;
+            let off = 2;
+            while (off < buf.byteLength - 4) {
+              const marker = v.getUint16(off); off += 2;
+              if (marker === 0xFFE1) {
+                if (v.getUint32(off + 2) !== 0x45786966) return 1;
+                const little = v.getUint16(off + 8) === 0x4949;
+                const tags = v.getUint16(off + 14, little);
+                for (let i = 0; i < tags; i++) {
+                  const t = off + 16 + i * 12;
+                  if (t + 10 > buf.byteLength) break;
+                  if (v.getUint16(t, little) === 0x0112)
+                    return v.getUint16(t + 8, little);
+                }
+                return 1;
+              }
+              if ((marker & 0xFF00) !== 0xFF00) break;
+              off += v.getUint16(off);
+            }
+          } catch {}
+          return 1;
+        }
+
+        // ── Convert blob → EXIF-corrected canvas base64 ─────
+        async function blobToB64(blob) {
+          const buf = await blob.arrayBuffer();
+          const orient = getExifOrientation(buf);
+          const objUrl = URL.createObjectURL(blob);
+          return new Promise(resolve => {
+            const img = new Image();
+            img.onload = () => {
+              const nw = img.naturalWidth, nh = img.naturalHeight;
+              const swap = [5,6,7,8].includes(orient);
+              const canvas = document.createElement('canvas');
+              canvas.width  = swap ? nh : nw;
+              canvas.height = swap ? nw : nh;
+              const ctx = canvas.getContext('2d');
+              switch (orient) {
+                case 2: ctx.transform(-1,0,0,1,nw,0); break;
+                case 3: ctx.transform(-1,0,0,-1,nw,nh); break;
+                case 4: ctx.transform(1,0,0,-1,0,nh); break;
+                case 5: ctx.transform(0,1,1,0,0,0); break;
+                case 6: ctx.transform(0,1,-1,0,nh,0); break;
+                case 7: ctx.transform(0,-1,-1,0,nh,nw); break;
+                case 8: ctx.transform(0,-1,1,0,0,nw); break;
+              }
+              ctx.drawImage(img, 0, 0);
+              URL.revokeObjectURL(objUrl);
+              resolve({ b64: canvas.toDataURL('image/jpeg', 0.88), w: canvas.width, h: canvas.height });
+            };
+            img.onerror = () => { URL.revokeObjectURL(objUrl); resolve(null); };
+            img.src = objUrl;
+          });
+        }
+
+        // ── Step 1: Collect unique image receipt paths ───────
+        const pathSet = new Set();
+        expenses.forEach(e => {
+          parseReceiptUrls(e.receipt_url).forEach(url => {
+            if (!url.toLowerCase().includes('.pdf')) {
+              const p = extractPath(url); if (p) pathSet.add(p);
+            }
+          });
+        });
+        const allPaths = [...pathSet];
+
+        // ── Step 2: Batch-fetch signed URLs in parallel ──────
+        setProg(`Fetching ${allPaths.length} receipt URLs…`, 8);
+        const signedMap = {};
+        const BATCH = 10;
+        for (let i = 0; i < allPaths.length; i += BATCH) {
+          await Promise.all(allPaths.slice(i, i + BATCH).map(async p => {
+            try {
+              const r = await fetch('/api/receipt-url', { method:'POST', headers:{'Content-Type':'application/json','Authorization':`Bearer ${token}`}, body: JSON.stringify({ path: p }) });
+              const { url } = await r.json(); if (url) signedMap[p] = url;
+            } catch {}
+          }));
+          setProg(`Fetching URLs… ${Math.min(i+BATCH,allPaths.length)}/${allPaths.length}`, 8 + (Math.min(i+BATCH,allPaths.length)/Math.max(allPaths.length,1))*22);
+        }
+
+        // ── Step 3: Batch-download & EXIF-correct images ────
+        const fetchedPaths = Object.keys(signedMap);
+        setProg(`Downloading ${fetchedPaths.length} images…`, 30);
+        const imgMap = {};
+        for (let i = 0; i < fetchedPaths.length; i += BATCH) {
+          await Promise.all(fetchedPaths.slice(i, i + BATCH).map(async p => {
+            try {
+              const r = await fetch(signedMap[p]);
+              const blob = await r.blob();
+              const result = await blobToB64(blob);
+              if (result) imgMap[p] = result;
+            } catch {}
+          }));
+          setProg(`Processing images… ${Math.min(i+BATCH,fetchedPaths.length)}/${fetchedPaths.length}`, 30 + (Math.min(i+BATCH,fetchedPaths.length)/Math.max(fetchedPaths.length,1))*50);
+        }
+
+        // ── Step 4: Build PDF (synchronous — all data ready) ─
+        setProg('Building PDF…', 82);
+        const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+        const pageW = doc.internal.pageSize.getWidth();
+        const margin = 14;
+
+        // Group expenses by department → employee
+        const deptMap = {};
+        expenses.forEach(e => {
+          const d = e.users?.department || 'Unknown';
+          if (!deptMap[d]) deptMap[d] = { employees:{}, total:0, count:0 };
+          const uid = e.user_id;
+          if (!deptMap[d].employees[uid]) deptMap[d].employees[uid] = { user:e.users||{}, expenses:[] };
+          deptMap[d].employees[uid].expenses.push(e);
+          deptMap[d].total += Number(e.approved_amount ?? e.amount ?? 0);
+          deptMap[d].count++;
+        });
+        const depts = Object.keys(deptMap).sort();
+        const isMultiDept = depts.length > 1;
+        const empFilterId = (document.getElementById('f-employee')?.value || '').trim();
+        const empFilterName = empFilterId ? (expenses.find(e => e.user_id === empFilterId)?.users?.name || '') : '';
+        const filterLabel = empFilterName || (isMultiDept ? 'All Departments' : (depts[0] || dept));
+
+        // Tracks which employee is currently being rendered, so multi-page
+        // expense lists still show "who" and their final total on every page.
+        let pageCtxEmpName = '';
+        let pageCtxEmpTotal = 0;
+
+        function drawPageBanner() {
+          doc.setFillColor(99,102,241); doc.rect(0,0,pageW,20,'F');
+          doc.setTextColor(255,255,255); doc.setFontSize(13); doc.setFont(undefined,'bold');
+          doc.text('ExpenseTrack — Expense Report with Receipts', margin, 13);
+          doc.setFontSize(9); doc.setFont(undefined,'normal');
+          const rightText = pageCtxEmpName
+            ? `${pageCtxEmpName}   |   Total: Rs. ${pageCtxEmpTotal.toLocaleString('en-IN',{minimumFractionDigits:2})}`
+            : `${filterLabel}   |   ${monthLabel}   |   ${new Date().toLocaleDateString('en-IN')}`;
+          doc.text(rightText, pageW-margin, 13, {align:'right'});
+          doc.setTextColor(0,0,0);
+        }
+        function newPage() { doc.addPage(); drawPageBanner(); return 26; }
+
+        // ── TOC (only for All Departments) ───────────────────
+        const tocYPos = [];
+        if (isMultiDept) {
+          drawPageBanner();
+          let ty = 28;
+          doc.setFontSize(16); doc.setFont(undefined,'bold'); doc.setTextColor(30,58,138);
+          doc.text('Table of Contents', margin, ty); ty += 8;
+          doc.setFontSize(8); doc.setFont(undefined,'normal'); doc.setTextColor(100,116,139);
+          doc.text(`${depts.length} departments   •   ${expenses.length} total expenses   •   ${monthLabel}`, margin, ty); ty += 6;
+          doc.setDrawColor(226,232,240); doc.line(margin, ty, pageW-margin, ty); ty += 6;
+          depts.forEach((d, i) => {
+            const info = deptMap[d];
+            if (i%2===0) { doc.setFillColor(248,250,255); doc.rect(margin, ty-2, pageW-margin*2, 9, 'F'); }
+            doc.setFontSize(9); doc.setFont(undefined,'bold'); doc.setTextColor(15,23,42);
+            doc.text(`${i+1}.  ${d}`, margin+2, ty+4);
+            doc.setFont(undefined,'normal'); doc.setTextColor(100,116,139); doc.setFontSize(8);
+            doc.text(`${info.count} expense${info.count!==1?'s':''}`, margin+95, ty+4);
+            doc.setFont(undefined,'bold'); doc.setTextColor(22,163,74);
+            doc.text(`Rs. ${info.total.toLocaleString('en-IN',{minimumFractionDigits:2})}`, pageW-margin-30, ty+4);
+            doc.setTextColor(203,213,225); doc.text('p.--', pageW-margin-2, ty+4, {align:'right'});
+            tocYPos.push(ty+4); ty += 10;
+          });
+        }
+
+        // ── Department sections ───────────────────────────────
+        const deptPageNums = {};
+        let y = isMultiDept ? newPage() : (drawPageBanner(), 26);
+
+        depts.forEach((deptName, dIdx) => {
+          pageCtxEmpName = ''; // department divider page shows the generic header
+          if (dIdx > 0) y = newPage();
+          deptPageNums[deptName] = doc.internal.getCurrentPageInfo().pageNumber;
+          try { doc.outline.add(null, deptName, { pageNumber: deptPageNums[deptName] }); } catch {}
+
+          // Department banner
+          doc.setFillColor(99,102,241); doc.roundedRect(margin, y, pageW-margin*2, 22, 4, 4, 'F');
+          doc.setTextColor(255,255,255); doc.setFontSize(12); doc.setFont(undefined,'bold');
+          doc.text(deptName, margin+6, y+9);
+          doc.setFontSize(8); doc.setFont(undefined,'normal');
+          const di = deptMap[deptName];
+          doc.text(`${di.count} expense${di.count!==1?'s':''}   •   Total: Rs. ${di.total.toLocaleString('en-IN',{minimumFractionDigits:2})}`, margin+6, y+17);
+          y += 28;
+
+          let deptTotal = 0;
+          Object.values(di.employees).forEach(({ user, expenses: empExps }) => {
+            pageCtxEmpName = user.name || '—';
+            pageCtxEmpTotal = empExps.reduce((s, e) => s + Number(e.approved_amount ?? e.amount ?? 0), 0);
+            if (y > 250) y = newPage();
+            doc.setFillColor(238,242,255); doc.roundedRect(margin, y, pageW-margin*2, 18, 3, 3, 'F');
+            doc.setFontSize(10); doc.setFont(undefined,'bold'); doc.setTextColor(30,58,138);
+            doc.text(`${user.name||'—'}  (${user.emp_no||'—'})`, margin+3, y+7);
+            doc.setFontSize(8); doc.setFont(undefined,'normal'); doc.setTextColor(71,85,105);
+            doc.text(`${user.email||'—'}   |   ${user.phone||'—'}`, margin+3, y+14);
+            y += 22;
+
+            empExps.forEach(e => {
+              if (y > 240) y = newPage();
+              const amt = e.approved_amount != null ? e.approved_amount : e.amount;
+              deptTotal += Number(amt||0);
+              const sc = e.status==='approved'?[22,163,74]:e.status==='pending'?[245,158,11]:e.status==='l1_approved'?[99,102,241]:[239,68,68];
+              doc.setDrawColor(226,232,240); doc.setFillColor(255,255,255);
+              doc.roundedRect(margin, y, pageW-margin*2, 14, 2, 2, 'FD');
+              doc.setFontSize(8.5); doc.setFont(undefined,'bold'); doc.setTextColor(15,23,42);
+              doc.text(formatDate(e.created_at), margin+3, y+5.5);
+              doc.text(e.category||'—', margin+30, y+5.5);
+              doc.setFont(undefined,'normal'); doc.setTextColor(71,85,105);
+              doc.text((e.description||'').replace(/^[A-Z_]+\|/,'').replace(/\|/g,' ').substring(0,50), margin+65, y+5.5);
+              doc.setFont(undefined,'bold'); doc.setTextColor(15,23,42);
+              doc.text(`Rs. ${Number(amt).toLocaleString('en-IN',{minimumFractionDigits:2})}`, pageW-margin-3, y+5.5, {align:'right'});
+              doc.setFillColor(...sc); doc.roundedRect(margin+3, y+7.5, 22, 4.5, 1, 1, 'F');
+              doc.setTextColor(255,255,255); doc.setFontSize(6.5);
+              doc.text(e.status.replace('_',' ').toUpperCase(), margin+14, y+10.5, {align:'center'});
+              doc.setTextColor(0,0,0); y += 17;
+
+              parseReceiptUrls(e.receipt_url).forEach(url => {
+                if (url.toLowerCase().includes('.pdf')) {
+                  doc.setFontSize(7.5); doc.setTextColor(99,102,241);
+                  doc.text('PDF Receipt — open in app to view', margin+5, y+4); y += 8;
+                } else {
+                  const p = extractPath(url);
+                  if (!p || !imgMap[p]) return;
+                  const { b64, w: natW, h: natH } = imgMap[p];
+                  const maxW = pageW-margin*2-10, maxH = 200;
+                  let dW = maxW, dH = maxW;
+                  if (natW>0 && natH>0) { const r=natH/natW; dH=Math.min(maxW*r,maxH); dW=dH/r; if(dW>maxW){dW=maxW;dH=maxW*r;} }
+                  if (y+dH+5 > 280) y = newPage();
+                  try { doc.addImage(b64,'JPEG',margin+5,y,dW,dH,undefined,'MEDIUM'); doc.setDrawColor(203,213,225); doc.rect(margin+5,y,dW,dH); y+=dH+6; } catch {}
+                }
+              });
+
+              if (e.l1_by_name || e.l2_by_name) {
+                doc.setFontSize(7); doc.setTextColor(100,116,139);
+                let t = '';
+                if (e.l1_by_name) t += `L1: ${e.l1_by_name} (${e.l1_at?formatDate(e.l1_at):'—'})  `;
+                if (e.l2_by_name) t += `L2: ${e.l2_by_name} (${e.l2_at?formatDate(e.l2_at):'—'})`;
+                doc.text(t, margin+3, y); y += 5;
+              }
+              doc.setDrawColor(226,232,240); doc.line(margin,y,pageW-margin,y); y += 4;
+            });
+
+            // Per-employee total
+            if (y > 278) y = newPage();
+            doc.setFillColor(248,250,255); doc.setDrawColor(199,210,254);
+            doc.roundedRect(margin, y, pageW-margin*2, 9, 2, 2, 'FD');
+            doc.setFontSize(8.5); doc.setFont(undefined,'bold'); doc.setTextColor(67,56,202);
+            doc.text(`${user.name||'—'} — Total`, margin+4, y+6);
+            doc.text(`Rs. ${pageCtxEmpTotal.toLocaleString('en-IN',{minimumFractionDigits:2})}`, pageW-margin-4, y+6, {align:'right'});
+            y += 13;
+          });
+
+          // Department subtotal
+          if (y > 272) y = newPage();
+          doc.setFillColor(240,253,244); doc.setDrawColor(134,239,172);
+          doc.roundedRect(margin, y, pageW-margin*2, 10, 2, 2, 'FD');
+          doc.setFontSize(9); doc.setFont(undefined,'bold'); doc.setTextColor(22,163,74);
+          doc.text(`${deptName} — Total`, margin+4, y+6.5);
+          doc.text(`Rs. ${deptTotal.toLocaleString('en-IN',{minimumFractionDigits:2})}`, pageW-margin-4, y+6.5, {align:'right'});
+          y += 14;
+        });
+
+        // ── Page numbers ─────────────────────────────────────
+        const totalPages = doc.internal.getNumberOfPages();
+        for (let i = 1; i <= totalPages; i++) {
+          doc.setPage(i); doc.setFontSize(7); doc.setTextColor(148,163,184);
+          doc.text(`Page ${i} of ${totalPages}`, pageW/2, 293, {align:'center'});
+        }
+
+        // ── Back-fill TOC page numbers ────────────────────────
+        if (isMultiDept) {
+          doc.setPage(1);
+          depts.forEach((deptName, i) => {
+            const pgNum = deptPageNums[deptName];
+            const ty = tocYPos[i];
+            if (!pgNum || !ty) return;
+            doc.setFillColor(255,255,255); doc.rect(pageW-margin-18, ty-5, 18, 7, 'F');
+            doc.setFontSize(8); doc.setFont(undefined,'bold'); doc.setTextColor(99,102,241);
+            doc.text(`p.${pgNum}`, pageW-margin-2, ty, {align:'right'});
+          });
+        }
+
+        setProg('Saving PDF…', 96);
+        doc.save(`ExpenseReport_${filterLabel.replace(/[^a-z0-9]/gi,'_')}_${monthLabel.replace(/\s/g,'_')}.pdf`);
+        doneProg(`PDF saved — ${expenses.length} expenses, ${fetchedPaths.length} receipts`);
+
+      } catch (err) {
+        console.error('PDF error:', err);
+        doneProg('PDF failed: ' + err.message, true);
+      }
     }
 
     // ─── THEME & BULK HELPERS ───────────────────────────────────
@@ -2365,7 +3170,7 @@
         <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:.625rem;background:#eff6ff;border:1px solid #bfdbfe;border-radius:10px;padding:.875rem;margin-bottom:.75rem;font-size:.8rem">
           <div style="grid-column:1/-1;font-size:.6rem;font-weight:700;color:#1e40af;text-transform:uppercase;margin-bottom:.1rem">🏦 Bank Details</div>
           ${[['Holder',user.bank_holder],['Bank',user.bank_name],['IFSC',user.bank_ifsc],
-             ['Acct No',user.bank_account?'****'+user.bank_account.slice(-4):null]
+             ['Acct No',user.bank_account||null]
             ].map(([l,v])=>v?`<div><div style="font-size:.6rem;text-transform:uppercase;font-weight:700;color:#3b82f6;margin-bottom:2px">${l}</div><div style="font-weight:700;color:#1e3a8a">${escHtml(String(v))}</div></div>`:'').filter(Boolean).join('')}
         </div>` : ''}
         <!-- Site-wise summary -->
@@ -2415,7 +3220,7 @@
                 <span style="font-size:.72rem;color:var(--text-muted);margin-left:.5rem">${g.entries.length} entries · ${formatCurrency(gTotal)}</span>
               </div>
               <div style="display:flex;gap:.3rem;flex-wrap:wrap">
-                <button class="btn btn-primary btn-sm" style="font-size:.7rem;padding:.2rem .55rem;border-radius:7px" onclick="approveEntireCycle('${safeKey}')">✓ Approve Cycle</button>
+                <button class="btn btn-primary btn-sm" style="font-size:.7rem;padding:.2rem .55rem;border-radius:7px" onclick="approveEntireCycle('${safeKey}',this)">✓ Approve Cycle</button>
                 <button class="btn btn-secondary btn-sm" style="font-size:.7rem;padding:.2rem .55rem;border-radius:7px" onclick="exportCycleToExcel('${safeKey}')">Excel</button>
                 <button class="btn btn-secondary btn-sm" style="font-size:.7rem;padding:.2rem .55rem;border-radius:7px;background:#0f172a;color:white;border:none" onclick="exportCycleToCSV('${safeKey}')">CSV</button>
               </div>
@@ -2458,6 +3263,7 @@
                         ${e.l1_by_name?`<div style="font-size:.62rem;color:var(--text-muted);margin-top:.2rem">L1: ${escHtml(e.l1_by_name)}</div>`:''}
                         ${e.l2_by_name?`<div style="font-size:.62rem;color:var(--text-muted)">L2: ${escHtml(e.l2_by_name)}</div>`:''}
                         ${parseReceiptUrls(e.receipt_url).length?`<a href="javascript:void(0)" onclick="viewExpenseReceipts('${escHtml(e.receipt_url)}')" style="font-size:.68rem;color:var(--primary);font-weight:600">📎 ${parseReceiptUrls(e.receipt_url).length>1?parseReceiptUrls(e.receipt_url).length+' Receipts':'Receipt'}</a>`:''}
+                        ${currentProfile.role==='super_admin'?`<button data-sa-edit="${e.id}" onclick="saEditReceipt('${e.id}')" style="display:block;margin-top:.2rem;background:none;border:1px solid var(--border);border-radius:5px;padding:1px 7px;font-size:.65rem;cursor:pointer;color:var(--text-muted)">📎 ${parseReceiptUrls(e.receipt_url).length?'Edit':'Add'} Receipt</button>`:''}
                       </td>
                       <td style="padding:.5rem .75rem;text-align:right">
                         <div style="display:flex;gap:.2rem;justify-content:flex-end;flex-wrap:wrap">

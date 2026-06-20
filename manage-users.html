@@ -7,7 +7,7 @@
   <link rel="stylesheet" href="style.css" />
   <link rel="manifest" href="/manifest.json" />
   <meta name="theme-color" content="#6366f1" />
-  <link rel="icon" type="image/svg+xml" href="/icon.svg" />
+  <link rel="icon" type="image/png" sizes="192x192" href="/icon-192.png" />\n  <link rel="icon" type="image/svg+xml" href="/icon.svg" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <script src="/pwa-register.js" defer></script>
 </head>
@@ -435,8 +435,12 @@
     <div style="display:grid;gap:1rem">
       <div>
         <label style="font-size:.8rem;font-weight:600;color:var(--text-muted);display:block;margin-bottom:.35rem">Department *</label>
-        <input id="lm-dept" type="text" class="form-input" placeholder="e.g. O&M" list="lm-dept-list" style="border-radius:8px">
-        <datalist id="lm-dept-list"></datalist>
+        <select id="lm-dept-select" class="form-input" onchange="onDeptSelectChange()" style="border-radius:8px">
+          <option value="">— Select Department —</option>
+          <option value="__new__" style="color:#6366f1;font-weight:700">➕ Add New Department</option>
+        </select>
+        <input id="lm-dept-new" type="text" class="form-input" placeholder="Type new department name…"
+               style="display:none;margin-top:.5rem;border-radius:8px">
       </div>
       <div>
         <label style="font-size:.8rem;font-weight:600;color:var(--text-muted);display:block;margin-bottom:.35rem">Manager Name *</label>
@@ -903,6 +907,8 @@
         applyFilters();
       }
       showMessage('User updated successfully!', 'success');
+      // Clear LM cache so dashboard hierarchy reflects role changes immediately
+      try { sessionStorage.removeItem('_lmdata'); } catch {}
       // Refresh modal display with updated data
       openModal(userId);
     } catch (err) {
@@ -1145,11 +1151,7 @@
       if (error) throw error;
       _lmRows = data || [];
       renderLMTable(_lmRows);
-      const dl = document.getElementById('lm-dept-list');
-      if (dl) {
-        const depts = [...new Set(_lmRows.map(r => r.department))].sort();
-        dl.innerHTML = depts.map(d => `<option value="${escHtml(d)}">`).join('');
-      }
+      _populateDeptSelect();
     } catch (err) {
       tbody.innerHTML = `<tr><td colspan="5" style="text-align:center;padding:2rem;color:#dc2626">Failed to load: ${escHtml(err.message)}</td></tr>`;
     }
@@ -1177,6 +1179,55 @@
     `).join('');
   }
 
+  // Populate the department <select> with existing departments + "Add New" option
+  function _populateDeptSelect(selectedDept) {
+    const sel = document.getElementById('lm-dept-select');
+    if (!sel) return;
+    const depts = [...new Set(_lmRows.map(r => r.department))].sort();
+    // Rebuild options (keep placeholder + dynamic list + Add New at bottom)
+    sel.innerHTML =
+      `<option value="">— Select Department —</option>` +
+      depts.map(d => `<option value="${escHtml(d)}"${d === selectedDept ? ' selected' : ''}>${escHtml(d)}</option>`).join('') +
+      `<option value="__new__" style="color:#6366f1;font-weight:700">➕ Add New Department</option>`;
+    // If selectedDept is not in the list, it's a new/unknown dept → show text input
+    const newInput = document.getElementById('lm-dept-new');
+    if (newInput) {
+      if (selectedDept && !depts.includes(selectedDept)) {
+        sel.value = '__new__';
+        newInput.value = selectedDept;
+        newInput.style.display = 'block';
+      } else {
+        newInput.style.display = 'none';
+        newInput.value = '';
+      }
+    }
+  }
+
+  // Called when user picks something in the department dropdown
+  function onDeptSelectChange() {
+    const sel      = document.getElementById('lm-dept-select');
+    const newInput = document.getElementById('lm-dept-new');
+    if (!sel || !newInput) return;
+    if (sel.value === '__new__') {
+      newInput.style.display = 'block';
+      newInput.value = '';
+      setTimeout(() => newInput.focus(), 50);
+    } else {
+      newInput.style.display = 'none';
+      newInput.value = '';
+    }
+  }
+
+  // Returns the final resolved department value from modal
+  function _getDeptValue() {
+    const sel = document.getElementById('lm-dept-select');
+    if (!sel) return '';
+    if (sel.value === '__new__') {
+      return (document.getElementById('lm-dept-new')?.value || '').trim();
+    }
+    return sel.value.trim();
+  }
+
   function openLMModal(id) {
     const modal = document.getElementById('lm-modal');
     if (!modal) return;
@@ -1186,32 +1237,34 @@
       const row = _lmRows.find(r => r.id === id);
       if (!row) return;
       document.getElementById('lm-modal-title').textContent = 'Edit Line Manager';
-      document.getElementById('lm-edit-id').value  = row.id;
-      document.getElementById('lm-dept').value     = row.department;
-      document.getElementById('lm-name').value     = row.manager_name;
-      document.getElementById('lm-code').value     = row.emp_code;
-      document.getElementById('lm-phone').value    = row.contact_number || '';
-      document.getElementById('lm-tl').value       = row.tl_name || '';
+      document.getElementById('lm-edit-id').value = row.id;
+      document.getElementById('lm-name').value    = row.manager_name;
+      document.getElementById('lm-code').value    = row.emp_code;
+      document.getElementById('lm-phone').value   = row.contact_number || '';
+      document.getElementById('lm-tl').value      = row.tl_name || '';
+      _populateDeptSelect(row.department);
     } else {
       document.getElementById('lm-modal-title').textContent = 'Add Line Manager';
       document.getElementById('lm-edit-id').value = '';
-      document.getElementById('lm-dept').value    = '';
       document.getElementById('lm-name').value    = '';
       document.getElementById('lm-code').value    = '';
       document.getElementById('lm-phone').value   = '';
       document.getElementById('lm-tl').value      = '';
+      _populateDeptSelect('');
     }
     modal.style.display = 'flex';
-    setTimeout(() => document.getElementById('lm-dept').focus(), 100);
+    setTimeout(() => document.getElementById('lm-dept-select').focus(), 100);
   }
 
   function closeLMModal() {
     const modal = document.getElementById('lm-modal');
     if (modal) modal.style.display = 'none';
+    const newInput = document.getElementById('lm-dept-new');
+    if (newInput) { newInput.style.display = 'none'; newInput.value = ''; }
   }
 
   async function saveLM() {
-    const dept  = (document.getElementById('lm-dept')?.value  || '').trim();
+    const dept  = _getDeptValue();
     const name  = (document.getElementById('lm-name')?.value  || '').trim();
     const code  = (document.getElementById('lm-code')?.value  || '').trim();
     const phone = (document.getElementById('lm-phone')?.value || '').trim();

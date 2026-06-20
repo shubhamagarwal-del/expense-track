@@ -475,10 +475,14 @@ button, input, select, textarea { font-family: var(--font); font-size: 16px; } /
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 2.5rem 2rem;
-  background: var(--surface);
+  padding: 2.5rem 2.5rem;
+  background: linear-gradient(180deg, #eef2ff 0%, #e0e7ff 100%);
+  border-left: 1px solid #c7d2fe;
 }
-.auth-form-box { width: 100%; max-width: 360px; }
+.auth-form-box {
+  width: 100%;
+  max-width: 360px;
+}
 
 .auth-form-box h2 {
   font-size: 1.5rem;
@@ -554,6 +558,9 @@ button, input, select, textarea { font-family: var(--font); font-size: 16px; } /
   display: flex; pointer-events: none;
 }
 .input-ico svg { width: 15px; height: 15px; }
+
+/* Input with leading icon — needs extra left padding so text doesn't overlap icon */
+.form-input.with-ico { padding-left: 2.5rem; }
 
 .form-input, .form-select {
   width: 100%;
@@ -1112,9 +1119,30 @@ tbody tr:hover { background: #fafbff; }
    ╚══════════════════════════════════════════════════════════╝ */
 
 @media (max-width: 900px) {
-  /* Auth: hide left panel on small screens */
+  /* Auth: hide left panel, show full-screen branded form */
   .auth-panel { display: none; }
-  .auth-form-panel { width: 100%; min-height: 100vh; align-items: flex-start; padding-top: 3rem; }
+  .auth-form-panel {
+    width: 100%;
+    min-height: 100vh;
+    align-items: center;
+    justify-content: center;
+    padding: 2rem 1.25rem;
+    background: linear-gradient(160deg, #f0f4ff 0%, #e8eeff 50%, #f5f0ff 100%);
+  }
+  .auth-form-box {
+    background: #ffffff;
+    border-radius: 24px;
+    padding: 2.25rem 2rem;
+    box-shadow: 0 8px 40px rgba(99,102,241,.13), 0 2px 8px rgba(0,0,0,.06);
+    max-width: 400px;
+    width: 100%;
+  }
+  .auth-mobile-brand {
+    display: flex !important;
+    flex-direction: column;
+    align-items: center;
+    margin-bottom: 1.75rem;
+  }
 }
 
 @media (max-width: 768px) {

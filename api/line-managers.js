@@ -1,7 +1,7 @@
 /**
  * GET /api/line-managers
- * Returns all line manager records from Supabase.
- * Cached for 5 minutes at the edge; sessionStorage caches on client.
+ * Returns managers built from users table (role = 'admin').
+ * Using service role key bypasses RLS — safe because this is read-only public info.
  */
 import { createClient } from '@supabase/supabase-js';
 
@@ -16,27 +16,28 @@ export default async function handler(req, res) {
 
   try {
     const { data, error } = await supabase
-      .from('line_managers')
-      .select('*')
+      .from('users')
+      .select('name, emp_no, department, phone')
+      .eq('role', 'admin')
       .order('department')
-      .order('manager_name');
+      .order('name');
 
-    // If table doesn't exist yet (PGRST116 / "relation does not exist"),
-    // return an empty array so the client can fall back to hardcoded data.
-    if (error) {
-      const isTableMissing = error.code === 'PGRST116' ||
-        (error.message && error.message.includes('does not exist'));
-      if (isTableMissing) {
-        res.setHeader('Cache-Control', 'no-store');
-        return res.json([]);
-      }
-      return res.status(500).json({ error: error.message });
-    }
+    if (error) return res.status(500).json({ error: error.message });
 
-    res.setHeader('Cache-Control', 'public, max-age=300, stale-while-revalidate=60');
-    return res.json(data ?? []);
+    // Convert to the same flat array format the client already expects:
+    // [{ department, manager_name, emp_code, contact_number }]
+    const rows = (data ?? [])
+      .filter(u => u.department?.trim())
+      .map(u => ({
+        department:     u.department.trim(),
+        manager_name:   u.name    || '',
+        emp_code:       u.emp_no  || '',
+        contact_number: u.phone   || '',
+      }));
+
+    res.setHeader('Cache-Control', 'no-store');
+    return res.json(rows);
   } catch (err) {
-    // Catch any unexpected runtime error so Vercel never returns plain-text HTML
     return res.status(500).json({ error: String(err.message ?? err) });
   }
 }

@@ -349,11 +349,8 @@ async function fetchLineManagers() {
     const res = await fetch('/api/line-managers');
     if (!res.ok) return null;
 
-    // Read raw text first — if the server returns a plain-text error (e.g.
-    // "A server error has occurred") calling .json() would throw SyntaxError.
     const text = await res.text();
     if (!text || !text.trimStart().startsWith('[')) {
-      // Response is not a JSON array — clear any stale cached value and bail
       try { sessionStorage.removeItem('_lmdata'); } catch {}
       return null;
     }
@@ -367,6 +364,7 @@ async function fetchLineManagers() {
     if (!Array.isArray(rows) || rows.length === 0) return null;
 
     // Convert flat rows → { department: [{ code, name, phone }] }
+    // API now returns data from users table (role='admin') — single source of truth.
     const map = {};
     rows.forEach(m => {
       if (!map[m.department]) map[m.department] = [];
@@ -376,6 +374,8 @@ async function fetchLineManagers() {
         phone: m.contact_number,
       });
     });
+
+    if (Object.keys(map).length === 0) return null;
 
     _lmCache = map;
     try { sessionStorage.setItem('_lmdata', JSON.stringify(map)); } catch {}
