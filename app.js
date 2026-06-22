@@ -450,47 +450,74 @@ function viewExpenseReceipts(urlOrJson) {
 }
 
 /**
- * Open a receipt URL safely.
+ * Open a receipt URL safely, in an on-page modal (no tab navigation).
  * Extracts the storage path from the stored URL and fetches a short-lived
  * signed URL from the server — works whether the bucket is public or private.
- *
- * IMPORTANT: the blank tab MUST be opened synchronously before any await,
- * otherwise browsers treat window.open() as a popup and block it.
  */
 async function viewReceipt(storedUrl) {
   if (!storedUrl) return;
 
-  // Open blank tab NOW — synchronous with user click, before any await.
-  const newTab = window.open('', '_blank');
+  showReceiptModal(null, true);
 
   const match = storedUrl.match(/\/receipts\/(.+?)(\?|$)/);
-  if (!match) {
-    if (newTab) newTab.location.href = storedUrl;
+  let finalUrl = storedUrl; // fallback
+  if (match) {
+    const path = match[1];
+    try {
+      await initSupabase();
+      const { data: { session } } = await db.auth.getSession();
+      const token = session?.access_token;
+
+      const res = await fetch('/api/receipt-url', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ path })
+      });
+
+      if (res.ok) {
+        const text = await res.text();
+        try { const d = JSON.parse(text); if (d.url) finalUrl = d.url; } catch {}
+      }
+    } catch {}
+  }
+
+  showReceiptModal(finalUrl, false);
+}
+
+/** Render (or update) the same-page receipt viewer modal. */
+function showReceiptModal(url, loading) {
+  let modal = document.getElementById('_rcpt-viewer');
+  if (!modal) {
+    modal = document.createElement('div');
+    modal.id = '_rcpt-viewer';
+    modal.style.cssText = 'position:fixed;inset:0;z-index:10000;background:rgba(15,23,42,.88);display:flex;align-items:center;justify-content:center;padding:1.25rem';
+    modal.addEventListener('click', (ev) => { if (ev.target === modal) modal.remove(); });
+    document.addEventListener('keydown', function escClose(ev) {
+      if (ev.key === 'Escape') { const m = document.getElementById('_rcpt-viewer'); if (m) m.remove(); document.removeEventListener('keydown', escClose); }
+    });
+    document.body.appendChild(modal);
+  }
+
+  if (loading) {
+    modal.innerHTML = `<div style="color:#fff;text-align:center;font-size:.85rem">
+      <div style="width:30px;height:30px;border:3px solid rgba(255,255,255,.25);border-top-color:#fff;border-radius:50%;animation:spin .65s linear infinite;margin:0 auto .75rem"></div>
+      Loading receipt…
+    </div>`;
     return;
   }
 
-  const path = match[1];
-  try {
-    await initSupabase();
-    const { data: { session } } = await db.auth.getSession();
-    const token = session?.access_token;
-
-    const res = await fetch('/api/receipt-url', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-      body: JSON.stringify({ path })
-    });
-
-    let finalUrl = storedUrl; // fallback
-    if (res.ok) {
-      const text = await res.text();
-      try { const d = JSON.parse(text); if (d.url) finalUrl = d.url; } catch {}
-    }
-
-    if (newTab) newTab.location.href = finalUrl;
-  } catch {
-    if (newTab) newTab.location.href = storedUrl;
-  }
+  const isPDF = url.toLowerCase().includes('.pdf');
+  modal.innerHTML = `
+    <div style="position:relative;display:flex;flex-direction:column;align-items:center;max-width:94vw;max-height:94vh">
+      <div style="display:flex;gap:.5rem;margin-bottom:.65rem">
+        <a href="${url}" target="_blank" rel="noopener" style="background:#fff;color:#1e293b;padding:.45rem 1rem;border-radius:8px;font-size:.8rem;font-weight:700;text-decoration:none">⤓ Open Original</a>
+        <button onclick="document.getElementById('_rcpt-viewer').remove()" style="background:#fff;color:#1e293b;border:none;padding:.45rem 1rem;border-radius:8px;font-size:.8rem;font-weight:700;cursor:pointer">✕ Close</button>
+      </div>
+      ${isPDF
+        ? `<iframe src="${escHtml(url)}" style="width:min(94vw,820px);height:min(82vh,1000px);border:none;border-radius:10px;background:#fff"></iframe>`
+        : `<img src="${escHtml(url)}" style="max-width:94vw;max-height:82vh;border-radius:10px;box-shadow:0 12px 48px rgba(0,0,0,.5);background:#fff" />`
+      }
+    </div>`;
 }
 
 /**
