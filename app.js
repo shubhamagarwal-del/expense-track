@@ -422,11 +422,13 @@ function parseReceiptUrls(val) {
   return [val];
 }
 
-/** Open expense receipt(s). Shows a picker modal when there are multiple. */
-function viewExpenseReceipts(urlOrJson) {
+/** Open expense receipt(s). Shows a picker modal when there are multiple.
+ *  expenseId (optional) — if provided, the view is audited via /api/expense-view
+ *  so admins can be required to view a receipt before approving. */
+function viewExpenseReceipts(urlOrJson, expenseId) {
   const urls = parseReceiptUrls(urlOrJson);
   if (!urls.length) return;
-  if (urls.length === 1) { viewReceipt(urls[0]); return; }
+  if (urls.length === 1) { viewReceipt(urls[0], expenseId); return; }
 
   let picker = document.getElementById('_rcpt-picker');
   if (picker) picker.remove();
@@ -443,7 +445,7 @@ function viewExpenseReceipts(urlOrJson) {
     </div>`;
   picker.addEventListener('click', (ev) => {
     const btn = ev.target.closest('[data-url]');
-    if (btn) { viewReceipt(btn.dataset.url); picker.remove(); return; }
+    if (btn) { viewReceipt(btn.dataset.url, expenseId); picker.remove(); return; }
     if (ev.target === picker) picker.remove();
   });
   document.body.appendChild(picker);
@@ -453,8 +455,9 @@ function viewExpenseReceipts(urlOrJson) {
  * Open a receipt URL safely, in an on-page modal (no tab navigation).
  * Extracts the storage path from the stored URL and fetches a short-lived
  * signed URL from the server — works whether the bucket is public or private.
+ * If expenseId is provided, also records the view (admin audit log).
  */
-async function viewReceipt(storedUrl) {
+async function viewReceipt(storedUrl, expenseId) {
   if (!storedUrl) return;
 
   showReceiptModal(null, true);
@@ -482,6 +485,11 @@ async function viewReceipt(storedUrl) {
   }
 
   showReceiptModal(finalUrl, false);
+
+  // Audit: record that this admin has viewed this expense's receipt
+  if (expenseId && typeof window.markExpenseAsViewed === 'function') {
+    window.markExpenseAsViewed(expenseId);
+  }
 }
 
 /** Render (or update) the same-page receipt viewer modal. */
