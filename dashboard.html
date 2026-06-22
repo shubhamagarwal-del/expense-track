@@ -573,7 +573,7 @@
         const chunkSize = 200;
         for (let i = 0; i < ids.length; i += chunkSize) {
           const chunk = ids.slice(i, i + chunkSize);
-          const res = await fetch('/api/expense-view?ids=' + encodeURIComponent(chunk.join(',')), {
+          const res = await fetch('/api/receipt-url?ids=' + encodeURIComponent(chunk.join(',')), {
             headers: { 'Authorization': `Bearer ${token}` }
           });
           if (!res.ok) return;
@@ -589,7 +589,7 @@
       try {
         const token = (await db.auth.getSession()).data.session?.access_token;
         if (!token) return;
-        const res = await fetch('/api/expense-view', {
+        const res = await fetch('/api/receipt-url', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
           body: JSON.stringify({ expense_id: expenseId })

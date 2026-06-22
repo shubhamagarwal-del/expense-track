@@ -11,7 +11,6 @@ import updatePasswordController from './api/update-password.js';
 import updateUserController from './api/update-user.js';
 import listCompaniesController from './api/list-companies.js';
 import createCompanyController from './api/create-company.js';
-import expenseViewController from './api/expense-view.js';
 import dotenv from 'dotenv';
 dotenv.config();
 
@@ -104,7 +103,7 @@ app.post('/api/create-company', async (req, res) => {
   }
 });
 
-app.post('/api/receipt-url', async (req, res) => {
+app.get('/api/receipt-url', async (req, res) => {
   try {
     await receiptUrlController(req, res);
   } catch (error) {
@@ -113,18 +112,9 @@ app.post('/api/receipt-url', async (req, res) => {
   }
 });
 
-app.get('/api/expense-view', async (req, res) => {
+app.post('/api/receipt-url', async (req, res) => {
   try {
-    await expenseViewController(req, res);
-  } catch (error) {
-    console.error('API Error:', error);
-    if (!res.headersSent) res.status(500).json({ error: error.message });
-  }
-});
-
-app.post('/api/expense-view', async (req, res) => {
-  try {
-    await expenseViewController(req, res);
+    await receiptUrlController(req, res);
   } catch (error) {
     console.error('API Error:', error);
     if (!res.headersSent) res.status(500).json({ error: error.message });
