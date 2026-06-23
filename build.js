@@ -12,7 +12,7 @@ const OUT = 'public';
 const EXTS = new Set(['.html', '.css', '.js', '.json', '.svg', '.png', '.jpg', '.jpeg', '.webp', '.ico', '.txt']);
 
 // Root-level directories / files to skip
-const SKIP = new Set(['node_modules', '.vercel', '.git', '.claude', 'api', 'migration', 'public', 'build.js', 'server.js', 'package.json', 'package-lock.json', 'vercel.json']);
+const SKIP = new Set(['node_modules', '.vercel', '.git', '.claude', 'api', 'migration', 'public', 'build.js', 'server.js', 'package.json', 'package-lock.json', 'vercel.json', 'nodemon.json']);
 
 // Subdirectories to copy recursively (whitelist)
 const COPY_DIRS = ['logo'];

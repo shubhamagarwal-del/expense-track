@@ -660,58 +660,7 @@
       'Room Rent': 700
     };
 
-    const SITE_DATA = [
-      {code:'LOC0001',name:'Sindhu'},{code:'LOC0002',name:'Budhro Ki Dhani'},
-      {code:'LOC0003',name:'Bidasar'},{code:'LOC0004',name:'Nadiya Tal'},
-      {code:'LOC0005',name:'Udwala'},{code:'LOC0006',name:'Ratnania Johra'},
-      {code:'LOC0007',name:'Jamola'},{code:'LOC0008',name:'Kherla Nagar'},
-      {code:'LOC0009',name:'Birmana Tal'},{code:'LOC0010',name:'Ghantel'},
-      {code:'LOC0011',name:'Keshloi Tal'},{code:'LOC0012',name:'Kunpalsar'},
-      {code:'LOC0013',name:'Ramdevra-ii'},{code:'LOC0014',name:'Sandwa'},
-      {code:'LOC0015',name:'Badsar'},{code:'LOC0016',name:'Dhirasar'},
-      {code:'LOC0017',name:'Raimalwara'},{code:'LOC0018',name:'Muknasar'},
-      {code:'LOC0019',name:'Mukam'},{code:'LOC0020',name:'Ankhisar-i'},
-      {code:'LOC0021',name:'Ankhisar-ii'},{code:'LOC0022',name:'Purnada Tall'},
-      {code:'LOC0023',name:'Chitawa'},{code:'LOC0024',name:'Rajaldesar'},
-      {code:'LOC0025',name:'Raisar'},{code:'LOC0026',name:'Kakra-i (a)'},
-      {code:'LOC0027',name:'Kakra-ii (a+b)'},{code:'LOC0028',name:'Kishnasar'},
-      {code:'LOC0029',name:'Jogniya Ka Bala'},{code:'LOC0030',name:'Surpura-i'},
-      {code:'LOC0031',name:'Surpura-ii'},{code:'LOC0032',name:'Dhingsari'},
-      {code:'LOC0033',name:'Sowa'},{code:'LOC0034',name:'Berasar'},
-      {code:'LOC0035',name:'Himmatsar'},{code:'LOC0036',name:'Khunkhuna'},
-      {code:'LOC0037',name:'Lalasar-1'},{code:'LOC0038',name:'Pilania Pau'},
-      {code:'LOC0039',name:'Bachasar-i & Ii'},{code:'LOC0040',name:'Choti Serva'},
-      {code:'LOC0041',name:'Rohisa'},{code:'LOC0042',name:'Gopasariya-1'},
-      {code:'LOC0043',name:'Satra- 1&2'},{code:'LOC0045',name:'Ramdevra-i'},
-      {code:'LOC0046',name:'Gajroopdesar-i'},{code:'LOC0047',name:'Raniwada'},
-      {code:'LOC0048',name:'Malpura'},{code:'LOC0049',name:'Chittod'},
-      {code:'LOC0050',name:'Nagaur Dairy'},{code:'LOC0051',name:'Mnit'},
-      {code:'LOC0052',name:'Bhartpur'},{code:'LOC0053',name:'Sau Delhi'},
-      {code:'LOC0054',name:'Jagatpura Rooftop'},{code:'LOC0055',name:'Vki Warehouse'},
-      {code:'LOC0056',name:'Office'},{code:'LOC0057',name:'3rd Party Site'},
-      {code:'LOC0058',name:'Khakholi'},{code:'LOC0059',name:'Pahel & Haspurkalan'},
-      {code:'LOC0060',name:'Gajroopdesar-ii'},{code:'LOC0061',name:'Jhareli II'},
-      {code:'LOC0062',name:'Bamboo'},{code:'LOC0063',name:'Godawanti Tal'},
-      {code:'LOC0064',name:'Neral Railway Station'},{code:'LOC0065',name:'Mira Road Railway Station'},
-      {code:'LOC0098',name:'Ghatoo'},{code:'LOC0099',name:'Hiyadesar'},
-      {code:'LOC0101',name:'Jegla'},{code:'LOC0103',name:'Gopasariya-2'},
-      {code:'LOC0104',name:'Somalsar'},{code:'LOC0105',name:'Surawas'},
-      {code:'LOC0113',name:'Thaiyat'},{code:'LOC0114',name:'Ajoliya Ka Khera'},
-      {code:'LOC0115',name:'Devliya Kallan'},{code:'LOC0116',name:'Sarna'},
-      {code:'LOC0118',name:'Ghewariya'},{code:'LOC0119',name:'Lalasar-2'},
-      {code:'LOC0127',name:'Jetpur'},{code:'LOC0128',name:'Manyana'},
-      {code:'LOC0129',name:'Sadu'},{code:'LOC0130',name:'Ramdevra-1 Dungargarh'},
-      {code:'LOC0131',name:'Ramdevra-2 Dungargarh'},{code:'LOC0132',name:'Jetpura'},
-      {code:'LOC0133',name:'Dausar'},{code:'LOC0140',name:'Subhi'},
-      {code:'LOC0141',name:'Dr. Hari Singh Gour Vishwavidyalaya'},{code:'LOC0142',name:'Tender'},
-      {code:'LOC0143',name:'MES MHOW'},{code:'LOC0144',name:'GUVNL Vasedi BESS'},
-      {code:'LOC0145',name:'REMCL Shikhar'},{code:'LOC0146',name:'REMCL Srijan'},
-      {code:'LOC0147',name:'ITI (Rajasthan)'},{code:'LOC0148',name:'Ramgarh Gas Thermal Power Station (RGTPP)'},
-      {code:'LOC0149',name:'NTPC Faridabad'},{code:'LOC0150',name:'UP METRO'},
-      {code:'LOC0151',name:'CIT Kokrajhar Assam'},{code:'LOC0153',name:'NIFT Bhopal'},
-      {code:'LOC0154',name:'KAKRA i (B)'},{code:'LOC0157',name:'Chittorgarh Dairy'},
-      {code:'LOC0158',name:'GUVNL Nandesari'}
-    ];
+    // SITE_DATA is defined globally in app.js (loaded above) — shared with the dashboard.
 
     (async () => {
       const user = await requireAuth();
@@ -1038,6 +987,7 @@
     `;
       container.appendChild(card);
       handleCategoryChange(rowId);
+      { const siteInp = card.querySelector('.row-site'); if (siteInp) markSiteValidity(siteInp); }
       if (data.id) card.dataset.expenseId = data.id;
       if (data.km) {
         const kmInput = card.querySelector('.row-km');
@@ -1406,7 +1356,14 @@
       for (const row of rowElements) {
         const amount = parseFloat(row.querySelector('.row-amount').value);
         const category = row.querySelector('.row-cat').value;
-        const site = row.querySelector('.row-site').value.trim();
+        const siteInput = row.querySelector('.row-site');
+        const site = siteInput.value.trim();
+        if (!isValidSiteValue(site)) {
+          setLoading(btn, false);
+          siteInput.focus();
+          showMessage('Please select a valid site from the list for every row.', 'error');
+          return;
+        }
         const desc = row.querySelector('.row-desc').value.trim();
         const rowId = row.id;
         const oldUrl = row.querySelector('.row-old-url').value;
@@ -1479,7 +1436,19 @@
     }
 
     // ── Site autocomplete ─────────────────────────────────
+    // Only an exact "Name — Code" string picked from SITE_DATA is accepted —
+    // free-typed site names (not in the official list) are rejected on save.
+    const VALID_SITE_LABELS = new Set(SITE_DATA.map(s => `${s.name} — ${s.code}`));
+    function isValidSiteValue(v) { return VALID_SITE_LABELS.has((v || '').trim()); }
+
+    function markSiteValidity(inp) {
+      const v = inp.value.trim();
+      if (!v) { inp.style.borderColor = ''; return; }
+      inp.style.borderColor = isValidSiteValue(v) ? '#16a34a' : '#dc2626';
+    }
+
     function siteAcShow(inp) {
+      markSiteValidity(inp);
       const q = inp.value.trim().toLowerCase();
       const list = inp.nextElementSibling;
       if (!q) { list.style.display = 'none'; return; }
@@ -1499,6 +1468,21 @@
     document.addEventListener('input', function(e) {
       if (e.target.classList.contains('row-site')) siteAcShow(e.target);
     });
+
+    // If focus leaves the field with a value that isn't an exact list match,
+    // clear it — this is what actually prevents free-typed site names from
+    // sneaking through (the submit-time check below is the final backstop).
+    document.addEventListener('blur', function(e) {
+      if (!e.target.classList.contains('row-site')) return;
+      const inp = e.target;
+      setTimeout(() => {
+        if (inp.value.trim() && !isValidSiteValue(inp.value)) {
+          inp.value = '';
+          markSiteValidity(inp);
+          showMessage('Please pick a site from the list — typing a custom site name is not allowed.', 'error');
+        }
+      }, 150); // let a list-item click register first
+    }, true);
 
     document.addEventListener('keydown', function(e) {
       if (!e.target.classList.contains('row-site')) return;

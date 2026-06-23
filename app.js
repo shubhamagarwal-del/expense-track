@@ -413,6 +413,84 @@ async function fetchExpenses({ from, to, userId, companyId, limit } = {}) {
   return data;
 }
 
+// ── Sites ─────────────────────────────────────────────────
+// Single source of truth, shared by add-expense.html and dashboard.html.
+const SITE_DATA = [
+  {code:'LOC0057',name:'3rd Party Site',district:'3rd Party'},{code:'LOC0114',name:'Ajoliya Ka Khera',district:'Chittorgarh'},
+  {code:'LOC0020',name:'Ankhisar-i',district:'Bikaner'},{code:'LOC0021',name:'Ankhisar-ii',district:'Bikaner'},
+  {code:'LOC0039',name:'Bachasar-i & Ii',district:'Bikaner'},{code:'LOC0015',name:'Badsar',district:'Churu'},
+  {code:'LOC0062',name:'Bamboo',district:'Churu'},{code:'LOC0034',name:'Berasar',district:'Bikaner'},
+  {code:'LOC0052',name:'Bhartpur',district:'Bhartpure'},{code:'LOC0003',name:'Bidasar',district:'Churu'},
+  {code:'LOC0009',name:'Birmana Tal',district:'Churu'},{code:'LOC0002',name:'Budhro Ki Dhani',district:'Bikaner'},
+  {code:'LOC0023',name:'Chitawa',district:'Kuchaman'},{code:'LOC0049',name:'Chittod',district:'Chittod'},
+  {code:'LOC0157',name:'Chittorgarh Dairy',district:'Chittorgarh'},{code:'LOC0040',name:'Choti Serva',district:'Basdawada'},
+  {code:'LOC0151',name:'CIT Kokrajhar Assam',district:'Kokrajhar'},{code:'LOC0133',name:'Dausar',district:'Didwana-Kuchaman'},
+  {code:'LOC0115',name:'Devliya Kallan',district:'Ajmer'},{code:'LOC0032',name:'Dhingsari',district:'Bikaner'},
+  {code:'LOC0016',name:'Dhirasar',district:'Churu'},{code:'LOC0141',name:'Dr. Hari Singh Gour Vishwavidyalaya',district:'Sagar'},
+  {code:'LOC0046',name:'Gajroopdesar-i',district:'Bikaner'},{code:'LOC0060',name:'Gajroopdesar-ii',district:'Bikaner'},
+  {code:'LOC0010',name:'Ghantel',district:'Churu'},{code:'LOC0098',name:'Ghatoo',district:'Bikaner'},
+  {code:'LOC0118',name:'Ghewariya',district:'Bhilwara'},{code:'LOC0063',name:'Godawanti Tal',district:'Churu'},
+  {code:'LOC0042',name:'Gopasariya-1',district:'Jodhpur'},{code:'LOC0103',name:'Gopasariya-2',district:'Jodhpur'},
+  {code:'LOC0158',name:'GUVNL Nandesari',district:'Baradara'},{code:'LOC0144',name:'GUVNL Vasedi BESS',district:'GUJARAT'},
+  {code:'LOC0035',name:'Himmatsar',district:'Bikaner'},{code:'LOC0099',name:'Hiyadesar',district:'Bikaner'},
+  {code:'LOC0147',name:'ITI (Rajasthan)',district:'JAIPUR'},{code:'LOC0054',name:'Jagatpura Rooftop',district:'Jaipur'},
+  {code:'LOC0007',name:'Jamola',district:'Masuda'},{code:'LOC0101',name:'Jegla',district:'Bikaner'},
+  {code:'LOC0127',name:'Jetpur',district:'Bikaner'},{code:'LOC0132',name:'Jetpura',district:'Didwana-Kuchaman'},
+  {code:'LOC0061',name:'Jhareli II',district:'Bikaner'},{code:'LOC0029',name:'Jogniya Ka Bala',district:'Bikaner'},
+  {code:'LOC0154',name:'KAKRA i (B)',district:'Bikaner'},{code:'LOC0026',name:'Kakra-i (a)',district:'Bikaner'},
+  {code:'LOC0027',name:'Kakra-ii (a+b)',district:'Bikaner'},{code:'LOC0011',name:'Keshloi Tal',district:'Churu'},
+  {code:'LOC0058',name:'Khakholi',district:'Mulasar'},{code:'LOC0008',name:'Kherla Nagar',district:'Jodhpur'},
+  {code:'LOC0036',name:'Khunkhuna',district:'Nagour'},{code:'LOC0028',name:'Kishnasar',district:'Bikaner'},
+  {code:'LOC0012',name:'Kunpalsar',district:'Bikaner'},{code:'LOC0037',name:'Lalasar-1',district:'Bikaner'},
+  {code:'LOC0119',name:'Lalasar-2',district:'Bikaner'},{code:'LOC0048',name:'Malpura',district:'Tonk'},
+  {code:'LOC0128',name:'Manyana',district:'Bikaner'},{code:'LOC0143',name:'MES MHOW',district:'Indore'},
+  {code:'LOC0065',name:'Mira Road Railway Station',district:'Thane'},{code:'LOC0051',name:'Mnit',district:'Jaipur'},
+  {code:'LOC0019',name:'Mukam',district:'Bikaner'},{code:'LOC0018',name:'Muknasar',district:'Nagour'},
+  {code:'LOC0004',name:'Nadiya Tal',district:'Churu'},{code:'LOC0050',name:'Nagaur Dairy',district:'Nagour'},
+  {code:'LOC0064',name:'Neral Railway Station',district:'Raigad'},{code:'LOC0153',name:'NIFT Bhopal',district:'Bhopal'},
+  {code:'LOC0149',name:'NTPC Faridabad',district:'Faridabad'},{code:'LOC0056',name:'Office',district:'Jaipur'},
+  {code:'LOC0059',name:'Pahel & Haspurkalan',district:'Khairtal'},{code:'LOC0038',name:'Pilania Pau',district:'Churu'},
+  {code:'LOC0022',name:'Purnada Tall',district:'Bidasar'},{code:'LOC0017',name:'Raimalwara',district:'Jodhpur'},
+  {code:'LOC0025',name:'Raisar',district:'Bikaner'},{code:'LOC0024',name:'Rajaldesar',district:'Churu'},
+  {code:'LOC0130',name:'Ramdevra-1 Dungargarh',district:'Bikaner'},{code:'LOC0131',name:'Ramdevra-2 Dungargarh',district:'Bikaner'},
+  {code:'LOC0045',name:'Ramdevra-i',district:'Churu'},{code:'LOC0013',name:'Ramdevra-ii',district:'Churu'},
+  {code:'LOC0148',name:'Ramgarh Gas Thermal Power Station (RGTPP)',district:'Jaiselmer'},{code:'LOC0047',name:'Raniwada',district:'Jalore'},
+  {code:'LOC0006',name:'Ratnania Johra',district:'Churu'},{code:'LOC0145',name:'REMCL Shikhar',district:'Gurugram'},
+  {code:'LOC0146',name:'REMCL Srijan',district:'Gurugram'},{code:'LOC0041',name:'Rohisa',district:'Nagour'},
+  {code:'LOC0129',name:'Sadu',district:'Churu'},{code:'LOC0014',name:'Sandwa',district:'Churu'},
+  {code:'LOC0116',name:'Sarna',district:'Ajmer'},{code:'LOC0043',name:'Satra- 1&2',district:'Churu'},
+  {code:'LOC0053',name:'Sau Delhi',district:'Delhi'},{code:'LOC0001',name:'Sindhu',district:'Bikaner'},
+  {code:'LOC0104',name:'Somalsar',district:'Bikaner'},{code:'LOC0033',name:'Sowa',district:'Bikaner'},
+  {code:'LOC0140',name:'Subhi',district:'Pratapgarh'},{code:'LOC0105',name:'Surawas',district:'Bhilwara'},
+  {code:'LOC0030',name:'Surpura-i',district:'Bikaner'},{code:'LOC0031',name:'Surpura-ii',district:'Bikaner'},
+  {code:'LOC0142',name:'Tender',district:'JAIPUR'},{code:'LOC0113',name:'Thaiyat',district:'Jaisalmer'},
+  {code:'LOC0005',name:'Udwala',district:'Churu'},{code:'LOC0150',name:'UP METRO',district:'UP'},
+  {code:'LOC0055',name:'Vki Warehouse',district:'Jaipur'}
+];
+
+const _SITE_BY_NAME = (() => {
+  const m = {};
+  for (const s of SITE_DATA) m[s.name.trim().toLowerCase()] = s;
+  return m;
+})();
+
+/**
+ * Return a site label that always includes District + LOC code,
+ * e.g. "Ajoliya Ka Khera — Chittorgarh — LOC0114".
+ * - If the stored value already carries a LOC code, it's returned unchanged
+ *   (older saved expenses already had a code-only label appended).
+ * - Otherwise the site is looked up by name and District + code are appended
+ *   when a match is found in the official list.
+ */
+function siteWithCode(siteStr) {
+  const s = (siteStr == null ? '' : String(siteStr)).trim();
+  if (!s) return '';
+  if (/\bLOC\d{3,}/i.test(s)) return s;                 // already has a code
+  const site = _SITE_BY_NAME[s.toLowerCase()];
+  if (!site) return s;
+  return site.district ? `${s} — ${site.district} — ${site.code}` : `${s} — ${site.code}`;
+}
+
 /** Parse receipt_url: handles a legacy single URL string and a new JSON array string. */
 function parseReceiptUrls(val) {
   if (!val) return [];

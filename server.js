@@ -1,6 +1,8 @@
 import express from 'express';
 import path from 'path';
+import fs from 'fs';
 import { fileURLToPath } from 'url';
+import livereload from 'livereload';
 import configController from './api/config.js';
 import createUserController from './api/create-user.js';
 import approveExpenseController from './api/approve-expense.js';
@@ -15,10 +17,47 @@ import dotenv from 'dotenv';
 dotenv.config();
 
 const app = express();
-app.use(express.json());
+app.use(express.json({ limit: '12mb' })); // base64-encoded payment PDFs ride in the JSON body
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+
+// ── Local-dev only: auto-refresh the browser on file changes ──
+// Vercel never runs this file (it uses /api/*.js as serverless functions
+// directly), so this is safe to leave unguarded — but skip it explicitly
+// if VERCEL is set, just in case this script is ever invoked there.
+// (connect-livereload doesn't play well with express.static's sendFile
+// streaming, so HTML files are served manually below with the client
+// script injected directly instead.)
+const LIVERELOAD_ENABLED = !process.env.VERCEL;
+if (LIVERELOAD_ENABLED) {
+  const lrServer = livereload.createServer({
+    exts: ['html', 'css', 'js'],
+    delay: 100,
+    exclusions: [/node_modules/, /[\\/]public[\\/]/, /[\\/]\.vercel[\\/]/, /[\\/]\.git[\\/]/],
+  });
+  lrServer.watch(__dirname);
+}
+const LIVERELOAD_SNIPPET = '<script src="http://localhost:35729/livereload.js?snipver=1"></script>';
+
+function serveHtmlWithLivereload(filePath, res, next) {
+  fs.readFile(filePath, 'utf8', (err, html) => {
+    if (err) return next();
+    const withSnippet = html.includes('</body>')
+      ? html.replace('</body>', `${LIVERELOAD_SNIPPET}</body>`)
+      : html + LIVERELOAD_SNIPPET;
+    res.type('html').send(withSnippet);
+  });
+}
+
+if (LIVERELOAD_ENABLED) {
+  app.get(/\.html$/, (req, res, next) => {
+    serveHtmlWithLivereload(path.join(__dirname, decodeURIComponent(req.path)), res, next);
+  });
+  app.get('/', (req, res, next) => {
+    serveHtmlWithLivereload(path.join(__dirname, 'index.html'), res, next);
+  });
+}
 
 // Request logger
 app.use((req, res, next) => {
