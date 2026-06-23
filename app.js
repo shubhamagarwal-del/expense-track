@@ -488,7 +488,12 @@ function siteWithCode(siteStr) {
   if (/\bLOC\d{3,}/i.test(s)) return s;                 // already has a code
   const site = _SITE_BY_NAME[s.toLowerCase()];
   if (!site) return s;
-  return site.district ? `${s} — ${site.district} — ${site.code}` : `${s} — ${site.code}`;
+  return siteFullLabel(site);
+}
+
+/** Full "Name — District — Code" label for a SITE_DATA entry (falls back to "Name — Code" if no district). */
+function siteFullLabel(site) {
+  return site.district ? `${site.name} — ${site.district} — ${site.code}` : `${site.name} — ${site.code}`;
 }
 
 /** Parse receipt_url: handles a legacy single URL string and a new JSON array string. */

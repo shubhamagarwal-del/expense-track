@@ -489,10 +489,17 @@
     #_rcpt-lightbox { animation: fadeIn .18s ease both; }
     .site-ac-list { display:none; position:absolute; z-index:999; top:100%; left:0; right:0;
       background:#fff; border:1px solid var(--border); border-radius:10px;
-      max-height:210px; overflow-y:auto; box-shadow:0 4px 18px rgba(0,0,0,.13); margin-top:2px; }
-    .site-ac-item { padding:.5rem .8rem; cursor:pointer; font-size:.83rem;
+      max-height:230px; overflow-y:auto; box-shadow:0 4px 18px rgba(0,0,0,.13); margin-top:2px; }
+    .site-ac-item { padding:.55rem .8rem; cursor:pointer; font-size:.83rem;
       border-bottom:1px solid #f0f0f0; transition:background .1s; }
     .site-ac-item:last-child { border-bottom:none; }
+    .site-ac-item:hover, .site-ac-item.ac-focus { background:#eef2ff; }
+    .site-ac-name { font-weight:600; color:#1e293b; }
+    .site-ac-district { color:#6366f1; font-weight:600; }
+    .site-ac-code { color:#94a3b8; }
+    .site-ac-error { display:none; align-items:center; gap:.4rem; margin-top:.4rem;
+      font-size:.78rem; font-weight:600; color:#dc2626; }
+    .site-ac-error::before { content:'⚠'; font-size:.85rem; }
     .site-ac-item:hover, .site-ac-item.ac-focus { background:var(--bg-secondary, #f0f4ff); }
     .site-ac-code { font-weight:700; color:var(--primary,#4f46e5); }
     .site-ac-name { color:var(--text-2,#374151); }
@@ -948,11 +955,12 @@
       <div class="form-group mb-3">
         <label class="form-label">Site Name</label>
         <div class="site-ac-wrap" style="position:relative">
-          <input type="text" class="form-input row-site" placeholder="Search site name or code…"
+          <input type="text" class="form-input row-site" placeholder="Search site name, district or code…"
                  value="${escHtml(data.site || currentUser.site_name || '')}"
                  autocomplete="off" required>
           <div class="site-ac-list"></div>
         </div>
+        <div class="site-ac-error" style="display:none"></div>
       </div>
 
       <div class="form-group mb-3">
@@ -1361,7 +1369,9 @@
         if (!isValidSiteValue(site)) {
           setLoading(btn, false);
           siteInput.focus();
-          showMessage('Please select a valid site from the list for every row.', 'error');
+          markSiteValidity(siteInput);
+          showSiteError(siteInput, 'Please select a valid site from the list before saving.');
+          siteInput.scrollIntoView({ behavior: 'smooth', block: 'center' });
           return;
         }
         const desc = row.querySelector('.row-desc').value.trim();
@@ -1438,13 +1448,28 @@
     // ── Site autocomplete ─────────────────────────────────
     // Only an exact "Name — Code" string picked from SITE_DATA is accepted —
     // free-typed site names (not in the official list) are rejected on save.
-    const VALID_SITE_LABELS = new Set(SITE_DATA.map(s => `${s.name} — ${s.code}`));
+    const VALID_SITE_LABELS = new Set(SITE_DATA.map(siteFullLabel));
     function isValidSiteValue(v) { return VALID_SITE_LABELS.has((v || '').trim()); }
+
+    function siteErrorEl(inp) { return inp.closest('.form-group').querySelector('.site-ac-error'); }
+
+    function showSiteError(inp, msg) {
+      const el = siteErrorEl(inp);
+      if (!el) return;
+      el.textContent = msg;
+      el.style.display = 'flex';
+    }
+    function hideSiteError(inp) {
+      const el = siteErrorEl(inp);
+      if (el) el.style.display = 'none';
+    }
 
     function markSiteValidity(inp) {
       const v = inp.value.trim();
-      if (!v) { inp.style.borderColor = ''; return; }
-      inp.style.borderColor = isValidSiteValue(v) ? '#16a34a' : '#dc2626';
+      if (!v) { inp.style.borderColor = ''; hideSiteError(inp); return; }
+      const ok = isValidSiteValue(v);
+      inp.style.borderColor = ok ? '#16a34a' : '#dc2626';
+      if (ok) hideSiteError(inp);
     }
 
     function siteAcShow(inp) {
@@ -1453,13 +1478,15 @@
       const list = inp.nextElementSibling;
       if (!q) { list.style.display = 'none'; return; }
       const hits = SITE_DATA.filter(s =>
-        s.name.toLowerCase().startsWith(q) || s.code.toLowerCase().startsWith(q)
+        s.name.toLowerCase().startsWith(q) ||
+        s.code.toLowerCase().startsWith(q) ||
+        (s.district && s.district.toLowerCase().includes(q))
       ).slice(0, 10);
       if (!hits.length) { list.style.display = 'none'; return; }
       list.innerHTML = hits.map(s =>
-        `<div class="site-ac-item" data-val="${escHtml(s.name + ' — ' + s.code)}">
+        `<div class="site-ac-item" data-val="${escHtml(siteFullLabel(s))}">
           <span class="site-ac-name">${escHtml(s.name)}</span>
-          <span class="site-ac-code"> — ${escHtml(s.code)}</span>
+          <span class="site-ac-code"> — ${s.district ? `<span class="site-ac-district">${escHtml(s.district)}</span> — ` : ''}${escHtml(s.code)}</span>
         </div>`
       ).join('');
       list.style.display = 'block';
@@ -1479,7 +1506,7 @@
         if (inp.value.trim() && !isValidSiteValue(inp.value)) {
           inp.value = '';
           markSiteValidity(inp);
-          showMessage('Please pick a site from the list — typing a custom site name is not allowed.', 'error');
+          showSiteError(inp, 'Please pick a site from the list — typing a custom name isn\'t allowed.');
         }
       }, 150); // let a list-item click register first
     }, true);
