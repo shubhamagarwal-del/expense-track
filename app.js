@@ -160,7 +160,7 @@ function showMessage(message, type = 'info') {
     <span class="toast-icon">${icons[type] ?? 'ℹ️'}</span>
     <span class="toast-msg">${message}</span>`;
   document.body.appendChild(toast);
-  setTimeout(() => toast.remove(), 4500);
+  setTimeout(() => toast.remove(), type === 'error' ? 7000 : 4500);
 }
 
 /** Toggle a button between its normal and loading state. */

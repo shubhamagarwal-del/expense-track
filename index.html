@@ -207,7 +207,11 @@
         if (error) throw error;
         window.location.href = 'dashboard.html';
       } catch (err) {
-        showMessage(err.message || 'Login failed. Please try again.', 'error');
+        let msg = err.message || 'Login failed. Please try again.';
+        if (/invalid login credentials/i.test(msg)) {
+          msg = 'Incorrect ID or password. If you forgot your password, please contact your Admin/Super Admin to reset it.';
+        }
+        showMessage(msg, 'error');
         setLoading(btn, false);
       }
     }
