@@ -18,6 +18,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="dns-prefetch" href="https://cdn.jsdelivr.net" />
   <meta name="theme-color" content="#6366f1" />
+  <link rel="shortcut icon" href="/favicon.ico" />
   <link rel="icon" type="image/png" sizes="192x192" href="/icon-192.png" />
   <link rel="icon" type="image/png" sizes="512x512" href="/icon-512.png" />
   <link rel="icon" type="image/svg+xml" href="/icon.svg" />
@@ -49,6 +50,13 @@
   <script>
     (function () {
       var s = document.getElementById('splash-screen');
+      // Only show the splash once per browser session — skip it when
+      // navigating back to the dashboard from another page in the app.
+      if (sessionStorage.getItem('_splashShown')) {
+        s.style.display = 'none';
+        return;
+      }
+      sessionStorage.setItem('_splashShown', '1');
       var logo = document.getElementById('splash-logo');
       var name = document.getElementById('splash-name');
       var sub = document.getElementById('splash-sub');
@@ -77,7 +85,7 @@
 
       <!-- Logo -->
       <div class="sidebar-logo">
-        <div class="logo-icon">💰</div>
+        <div class="logo-icon"><img src="/icon-192.png" alt="ExpenseTrack" /></div>
         <span class="logo-text">ExpenseTrack</span>
       </div>
 
@@ -102,7 +110,7 @@
           Work Plans
         </a>
 
-        <a href="add-expense.html" class="sidebar-link" id="sb-add-link">
+        <a href="add-expense.html" class="sidebar-link" id="sb-add-link" style="display:none">
           <!-- plus icon -->
           <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
             <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4" />
@@ -126,7 +134,7 @@
           Bank Details
         </a>
 
-        <a href="create-user.html" class="sidebar-link" id="sb-create-user-link">
+        <a href="create-user.html" class="sidebar-link" id="sb-create-user-link" style="display:none">
           <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
             <path stroke-linecap="round" stroke-linejoin="round"
               d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z" />
@@ -134,7 +142,7 @@
           Create User
         </a>
 
-        <a href="manage-users.html" class="sidebar-link" id="sb-manage-users-link">
+        <a href="manage-users.html" class="sidebar-link" id="sb-manage-users-link" style="display:none">
           <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
             <path stroke-linecap="round" stroke-linejoin="round"
               d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" />
@@ -159,10 +167,6 @@
             <div class="sidebar-user-role" id="sb-role">—</div>
           </div>
         </div>
-        <button class="sidebar-btn" onclick="toggleTheme()">
-          <span id="theme-icon">🌙</span>
-          <span id="theme-text">Dark Mode</span>
-        </button>
         <button class="sidebar-btn" onclick="logout()">
           <!-- logout icon -->
           <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
@@ -433,7 +437,6 @@
 
       currentProfile = profile;
       populateSidebar(profile);
-      initTheme();
       enforcePasswordChange(profile);
 
       // Load live line manager data from Supabase (cached in sessionStorage).
@@ -3320,24 +3323,7 @@
       }
     }
 
-    // ─── THEME & BULK HELPERS ───────────────────────────────────
-    function initTheme() {
-      if (localStorage.getItem('theme') === 'dark') {
-        document.body.classList.add('dark');
-        updateThemeUI(true);
-      }
-    }
-
-    function toggleTheme() {
-      const isDark = document.body.classList.toggle('dark');
-      localStorage.setItem('theme', isDark ? 'dark' : 'light');
-      updateThemeUI(isDark);
-    }
-
-    function updateThemeUI(isDark) {
-      document.getElementById('theme-icon').textContent = isDark ? '☀️' : '🌙';
-      document.getElementById('theme-text').textContent = isDark ? 'Light Mode' : 'Dark Mode';
-    }
+    // ─── BULK HELPERS ───────────────────────────────────
 
     function toggleAllCheckboxes(master) {
       document.querySelectorAll('.row-checkbox').forEach(cb => {

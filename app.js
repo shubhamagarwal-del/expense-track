@@ -282,8 +282,11 @@ document.addEventListener('click', (e) => {
 });
 
 /**
- * Populate the sidebar's user block and conditionally hide
- * the "Add Expense" link for admin users.
+ * Populate the sidebar's user block and reveal the role-gated nav
+ * links (Add Expense / Create User / Manage Users). These links are
+ * hidden by default in the markup to avoid a flash of the wrong links
+ * while the profile is still loading; this function shows only the
+ * ones the current role is allowed to see.
  */
 function populateSidebar(profile) {
   const initial = (profile.email?.[0] ?? '?').toUpperCase();
@@ -293,19 +296,19 @@ function populateSidebar(profile) {
   if (el('sb-email')) el('sb-email').textContent = profile.email;
   if (el('sb-role')) el('sb-role').textContent = profile.role;
 
-  // Admins cannot add expenses
-  if (profile.role === 'admin' || profile.role === 'super_admin') {
-    if (el('sb-add-link')) el('sb-add-link').style.display = 'none';
+  // Employees can add expenses
+  if (profile.role !== 'admin' && profile.role !== 'super_admin') {
+    if (el('sb-add-link')) el('sb-add-link').style.display = '';
   }
 
   // Only super_admin can create new users
-  if (profile.role !== 'super_admin') {
-    if (el('sb-create-user-link')) el('sb-create-user-link').style.display = 'none';
+  if (profile.role === 'super_admin') {
+    if (el('sb-create-user-link')) el('sb-create-user-link').style.display = '';
   }
 
   // Manage Users visible to admin + super_admin only
-  if (profile.role !== 'admin' && profile.role !== 'super_admin') {
-    if (el('sb-manage-users-link')) el('sb-manage-users-link').style.display = 'none';
+  if (profile.role === 'admin' || profile.role === 'super_admin') {
+    if (el('sb-manage-users-link')) el('sb-manage-users-link').style.display = '';
   }
 }
 

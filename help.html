@@ -11,7 +11,9 @@
   <!-- PWA -->
   <link rel="manifest" href="/manifest.json" />
   <meta name="theme-color" content="#6366f1" />
-  <link rel="icon" type="image/png" sizes="192x192" href="/icon-192.png" />\n  <link rel="icon" type="image/svg+xml" href="/icon.svg" />
+  <link rel="shortcut icon" href="/favicon.ico" />
+  <link rel="icon" type="image/png" sizes="192x192" href="/icon-192.png" />
+  <link rel="icon" type="image/svg+xml" href="/icon.svg" />
   <link rel="apple-touch-icon" href="/icon.svg" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
@@ -37,15 +39,6 @@
       --hc-info-bg: #eef2ff;
       --hc-info:    #4f46e5;
     }
-    body.dark {
-      --hc-emp-bg:  rgba(59,130,246,.12);
-      --hc-adm-bg:  rgba(139,92,246,.12);
-      --hc-sup-bg:  rgba(245,158,11,.12);
-      --hc-tip-bg:  rgba(16,185,129,.1);
-      --hc-warn-bg: rgba(245,158,11,.1);
-      --hc-info-bg: rgba(99,102,241,.1);
-    }
-
     /* ── Hero ──────────────────────────────────────────────── */
     .hc-hero {
       background: linear-gradient(135deg,#1e1b4b 0%,#312e81 55%,#4c1d95 100%);
@@ -365,8 +358,6 @@
       padding:.1rem .45rem; font-size:.75rem; font-family:inherit;
       color:var(--text-2); font-weight:600;
     }
-    body.dark kbd { background:#1e293b; }
-
     /* ── No-results ────────────────────────────────────────── */
     .hc-no-results { text-align:center; padding:3rem 1rem; color:var(--text-3); }
     .hc-no-results .nri { font-size:2.5rem; margin-bottom:.75rem; }
@@ -393,7 +384,7 @@
        ══════════════════════════════════════════════════════ -->
   <nav class="sidebar" id="sidebar">
     <div class="sidebar-logo">
-      <div class="logo-icon">💰</div>
+      <div class="logo-icon"><img src="/icon-192.png" alt="ExpenseTrack" /></div>
       <span class="logo-text">ExpenseTrack</span>
     </div>
     <div class="sidebar-nav">
@@ -411,7 +402,7 @@
         </svg>
         Work Plans
       </a>
-      <a href="add-expense.html" class="sidebar-link" id="sb-add-link">
+      <a href="add-expense.html" class="sidebar-link" id="sb-add-link" style="display:none">
         <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
           <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4" />
         </svg>
@@ -429,13 +420,13 @@
         </svg>
         Bank Details
       </a>
-      <a href="create-user.html" class="sidebar-link" id="sb-create-user-link">
+      <a href="create-user.html" class="sidebar-link" id="sb-create-user-link" style="display:none">
         <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
           <path stroke-linecap="round" stroke-linejoin="round" d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z" />
         </svg>
         Create User
       </a>
-      <a href="manage-users.html" class="sidebar-link" id="sb-manage-users-link">
+      <a href="manage-users.html" class="sidebar-link" id="sb-manage-users-link" style="display:none">
         <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
           <path stroke-linecap="round" stroke-linejoin="round" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" />
         </svg>
@@ -458,10 +449,6 @@
           <div class="sidebar-user-role" id="sb-role">—</div>
         </div>
       </div>
-      <button class="sidebar-btn" onclick="toggleTheme()">
-        <span id="theme-icon">🌙</span>
-        <span id="theme-text">Dark Mode</span>
-      </button>
       <button class="sidebar-btn" onclick="logout()">
         <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
           <path stroke-linecap="round" stroke-linejoin="round" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
