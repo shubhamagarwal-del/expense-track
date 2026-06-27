@@ -980,7 +980,7 @@
         <label class="form-label">Site Name</label>
         <div class="site-ac-wrap" style="position:relative">
           <input type="text" class="form-input row-site" placeholder="Search site name, district or code…"
-                 value="${escHtml(data.site || currentUser.site_name || '')}"
+                 value="${escHtml(data.site || (() => { const v = siteWithCode(currentUser.site_name || ''); return isValidSiteValue(v) ? v : ''; })())}"
                  autocomplete="off" required>
           <div class="site-ac-list"></div>
         </div>
@@ -1317,7 +1317,9 @@
       } else if (type === 'ROOM_RENT' || type === 'REGULAR') {
         row.site = parts[1]||''; row.description = parts[2]||'';
       } else {
-        row.site = currentUser?.site_name||''; row.description = exp.description||'';
+        const v = siteWithCode(currentUser?.site_name || '');
+        row.site = isValidSiteValue(v) ? v : '';
+        row.description = exp.description||'';
       }
       return row;
     }
