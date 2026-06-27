@@ -36,7 +36,7 @@ export default async function handler(req, res) {
     if (req.query?.payments) {
       const { data, error } = await supabaseAdmin
         .from('cycle_payments')
-        .select('user_id, month_year, cycle_num, amount_paid, utr_number, payment_date');
+        .select('user_id, month_year, cycle_num, amount_paid, utr_number, bene_name, payment_date');
       if (error) return res.status(500).json({ error: error.message });
       return res.status(200).json({ payments: data || [] });
     }
