@@ -680,11 +680,12 @@
 
     // Configurable per-category expense limits (null = no limit)
     const CATEGORY_LIMITS = {
-      'Regular':   null,
-      'Travel':    null,
-      'Food':      null,
-      'Other':     null,
-      'Room Rent': 700
+      'Regular':              null,
+      'Travel':               null,
+      'Food':                 null,
+      'Room Rent':            700,
+      'Printing & Stationery': null,
+      'Petrol / Diesel':       null
     };
 
     // SITE_DATA is defined globally in app.js (loaded above) — shared with the dashboard.
@@ -917,8 +918,9 @@
             <option value="Regular"   ${normalCat === 'Regular'   ? 'selected' : ''}>Regular</option>
             <option value="Travel"    ${normalCat === 'Travel'    ? 'selected' : ''}>Travel</option>
             <option value="Food"      ${normalCat === 'Food'      ? 'selected' : ''}>Food</option>
-            <option value="Other"     ${normalCat === 'Other'     ? 'selected' : ''}>Other</option>
             <option value="Room Rent" ${normalCat === 'Room Rent' ? 'selected' : ''}>Room Rent</option>
+            <option value="Printing & Stationery" ${normalCat === 'Printing & Stationery' ? 'selected' : ''}>Printing & Stationery</option>
+            <option value="Petrol / Diesel"       ${normalCat === 'Petrol / Diesel'       ? 'selected' : ''}>Petrol / Diesel</option>
           </select>
         </div>
       </div>
@@ -1302,6 +1304,12 @@
       } else if (type === 'FOOD') {
         row.category = 'Food';
         row.site = parts[1]||''; row.description = parts[2]||'';
+      } else if (type === 'PRINTING_STATIONERY') {
+        row.category = 'Printing & Stationery';
+        row.site = parts[1]||''; row.description = parts[2]||'';
+      } else if (type === 'PETROL_DIESEL') {
+        row.category = 'Petrol / Diesel';
+        row.site = parts[1]||''; row.description = parts[2]||'';
       // Legacy formats — kept for backward compatibility
       } else if (type === 'TRAVEL' || type === 'BUS' || type === 'TAXI') {
         row.category  = 'Travel';
@@ -1444,6 +1452,10 @@
           finalDescription = `OTHER|${name}|${site}|${desc}`;
         } else if (category === 'Room Rent') {
           finalDescription = `ROOM_RENT|${site}|${desc}`;
+        } else if (category === 'Printing & Stationery') {
+          finalDescription = `PRINTING_STATIONERY|${site}|${desc}`;
+        } else if (category === 'Petrol / Diesel') {
+          finalDescription = `PETROL_DIESEL|${site}|${desc}`;
         } else {
           finalDescription = `REGULAR|${site}|${desc}`;
         }
@@ -1504,7 +1516,7 @@
       const list = inp.nextElementSibling;
       if (!q) { list.style.display = 'none'; return; }
       const hits = SITE_DATA.filter(s =>
-        s.name.toLowerCase().startsWith(q) ||
+        s.name.toLowerCase().includes(q) ||
         s.code.toLowerCase().startsWith(q) ||
         (s.district && s.district.toLowerCase().includes(q))
       ).slice(0, 10);
