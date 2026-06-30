@@ -700,7 +700,7 @@
     allUsers.forEach(u => { counts[u.role] = (counts[u.role] || 0) + 1; });
 
     // Order: known roles first, then any extras alphabetically
-    const knownOrder = ['employee', 'admin', 'super_admin', 'engineer'];
+    const knownOrder = ['employee', 'admin', 'hr', 'audit', 'super_admin', 'engineer'];
     const allRoles = [
       ...knownOrder.filter(r => counts[r]),
       ...Object.keys(counts).filter(r => !knownOrder.includes(r)).sort()

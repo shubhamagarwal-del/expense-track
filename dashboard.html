@@ -1166,7 +1166,7 @@
             <div class="stat-icon ic-amber">⏳</div>
           </div>
           <div class="stat-value" id="sa-pending">—</div>
-          <div class="stat-sub">Awaiting approval</div>
+          <div class="stat-sub" id="sa-pending-sub">Awaiting approval</div>
         </div>
         <div class="stat-card" style="border-left:3px solid #10b981">
           <div class="stat-top">
@@ -1235,8 +1235,12 @@
             <select class="form-select" id="f-status" onchange="refreshListView(true)" style="height:38px;font-size:.875rem">
               <option value="all">All Statuses</option>
               <option value="pending">Pending</option>
-              <option value="l1_approved">In Review (L1)</option>
-              <option value="approved">Approved</option>
+              <option value="l1_approved">Mgr Approved · HR Pending</option>
+              <option value="hr_approved">HR Approved · Audit Pending</option>
+              <option value="audit_review">Audit Flagged</option>
+              <option value="audit_cleared">Audit Cleared</option>
+              <option value="approved">Approved (Legacy)</option>
+              <option value="l1_rejected">Rejected by Manager</option>
               <option value="rejected">Rejected</option>
             </select>
           </div>
@@ -1462,11 +1466,13 @@
           .filter(e => ['approved','hr_approved','audit_cleared'].includes(e.status))
           .reduce((s, e) => s + (e.approved_amount != null ? +e.approved_amount : +e.amount), 0);
         const activeDepts = new Set(expenses.map(e => e.users?.department).filter(Boolean)).size;
+        const pendingSub = role === 'hr' ? 'Needs HR sign-off' : role === 'audit' ? 'Needs audit clearance' : 'Awaiting approval';
         const el = id => document.getElementById(id);
-        if (el('sa-emp'))     el('sa-emp').textContent      = uniqueEmps;
-        if (el('sa-pending')) el('sa-pending').textContent  = pendingAct;
-        if (el('sa-approved'))el('sa-approved').textContent = formatCurrency(approvedAmt);
-        if (el('sa-depts'))   el('sa-depts').textContent    = activeDepts;
+        if (el('sa-emp'))         el('sa-emp').textContent         = uniqueEmps;
+        if (el('sa-pending'))     el('sa-pending').textContent     = pendingAct;
+        if (el('sa-pending-sub')) el('sa-pending-sub').textContent = pendingSub;
+        if (el('sa-approved'))    el('sa-approved').textContent    = formatCurrency(approvedAmt);
+        if (el('sa-depts'))       el('sa-depts').textContent       = activeDepts;
       }
     }
 
@@ -1856,7 +1862,13 @@
       let filtered = filteredData;
 
       if (currentListFilter !== 'all') {
-        filtered = filtered.filter(e => e.status === currentListFilter);
+        if (currentListFilter === 'rejected') {
+          filtered = filtered.filter(e => e.status === 'rejected' || e.status === 'l1_rejected');
+        } else if (currentListFilter === 'approved') {
+          filtered = filtered.filter(e => ['approved','hr_approved','audit_cleared','audit_review'].includes(e.status));
+        } else {
+          filtered = filtered.filter(e => e.status === currentListFilter);
+        }
       }
 
       const isAdmin = ['admin', 'super_admin', 'hr', 'audit'].includes(currentProfile.role);
@@ -2345,9 +2357,7 @@
       const e = allExpensesFetched.find(x => x.id === expenseId);
       if (!e) return;
 
-      // Map 'approved' to the correct action for the current role
       let apiAction = action;
-      if (action === 'approved' && currentProfile.role === 'hr') apiAction = 'hr_approved';
 
       // Receipt-view enforcement (only on approve, only when receipts exist)
       if (action === 'approved') {
@@ -3756,7 +3766,7 @@
               dAllExps.push(e);
               if (e.status === 'pending') dPend++;
               if (e.status === 'l1_approved') dL1++;
-              if (e.status === 'approved') dAppr += (e.approved_amount != null ? +e.approved_amount : +e.amount);
+              if (['approved','hr_approved','audit_cleared'].includes(e.status)) dAppr += (e.approved_amount != null ? +e.approved_amount : +e.amount);
               if (e.status !== 'rejected' && e.status !== 'l1_rejected') dOverall += (e.approved_amount != null ? +e.approved_amount : +e.amount);
             });
           });
@@ -3795,7 +3805,7 @@
                 mAllExps.push(e);
                 if (e.status==='pending') mPend++;
                 if (e.status==='l1_approved') mL1++;
-                if (e.status==='approved') mAppr += (e.approved_amount!=null?+e.approved_amount:+e.amount);
+                if (['approved','hr_approved','audit_cleared'].includes(e.status)) mAppr += (e.approved_amount!=null?+e.approved_amount:+e.amount);
                 if (e.status!=='rejected' && e.status!=='l1_rejected') mOverall += (e.approved_amount!=null?+e.approved_amount:+e.amount);
               }));
               const mPaid = paidForExpenses(mAllExps);
