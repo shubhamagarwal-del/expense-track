@@ -455,10 +455,15 @@
         if (liveManagers && typeof liveManagers === 'object') DEPT_MANAGERS = liveManagers;
       } catch (_) { /* use hardcoded DEPT_MANAGERS fallback */ }
 
-      if (profile.role === 'admin' || profile.role === 'super_admin') {
+      if (['admin', 'super_admin', 'hr', 'audit'].includes(profile.role)) {
+        const titleMap = {
+          super_admin: 'Super Admin Panel',
+          hr: 'HR Panel',
+          audit: 'Audit Panel',
+        };
         const titleSuffix = profile.role === 'admin' && profile.department ? ` · ${profile.department}` : '';
         document.getElementById('topbar-title').textContent =
-          profile.role === 'super_admin' ? 'Super Admin Panel' : `Manager Dashboard${titleSuffix}`;
+          titleMap[profile.role] || `Manager Dashboard${titleSuffix}`;
         renderAdminDashboard();
       } else {
         document.getElementById('topbar-title').textContent = 'My Expenses';
@@ -476,10 +481,10 @@
         .on('postgres_changes', { event: '*', schema: 'public', table: 'expenses' }, () => {
           clearTimeout(_rtDebounce);
           _rtDebounce = setTimeout(async () => {
-            const isAdmin = currentProfile.role === 'admin' || currentProfile.role === 'super_admin';
+            const isAdmin = ['admin', 'super_admin', 'hr', 'audit'].includes(currentProfile.role);
             try {
               if (isAdmin) {
-                const companyId = currentProfile.role !== 'super_admin' ? (currentProfile.company_id || undefined) : undefined;
+                const companyId = !['super_admin', 'hr', 'audit'].includes(currentProfile.role) ? (currentProfile.company_id || undefined) : undefined;
                 const limit = undefined; // no cap for any role
                 const expenses = deptFilter(await fetchExpenses({ companyId, limit }));
                 allExpensesFetched = expenses;
@@ -894,7 +899,7 @@
         filtered = filtered.filter(e => e.status === currentListFilter);
       }
 
-      const isAdmin = currentProfile.role === 'admin' || currentProfile.role === 'super_admin';
+      const isAdmin = ['admin', 'super_admin', 'hr', 'audit'].includes(currentProfile.role);
 
       // Filter by search string — name OR email (Admins only)
       if (search && isAdmin) {
@@ -1390,8 +1395,8 @@
 
     async function loadAdminExpenses(from, to) {
       try {
-        // super_admin sees all companies; admin scoped to their company
-        const companyId = currentProfile.role !== 'super_admin' ? (currentProfile.company_id || undefined) : undefined;
+        // super_admin/hr/audit see all companies; admin scoped to their company
+        const companyId = !['super_admin', 'hr', 'audit'].includes(currentProfile.role) ? (currentProfile.company_id || undefined) : undefined;
         // No row cap for any role — bounded only by Supabase max_rows setting
         const limit = undefined;
         const raw = await fetchExpenses({ from, to, companyId, limit });
@@ -1835,7 +1840,7 @@
         filtered = filtered.filter(e => e.status === currentListFilter);
       }
 
-      const isAdmin = currentProfile.role === 'admin' || currentProfile.role === 'super_admin';
+      const isAdmin = ['admin', 'super_admin', 'hr', 'audit'].includes(currentProfile.role);
 
       if (search && isAdmin) {
         filtered = filtered.filter(e =>
@@ -2107,8 +2112,10 @@
 
       const approvedAmt = e.approved_amount != null ? e.approved_amount : e.amount;
       const amtChanged = e.approved_amount != null && +e.approved_amount !== +e.amount;
-      const showL1Btn = currentProfile.role === 'admin' && e.status === 'pending';
-      const showL2Btn = currentProfile.role === 'super_admin' && (e.status === 'pending' || e.status === 'l1_approved');
+      const showL1Btn     = currentProfile.role === 'admin' && e.status === 'pending';
+      const showHRBtn     = currentProfile.role === 'hr' && (e.status === 'l1_approved' || e.status === 'audit_review');
+      const showAuditBtns = currentProfile.role === 'audit' && e.status === 'hr_approved';
+      const showL2Btn     = currentProfile.role === 'super_admin' && ['pending','l1_approved','hr_approved','audit_review','l1_rejected','rejected'].includes(e.status);
 
       return `
     <div class="expense-card">
@@ -2140,8 +2147,13 @@
       ${e.l2_remark ? `<div class="expense-card-desc" style="background:#f0fdf4;padding:.4rem;border-radius:4px;margin-top:.25rem;font-size:.78rem;border-left:3px solid #22c55e"><strong>L2 Remark:</strong> ${escHtml(e.l2_remark)}</div>` : ''}
       ${receiptCardFooter(e)}
       <div class="expense-card-footer" style="display:grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; margin-top: 0.5rem; border-top: 1px solid var(--border); padding-top: 0.5rem;">
-        ${showL1Btn ? `<button onclick="openApprovalModal('${e.id}')" class="btn btn-primary btn-sm" style="grid-column:1/-1">Review (L1)</button>` : ''}
-        ${showL2Btn ? `<button onclick="openApprovalModal('${e.id}')" class="btn btn-primary btn-sm" style="grid-column:1/-1;background:#7c3aed">Final Approval (L2)</button>` : ''}
+        ${showL1Btn ? `<button onclick="openApprovalModal('${e.id}')" class="btn btn-primary btn-sm" style="grid-column:1/-1">Review (L1 — Admin)</button>` : ''}
+        ${showHRBtn ? `<button onclick="openApprovalModal('${e.id}')" class="btn btn-primary btn-sm" style="grid-column:1/-1;background:#059669">${e.status === 'audit_review' ? '🔁 HR Re-review (Audit Flagged)' : 'HR Approve'}</button>` : ''}
+        ${showAuditBtns ? `
+          <button onclick="auditClearExpense('${e.id}')" class="btn btn-primary btn-sm" style="background:#14532d">✓ Audit Clear</button>
+          <button onclick="openAuditFlagModal('${e.id}')" class="btn btn-secondary btn-sm" style="color:#92400e;border-color:#f59e0b">⚑ Flag Review</button>
+        ` : ''}
+        ${showL2Btn ? `<button onclick="openApprovalModal('${e.id}')" class="btn btn-primary btn-sm" style="grid-column:1/-1;background:#7c3aed">⚡ Override (Super Admin)</button>` : ''}
         <button onclick="openCommentModal('${e.id}')" class="btn btn-secondary btn-sm">💬 Comment</button>
         <button onclick="deleteExpense('${e.id}')" class="btn btn-secondary btn-sm" style="color:var(--red)">Delete</button>
       </div>
@@ -2208,12 +2220,21 @@
       enableApproveButtonIfReady(expenseId);
 
       const isL1 = currentProfile.role === 'admin';
-      document.getElementById('am-title').textContent = isL1 ? 'Manager Review (L1)' : 'Final Approval (L2)';
-      document.getElementById('am-subtitle').textContent = isL1
-        ? 'L1 review — approval forwards claim to Super Admin for final sign-off'
-        : e.status === 'l1_approved'
-          ? 'L1 already approved — this is the final sign-off'
-          : '⚠️ L1 pending — approving here will auto-complete L1 and finalise';
+      const isHR = currentProfile.role === 'hr';
+      const titlesMap = {
+        admin: 'Manager Review (L1)',
+        hr: e?.status === 'audit_review' ? 'HR Re-review (Audit Flagged)' : 'HR Approval',
+        super_admin: 'Override Approval (Super Admin)',
+      };
+      const subtitleMap = {
+        admin: 'L1 review — approval forwards claim to HR for sign-off',
+        hr: e?.status === 'audit_review'
+          ? `⚑ Audit flagged this expense: "${e.audit_note || '—'}" — approve to clear flag`
+          : 'HR approval — forwards claim to Audit for final clearance',
+        super_admin: '⚡ Override: bypasses normal flow and moves to HR Approved',
+      };
+      document.getElementById('am-title').textContent = titlesMap[currentProfile.role] || 'Review';
+      document.getElementById('am-subtitle').textContent = subtitleMap[currentProfile.role] || '';
 
       // Super Admin receipt upload section
       const saSection = document.getElementById('am-sa-receipt-section');
@@ -2305,6 +2326,10 @@
       const e = allExpensesFetched.find(x => x.id === expenseId);
       if (!e) return;
 
+      // Map 'approved' to the correct action for the current role
+      let apiAction = action;
+      if (action === 'approved' && currentProfile.role === 'hr') apiAction = 'hr_approved';
+
       // Receipt-view enforcement (only on approve, only when receipts exist)
       if (action === 'approved') {
         const hasReceipt = parseReceiptUrls(e.receipt_url).length > 0;
@@ -2333,7 +2358,7 @@
         const token = session?.access_token;
         if (!token) throw new Error('Not authenticated');
 
-        const payload = { expense_id: expenseId, action, remark: remark || null };
+        const payload = { expense_id: expenseId, action: apiAction, remark: remark || null };
         if (amtChanged) payload.approved_amount = approvedAmount;
 
         const res = await fetch('/api/approve-expense', {
@@ -2367,6 +2392,7 @@
     async function approveEntireCycle(safeKey, triggerBtn) {
       const [userId, monthYear, cycleText] = safeKey.split('|');
       const isL1 = currentProfile.role === 'admin';
+      const isHR = currentProfile.role === 'hr';
       const isL2 = currentProfile.role === 'super_admin';
 
       const toApprove = allExpensesFetched.filter(e => {
@@ -2376,7 +2402,8 @@
         const cT = cNum === 1 ? "1st - 15th" : "16th - End";
         if (!(e.user_id === userId && mY === monthYear && cT === cycleText)) return false;
         if (isL1) return e.status === 'pending';
-        if (isL2) return e.status === 'pending' || e.status === 'l1_approved';
+        if (isHR) return e.status === 'l1_approved' || e.status === 'audit_review';
+        if (isL2) return ['pending','l1_approved','hr_approved','audit_review'].includes(e.status);
         return false;
       });
 
@@ -2477,6 +2504,66 @@
       } catch (err) {
         showMessage(err.message || 'Failed to update status.', 'error');
       }
+    }
+
+    // ── AUDIT ACTIONS ────────────────────────────────────────────
+    async function auditClearExpense(expenseId) {
+      if (!confirm('Mark this expense as Audit Cleared?')) return;
+      try {
+        const { data: { session } } = await db.auth.getSession();
+        const res = await fetch('/api/approve-expense', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session?.access_token}` },
+          body: JSON.stringify({ expense_id: expenseId, action: 'audit_cleared' })
+        });
+        const json = await res.json();
+        if (!res.ok) throw new Error(json.error || 'Failed');
+        showMessage('Expense audit cleared ✓', 'success');
+        await loadAdminExpenses();
+      } catch (err) { showMessage(err.message, 'error'); }
+    }
+
+    function openAuditFlagModal(expenseId) {
+      let modal = document.getElementById('_audit-flag-modal');
+      if (!modal) {
+        modal = document.createElement('div');
+        modal.id = '_audit-flag-modal';
+        modal.style.cssText = 'position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.5);display:flex;align-items:center;justify-content:center;padding:1rem';
+        modal.innerHTML = `
+          <div style="background:#fff;border-radius:16px;padding:1.75rem;width:100%;max-width:420px;box-shadow:0 8px 32px rgba(0,0,0,.25)">
+            <h3 style="margin:0 0 .4rem;font-size:1rem;font-weight:700;color:#92400e">⚑ Flag for HR Review</h3>
+            <p style="margin:0 0 1rem;font-size:.82rem;color:#6b7280">Reason is mandatory — HR will see this when reviewing.</p>
+            <textarea id="_audit-flag-reason" rows="3" class="form-input" style="width:100%;resize:vertical" placeholder="Describe the issue found…"></textarea>
+            <div style="display:flex;gap:.5rem;margin-top:1rem;justify-content:flex-end">
+              <button onclick="document.getElementById('_audit-flag-modal').remove()" class="btn btn-secondary btn-sm">Cancel</button>
+              <button onclick="submitAuditFlag()" class="btn btn-sm" style="background:#f59e0b;color:#fff;border:none">⚑ Flag</button>
+            </div>
+            <input type="hidden" id="_audit-flag-expense-id" />
+          </div>`;
+        document.body.appendChild(modal);
+        modal.addEventListener('click', ev => { if (ev.target === modal) modal.remove(); });
+      }
+      document.getElementById('_audit-flag-expense-id').value = expenseId;
+      document.getElementById('_audit-flag-reason').value = '';
+    }
+
+    async function submitAuditFlag() {
+      const expenseId = document.getElementById('_audit-flag-expense-id').value;
+      const reason = document.getElementById('_audit-flag-reason').value.trim();
+      if (!reason) { showMessage('Reason is required to flag for review.', 'error'); return; }
+      try {
+        const { data: { session } } = await db.auth.getSession();
+        const res = await fetch('/api/approve-expense', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session?.access_token}` },
+          body: JSON.stringify({ expense_id: expenseId, action: 'audit_review', audit_note: reason })
+        });
+        const json = await res.json();
+        if (!res.ok) throw new Error(json.error || 'Failed');
+        document.getElementById('_audit-flag-modal')?.remove();
+        showMessage('Expense flagged for HR review', 'info');
+        await loadAdminExpenses();
+      } catch (err) { showMessage(err.message, 'error'); }
     }
 
     function emptyState(title, sub) {
@@ -3866,7 +3953,7 @@
                 <button class="btn btn-secondary btn-sm" style="font-size:.7rem;padding:.2rem .55rem;border-radius:7px;background:#0f172a;color:white;border:none" onclick="exportCycleToCSV('${safeKey}')">CSV</button>
                 <button class="btn btn-secondary btn-sm" style="font-size:.7rem;padding:.2rem .55rem;border-radius:7px;background:#dc2626;color:white;border:none" onclick="exportCycleToPDF('${safeKey}')">PDF</button>
                 <button class="btn btn-secondary btn-sm" style="font-size:.7rem;padding:.2rem .55rem;border-radius:7px;background:#047857;color:white;border:none" onclick="exportCycleToPaymentSheet('${safeKey}')">Payment</button>
-                ${currentProfile.role === 'admin' || currentProfile.role === 'super_admin' ? `<button class="btn btn-secondary btn-sm" style="font-size:.7rem;padding:.2rem .55rem;border-radius:7px;background:#0e7490;color:white;border:none" onclick="showPaymentHistory('${user.id}','${escHtml(g.mY)}','${escHtml(g.cT)}')">📜 History</button>` : ''}
+                ${['admin','super_admin','hr','audit'].includes(currentProfile.role) ? `<button class="btn btn-secondary btn-sm" style="font-size:.7rem;padding:.2rem .55rem;border-radius:7px;background:#0e7490;color:white;border:none" onclick="showPaymentHistory('${user.id}','${escHtml(g.mY)}','${escHtml(g.cT)}')">📜 History</button>` : ''}
               </div>
             </div>
             <div id="hnode-${cycId}" style="display:${cycOpen?'block':'none'};overflow-x:auto">
@@ -3885,9 +3972,10 @@
                   ${g.entries.sort((a,b)=>new Date(a.created_at)-new Date(b.created_at)).map(e => {
                     const apAmt = e.approved_amount!=null?e.approved_amount:e.amount;
                     const changed = e.approved_amount!=null && +e.approved_amount!==+e.amount;
-                    const showL1 = currentProfile.role==='admin' && e.status==='pending';
-                    const showL2 = currentProfile.role==='super_admin' && e.status==='l1_approved';
-                    const showDir= currentProfile.role==='super_admin' && e.status==='pending';
+                    const showL1  = currentProfile.role==='admin' && e.status==='pending';
+                    const showHR  = currentProfile.role==='hr' && (e.status==='l1_approved'||e.status==='audit_review');
+                    const showAud = currentProfile.role==='audit' && e.status==='hr_approved';
+                    const showL2  = currentProfile.role==='super_admin' && ['pending','l1_approved','hr_approved','audit_review','l1_rejected','rejected'].includes(e.status);
                     return `
                     <tr style="border-top:1px solid var(--border)">
                       <td style="padding:.5rem .75rem;white-space:nowrap;color:var(--text-muted)">${new Date(e.created_at).toLocaleDateString('en-IN',{day:'2-digit',month:'short'})}</td>
@@ -3895,6 +3983,7 @@
                       <td style="padding:.5rem .75rem;max-width:220px">
                         <div>${parseDescForDisplay(e.description)}</div>
                         ${e.rejection_reason?`<div style="font-size:.7rem;color:#dc2626;margin-top:.2rem">💬 ${escHtml(e.rejection_reason)}</div>`:''}
+                        ${e.audit_note?`<div style="font-size:.7rem;color:#92400e;background:#fef3c7;padding:.2rem .4rem;border-radius:4px;margin-top:.2rem">⚑ Audit: ${escHtml(e.audit_note)}</div>`:''}
                         ${e.l1_remark?`<div style="font-size:.68rem;color:#3b82f6;margin-top:.15rem">L1: ${escHtml(e.l1_remark)}</div>`:''}
                         ${e.l2_remark?`<div style="font-size:.68rem;color:#16a34a;margin-top:.15rem">L2: ${escHtml(e.l2_remark)}</div>`:''}
                       </td>
@@ -3903,7 +3992,7 @@
                         <div style="font-weight:700;color:var(--primary)">${formatCurrency(apAmt)}</div>
                       </td>
                       <td style="padding:.5rem .75rem">
-                        ${approvalStepper(e)}
+                        ${statusBadge(e.status)}
                         ${e.l1_by_name?`<div style="font-size:.62rem;color:var(--text-muted);margin-top:.2rem">L1: ${escHtml(e.l1_by_name)}</div>`:''}
                         ${e.l2_by_name?`<div style="font-size:.62rem;color:var(--text-muted)">L2: ${escHtml(e.l2_by_name)}</div>`:''}
                         ${parseReceiptUrls(e.receipt_url).length?`<a href="javascript:void(0)" data-rcpt-eid="${e.id}" onclick="viewExpenseReceipts('${escHtml(e.receipt_url)}','${e.id}')" style="font-size:.68rem;color:var(--primary);font-weight:600">📎 ${parseReceiptUrls(e.receipt_url).length>1?parseReceiptUrls(e.receipt_url).length+' Receipts':'Receipt'}</a>${receiptSeenBadge(e.id)}`:''}
@@ -3913,8 +4002,9 @@
                         <div style="display:flex;gap:.2rem;justify-content:flex-end;flex-wrap:wrap">
                           <button class="btn btn-secondary btn-sm" style="padding:.18rem .4rem;font-size:.7rem" onclick="openCommentModal('${e.id}')">💬</button>
                           ${showL1?`<button class="btn btn-primary btn-sm" style="padding:.18rem .4rem;font-size:.7rem" onclick="openApprovalModal('${e.id}')">L1</button>`:''}
-                          ${showL2?`<button class="btn btn-primary btn-sm" style="padding:.18rem .4rem;font-size:.7rem;background:#7c3aed" onclick="openApprovalModal('${e.id}')">L2</button>`:''}
-                          ${showDir?`<button class="btn btn-secondary btn-sm" style="padding:.18rem .4rem;font-size:.7rem" onclick="openApprovalModal('${e.id}')">↑</button>`:''}
+                          ${showHR?`<button class="btn btn-primary btn-sm" style="padding:.18rem .4rem;font-size:.7rem;background:#059669" onclick="openApprovalModal('${e.id}')">${e.status==='audit_review'?'🔁':'✓'} HR</button>`:''}
+                          ${showAud?`<button class="btn btn-primary btn-sm" style="padding:.18rem .4rem;font-size:.7rem;background:#14532d" onclick="auditClearExpense('${e.id}')">✓</button><button class="btn btn-secondary btn-sm" style="padding:.18rem .4rem;font-size:.7rem;color:#92400e" onclick="openAuditFlagModal('${e.id}')">⚑</button>`:''}
+                          ${showL2?`<button class="btn btn-primary btn-sm" style="padding:.18rem .4rem;font-size:.7rem;background:#7c3aed" onclick="openApprovalModal('${e.id}')">⚡</button>`:''}
                           <button class="btn btn-secondary btn-sm" style="padding:.18rem .4rem;font-size:.7rem;color:#dc2626" onclick="deleteExpense('${e.id}')">🗑️</button>
                         </div>
                       </td>

@@ -20,7 +20,8 @@ export default async function handler(req, res) {
   if (profErr || !profile)
     return res.status(403).json({ error: 'Profile not found' });
 
-  if (profile.role !== 'admin' && profile.role !== 'super_admin')
+  const ALLOWED_ROLES = ['admin', 'super_admin', 'hr', 'audit'];
+  if (!ALLOWED_ROLES.includes(profile.role))
     return res.status(403).json({ error: 'Not authorised to approve expenses' });
 
   // ── BULK mode: { expense_ids: [...] } ───────────────────────
@@ -53,9 +54,14 @@ export default async function handler(req, res) {
           return true;
         })
         .map(e => e.id);
-    } else {
+    } else if (profile.role === 'hr') {
       eligibleIds = expenses
-        .filter(e => e.status === 'pending' || e.status === 'l1_approved')
+        .filter(e => e.status === 'l1_approved' || e.status === 'audit_review')
+        .map(e => e.id);
+    } else {
+      // super_admin: can bulk-approve pending, l1_approved, or hr_approved
+      eligibleIds = expenses
+        .filter(e => ['pending', 'l1_approved', 'hr_approved'].includes(e.status))
         .map(e => e.id);
     }
 
@@ -77,49 +83,34 @@ export default async function handler(req, res) {
         .in('id', eligibleIds);
       if (updateErr) return res.status(500).json({ error: updateErr.message });
 
+    } else if (profile.role === 'hr') {
+      // ── HR: l1_approved / audit_review → hr_approved ─────────
+      const { error: updateErr } = await supabaseAdmin
+        .from('expenses')
+        .update({
+          hr_by:      user.id,
+          hr_by_name: profile.name,
+          hr_at:      now,
+          audit_note: null,
+          status:     'hr_approved',
+        })
+        .in('id', eligibleIds);
+      if (updateErr) return res.status(500).json({ error: updateErr.message });
+
     } else {
-      // ── Super Admin: two separate updates to preserve L1 data ─
-      // Group 1: already l1_approved → only set L2 fields
-      const l1DoneIds = expenses
-        .filter(e => e.status === 'l1_approved')
-        .map(e => e.id)
-        .filter(id => eligibleIds.includes(id));
-
-      // Group 2: still pending → set both L1 (auto) + L2
-      const pendingIds = expenses
-        .filter(e => e.status === 'pending')
-        .map(e => e.id)
-        .filter(id => eligibleIds.includes(id));
-
-      const l2Only = {
-        l2_status:  'approved',
-        l2_by:      user.id,
-        l2_by_name: profile.name,
-        l2_at:      now,
-        l2_remark:  'Bulk cycle approval',
-        status:     'approved',
-      };
-
-      const l1AndL2 = {
-        l1_status:  'approved',
-        l1_by:      user.id,
-        l1_by_name: profile.name,
-        l1_at:      now,
-        l1_remark:  'Auto-approved (Super Admin bulk)',
-        ...l2Only,
-      };
-
-      if (l1DoneIds.length > 0) {
-        const { error: e1 } = await supabaseAdmin
-          .from('expenses').update(l2Only).in('id', l1DoneIds);
-        if (e1) return res.status(500).json({ error: e1.message });
-      }
-
-      if (pendingIds.length > 0) {
-        const { error: e2 } = await supabaseAdmin
-          .from('expenses').update(l1AndL2).in('id', pendingIds);
-        if (e2) return res.status(500).json({ error: e2.message });
-      }
+      // ── Super Admin: override — move everything to hr_approved ─
+      const { error: updateErr } = await supabaseAdmin
+        .from('expenses')
+        .update({
+          l2_status:  'approved',
+          l2_by:      user.id,
+          l2_by_name: profile.name,
+          l2_at:      now,
+          l2_remark:  'Bulk override (Super Admin)',
+          status:     'hr_approved',
+        })
+        .in('id', eligibleIds);
+      if (updateErr) return res.status(500).json({ error: updateErr.message });
     }
 
     const elapsed_ms = Date.now() - startTime;
@@ -134,12 +125,15 @@ export default async function handler(req, res) {
     });
   }
 
-  // ── SINGLE mode: { expense_id, action, remark } ─────────────
-  const { expense_id, action, approved_amount, remark } = req.body;
-  if (!expense_id || !['approved', 'rejected'].includes(action))
+  // ── SINGLE mode: { expense_id, action, remark, audit_note } ──
+  const { expense_id, action, approved_amount, remark, audit_note } = req.body;
+  const validActions = ['approved', 'rejected', 'hr_approved', 'audit_cleared', 'audit_review'];
+  if (!expense_id || !validActions.includes(action))
     return res.status(400).json({ error: 'Invalid request body' });
   if (action === 'rejected' && !remark?.trim())
     return res.status(400).json({ error: 'A reason is required for rejection' });
+  if (action === 'audit_review' && !audit_note?.trim())
+    return res.status(400).json({ error: 'A reason is required when flagging for review' });
 
   const { data: expense, error: expErr } = await supabaseAdmin
     .from('expenses').select('*, users(department)').eq('id', expense_id).single();
@@ -160,12 +154,12 @@ export default async function handler(req, res) {
   let update = {};
 
   if (profile.role === 'admin') {
-    // ── Level 1 (Manager) ──────────────────────────────────────
+    // ── Level 1 (Admin/Manager) ────────────────────────────────
     if (expense.status !== 'pending')
       return res.status(400).json({ error: 'Expense is not pending L1 approval' });
 
     update = {
-      l1_status:   action,
+      l1_status:   action === 'approved' ? 'approved' : 'rejected',
       l1_by:       user.id,
       l1_by_name:  profile.name,
       l1_at:       now,
@@ -174,28 +168,56 @@ export default async function handler(req, res) {
     };
     if (action === 'rejected') update.rejection_reason = remark.trim();
 
-  } else {
-    // ── Level 2 (Super Admin – Final) ─────────────────────────
-    if (!['pending', 'l1_approved'].includes(expense.status))
-      return res.status(400).json({ error: 'Expense is not ready for final approval' });
+  } else if (profile.role === 'hr') {
+    // ── HR: l1_approved / audit_review → hr_approved or rejected
+    if (!['l1_approved', 'audit_review'].includes(expense.status))
+      return res.status(400).json({ error: 'Expense is not ready for HR approval' });
 
-    // Auto-complete L1 if super_admin acts on a pending expense
+    update = {
+      hr_by:      user.id,
+      hr_by_name: profile.name,
+      hr_at:      now,
+      hr_remark:  remark?.trim() || null,
+      audit_note: null,
+      status:     action === 'approved' ? 'hr_approved' : 'rejected',
+    };
+    if (action === 'rejected') update.rejection_reason = remark.trim();
+
+  } else if (profile.role === 'audit') {
+    // ── Audit: hr_approved → audit_cleared or audit_review ─────
+    if (expense.status !== 'hr_approved')
+      return res.status(400).json({ error: 'Expense is not ready for audit review' });
+
+    update = {
+      audit_by:      user.id,
+      audit_by_name: profile.name,
+      audit_at:      now,
+      status:        action === 'audit_cleared' ? 'audit_cleared' : 'audit_review',
+      audit_note:    action === 'audit_review' ? audit_note.trim() : null,
+    };
+
+  } else {
+    // ── Super Admin: override at any stage ─────────────────────
+    const okStatuses = ['pending', 'l1_approved', 'hr_approved', 'audit_review', 'l1_rejected', 'rejected'];
+    if (!okStatuses.includes(expense.status))
+      return res.status(400).json({ error: 'Cannot override this expense status' });
+
     if (expense.status === 'pending') {
       update.l1_status  = 'approved';
       update.l1_by      = user.id;
       update.l1_by_name = profile.name;
       update.l1_at      = now;
-      update.l1_remark  = 'Auto-approved (Super Admin)';
+      update.l1_remark  = 'Auto-approved (Super Admin override)';
     }
 
     update = {
       ...update,
-      l2_status:   action,
+      l2_status:   action === 'approved' ? 'approved' : 'rejected',
       l2_by:       user.id,
       l2_by_name:  profile.name,
       l2_at:       now,
       l2_remark:   remark?.trim() || null,
-      status:      action === 'approved' ? 'approved' : 'rejected',
+      status:      action === 'approved' ? 'hr_approved' : 'rejected',
     };
     if (action === 'rejected') update.rejection_reason = remark.trim();
   }

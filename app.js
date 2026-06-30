@@ -202,8 +202,20 @@ function statusBadge(status) {
   if (status === 'l1_approved') {
     return `<div style="display:inline-flex;flex-direction:column;gap:2px;vertical-align:middle">
       <span class="status-badge badge-l1" style="white-space:nowrap">✓ Mgr Approved</span>
-      <span style="font-size:.65rem;color:#1e3a8a;opacity:.8;font-weight:700;padding-left:4px">⏳ Admin Pending</span>
+      <span style="font-size:.65rem;color:#1e3a8a;opacity:.8;font-weight:700;padding-left:4px">⏳ HR Pending</span>
     </div>`;
+  }
+  if (status === 'hr_approved') {
+    return `<div style="display:inline-flex;flex-direction:column;gap:2px;vertical-align:middle">
+      <span class="status-badge badge-approved" style="white-space:nowrap;background:#d1fae5;color:#065f46">✓ HR Approved</span>
+      <span style="font-size:.65rem;color:#065f46;opacity:.8;font-weight:700;padding-left:4px">⏳ Audit Pending</span>
+    </div>`;
+  }
+  if (status === 'audit_cleared') {
+    return `<span class="status-badge badge-approved" style="background:#bbf7d0;color:#14532d;white-space:nowrap">✓ Audit Cleared</span>`;
+  }
+  if (status === 'audit_review') {
+    return `<span class="status-badge" style="background:#fef3c7;color:#92400e;white-space:nowrap">⚑ Audit Review</span>`;
   }
   const labels = {
     pending: 'Pending',
@@ -296,23 +308,25 @@ function populateSidebar(profile) {
   if (el('sb-email')) el('sb-email').textContent = profile.email;
   if (el('sb-role')) el('sb-role').textContent = profile.role;
 
-  // Employees can add expenses
-  if (profile.role !== 'admin' && profile.role !== 'super_admin') {
+  const role = profile.role;
+
+  // Employees can add expenses (not admin/hr/audit/super_admin)
+  if (!['admin', 'super_admin', 'hr', 'audit'].includes(role)) {
     if (el('sb-add-link')) el('sb-add-link').style.display = '';
   }
 
-  // Only super_admin can create new users
-  if (profile.role === 'super_admin') {
+  // Create User: super_admin and hr only
+  if (role === 'super_admin' || role === 'hr') {
     if (el('sb-create-user-link')) el('sb-create-user-link').style.display = '';
   }
 
-  // Manage Users visible to admin + super_admin only
-  if (profile.role === 'admin' || profile.role === 'super_admin') {
+  // Manage Users: admin, hr, super_admin
+  if (['admin', 'hr', 'super_admin'].includes(role)) {
     if (el('sb-manage-users-link')) el('sb-manage-users-link').style.display = '';
   }
 
-  // Payment Register visible to admin + super_admin only
-  if (profile.role === 'admin' || profile.role === 'super_admin') {
+  // Payment Register: admin, hr, audit, super_admin
+  if (['admin', 'hr', 'audit', 'super_admin'].includes(role)) {
     if (el('sb-payment-register-link')) el('sb-payment-register-link').style.display = '';
   }
 }

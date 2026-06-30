@@ -222,11 +222,13 @@
               <label class="form-label" for="cu-role">Role</label>
               <select class="form-select" id="cu-role" onchange="updateRoleHint()">
                 <option value="employee">Employee — Can submit expenses</option>
-                <option value="admin">Line Manager (L1) — Reviews &amp; does first approval</option>
-                <option value="super_admin">Super Admin (L2) — Final approver</option>
+                <option value="admin">Line Manager (L1) — Department-level first approval</option>
+                <option value="hr">HR — All departments, approves after admin, manages users</option>
+                <option value="audit">Audit — Reviews HR-approved expenses, clears or flags</option>
+                <option value="super_admin">Super Admin — Override at any stage</option>
               </select>
               <p id="role-hint" style="margin:.4rem 0 0;font-size:.78rem;color:var(--text-muted)">
-                Employees submit expenses; Line Managers do L1 review; Super Admin gives final approval.
+                Flow: Employee → Admin (L1) → HR → Audit → Cleared
               </p>
             </div>
 
@@ -281,8 +283,8 @@
         deptSel.appendChild(opt);
       });
 
-      // Only super_admin can access this page
-      if (profile.role !== 'super_admin') {
+      // Only super_admin and hr can access this page
+      if (!['super_admin', 'hr'].includes(profile.role)) {
         window.location.href = 'dashboard.html';
         return;
       }
@@ -355,8 +357,8 @@
       renderUserList(filtered);
     }
 
-    const ROLE_LABELS = { employee: 'Employee', admin: 'Manager (L1)', super_admin: 'Super Admin (L2)' };
-    const ROLE_COLORS = { employee: '#6366f1', admin: '#0891b2', super_admin: '#7c3aed' };
+    const ROLE_LABELS = { employee: 'Employee', admin: 'Manager (L1)', hr: 'HR', audit: 'Audit', super_admin: 'Super Admin' };
+    const ROLE_COLORS = { employee: '#6366f1', admin: '#0891b2', hr: '#059669', audit: '#d97706', super_admin: '#7c3aed' };
 
     function renderUserList(users) {
       const container = document.getElementById('user-list-container');

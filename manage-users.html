@@ -346,7 +346,9 @@
               <select class="form-select" id="edit-role">
                 <option value="employee">Employee</option>
                 <option value="admin">Manager (L1)</option>
-                <option value="super_admin">Super Admin (L2)</option>
+                <option value="hr">HR</option>
+                <option value="audit">Audit</option>
+                <option value="super_admin">Super Admin</option>
               </select>
             </div>
           </div>
@@ -610,8 +612,8 @@
   let editOpen = false;
   let activeFilter = null; // null = all, 'employee'|'admin'|'super_admin'
 
-  const ROLE_LABEL = { employee: 'Employee', admin: 'Manager (L1)', super_admin: 'Super Admin (L2)', engineer: 'Engineer' };
-  const ROLE_COLOR = { employee: '#6366f1', admin: '#0891b2', super_admin: '#7c3aed', engineer: '#d97706' };
+  const ROLE_LABEL = { employee: 'Employee', admin: 'Manager (L1)', hr: 'HR', audit: 'Audit', super_admin: 'Super Admin', engineer: 'Engineer' };
+  const ROLE_COLOR = { employee: '#6366f1', admin: '#0891b2', hr: '#059669', audit: '#d97706', super_admin: '#7c3aed', engineer: '#9333ea' };
 
   // ── Boot ──────────────────────────────────────────────────
   (async () => {
@@ -621,7 +623,7 @@
     if (!profile) { showMessage('Could not load profile.', 'error'); setTimeout(logout, 2000); return; }
     currentProfile = profile;
     populateSidebar(profile);
-    if (profile.role !== 'admin' && profile.role !== 'super_admin') {
+    if (!['admin', 'hr', 'super_admin'].includes(profile.role)) {
       window.location.href = 'dashboard.html';
       return;
     }

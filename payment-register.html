@@ -162,7 +162,7 @@
       if (!profile) { showMessage('Could not load profile.', 'error'); setTimeout(logout, 2000); return; }
       currentProfile = profile;
       populateSidebar(profile);
-      if (profile.role !== 'admin' && profile.role !== 'super_admin') {
+      if (!['admin', 'hr', 'audit', 'super_admin'].includes(profile.role)) {
         window.location.href = 'dashboard.html';
         return;
       }
@@ -173,6 +173,7 @@
     async function loadPaymentRegister() {
       try {
         let expenses = await fetchExpenses();
+        // Admin scoped to own dept; hr/audit/super_admin see all
         if (currentProfile.role === 'admin' && currentProfile.department) {
           const myDept = currentProfile.department.toLowerCase().trim();
           expenses = expenses.filter(e => (e.users?.department || '').toLowerCase().trim() === myDept);
