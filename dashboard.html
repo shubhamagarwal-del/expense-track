@@ -892,9 +892,16 @@
       const search = document.getElementById('f-user-search')?.value.toLowerCase().trim() || '';
       let filtered = allExpensesFetched;
 
-      // Filter by status tab (rejected covers both l1_rejected and rejected)
+      // Filter by status tab
+      const empRole = !['admin','super_admin','hr','audit'].includes(currentProfile.role);
       if (currentListFilter === 'rejected') {
         filtered = filtered.filter(e => e.status === 'rejected' || e.status === 'l1_rejected');
+      } else if (currentListFilter === 'approved') {
+        // "Approved" = any stage of approval (employee & admin both)
+        filtered = filtered.filter(e => ['approved','hr_approved','audit_cleared','audit_review'].includes(e.status));
+      } else if (currentListFilter === 'pending' && empRole) {
+        // Employee "pending" includes l1_approved (waiting for HR) too
+        filtered = filtered.filter(e => e.status === 'pending' || e.status === 'l1_approved');
       } else if (currentListFilter !== 'all') {
         filtered = filtered.filter(e => e.status === currentListFilter);
       }
@@ -981,10 +988,13 @@
         </div>
         <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:.75rem">
           ${sorted.map(g => {
-            const pending  = g.expenses.filter(e => e.status === 'pending').length;
-            const inReview = g.expenses.filter(e => e.status === 'l1_approved').length;
-            const approved = g.expenses.filter(e => e.status === 'approved').length;
-            const rejected = g.expenses.filter(e => e.status === 'rejected' || e.status === 'l1_rejected').length;
+            const pending    = g.expenses.filter(e => e.status === 'pending').length;
+            const inReview   = g.expenses.filter(e => e.status === 'l1_approved').length;
+            const hrPending  = g.expenses.filter(e => e.status === 'hr_approved').length;
+            const auditFlag  = g.expenses.filter(e => e.status === 'audit_review').length;
+            const cleared    = g.expenses.filter(e => e.status === 'audit_cleared').length;
+            const approved   = g.expenses.filter(e => e.status === 'approved').length;
+            const rejected   = g.expenses.filter(e => e.status === 'rejected' || e.status === 'l1_rejected').length;
             const totalAmt = g.expenses.reduce((s, e) => s + effectiveAmt(e), 0);
             const col = g.cNum === 1 ? '#6366f1' : '#7c3aed';
             const tagBg  = g.cNum === 1 ? '#ede9fe' : '#f3e8ff';
@@ -1001,10 +1011,13 @@
                 <div style="font-size:1.45rem;font-weight:800;color:#111827;margin-bottom:.4rem">${formatCurrency(totalAmt)}</div>
                 <div style="font-size:.72rem;color:#9ca3af;margin-bottom:.6rem">${g.expenses.length} record${g.expenses.length !== 1 ? 's' : ''}</div>
                 <div style="display:flex;flex-wrap:wrap;gap:.3rem">
-                  ${pending  ? `<span style="background:#fef3c7;color:#92400e;border-radius:5px;padding:1px 6px;font-size:.68rem;font-weight:700">⏳ ${pending}</span>` : ''}
-                  ${inReview ? `<span style="background:#ede9fe;color:#5b21b6;border-radius:5px;padding:1px 6px;font-size:.68rem;font-weight:700">🔍 ${inReview}</span>` : ''}
-                  ${approved ? `<span style="background:#dcfce7;color:#166534;border-radius:5px;padding:1px 6px;font-size:.68rem;font-weight:700">✅ ${approved}</span>` : ''}
-                  ${rejected ? `<span style="background:#fee2e2;color:#991b1b;border-radius:5px;padding:1px 6px;font-size:.68rem;font-weight:700">❌ ${rejected}</span>` : ''}
+                  ${pending   ? `<span style="background:#fef3c7;color:#92400e;border-radius:5px;padding:1px 6px;font-size:.68rem;font-weight:700">⏳ Pending ${pending}</span>` : ''}
+                  ${inReview  ? `<span style="background:#ede9fe;color:#5b21b6;border-radius:5px;padding:1px 6px;font-size:.68rem;font-weight:700">🔍 HR Pending ${inReview}</span>` : ''}
+                  ${hrPending ? `<span style="background:#d1fae5;color:#065f46;border-radius:5px;padding:1px 6px;font-size:.68rem;font-weight:700">✓ HR Approved ${hrPending}</span>` : ''}
+                  ${auditFlag ? `<span style="background:#fef3c7;color:#92400e;border-radius:5px;padding:1px 6px;font-size:.68rem;font-weight:700">⚑ Audit Review ${auditFlag}</span>` : ''}
+                  ${cleared   ? `<span style="background:#bbf7d0;color:#14532d;border-radius:5px;padding:1px 6px;font-size:.68rem;font-weight:700">✓ Cleared ${cleared}</span>` : ''}
+                  ${approved  ? `<span style="background:#dcfce7;color:#166534;border-radius:5px;padding:1px 6px;font-size:.68rem;font-weight:700">✅ Approved ${approved}</span>` : ''}
+                  ${rejected  ? `<span style="background:#fee2e2;color:#991b1b;border-radius:5px;padding:1px 6px;font-size:.68rem;font-weight:700">❌ ${rejected}</span>` : ''}
                 </div>
               </div>`;
           }).join('')}
