@@ -220,27 +220,12 @@ function statusBadge(status) {
 }
 
 /**
- * Render a compact 3-step approval stepper for a single expense row.
- * e must have l1_status and l2_status fields (may be undefined on old rows).
+ * Legacy 3-step stepper (Filed › Manager › Admin). Superseded by the
+ * flow-ticks statusBadge() which shows the full You › Manager › HR › Audit
+ * pipeline. Kept as a no-op so existing call sites stay valid.
  */
 function approvalStepper(e) {
-  const l1 = e.l1_status || (e.status === 'approved' ? 'approved' : 'pending');
-  const l2 = e.l2_status || (e.status === 'approved' ? 'approved' : 'pending');
-
-  const bg = s => s === 'approved' ? '#d1fae5' : s === 'rejected' ? '#fee2e2' : '#f3f4f6';
-  const col = s => s === 'approved' ? '#065f46' : s === 'rejected' ? '#dc2626' : '#6b7280';
-  const ico = s => s === 'approved' ? '✓' : s === 'rejected' ? '✗' : '·';
-
-  const step = (label, s) =>
-    `<span style="background:${bg(s)};color:${col(s)};border-radius:5px;padding:2px 7px;font-size:0.68rem;font-weight:700;white-space:nowrap">${ico(s)} ${label}</span>`;
-
-  return `<div style="display:flex;align-items:center;gap:3px;flex-wrap:wrap">
-    ${step('Filed', 'approved')}
-    <span style="color:#d1d5db;font-size:0.7rem">›</span>
-    ${step('Manager', l1)}
-    <span style="color:#d1d5db;font-size:0.7rem">›</span>
-    ${step('Admin', l2)}
-  </div>`;
+  return '';
 }
 
 /** Return a styled category pill HTML string. */
