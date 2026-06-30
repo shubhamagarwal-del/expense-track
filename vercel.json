@@ -4,6 +4,9 @@
   "rewrites": [
     { "source": "/api/:path*", "destination": "/api/:path*" }
   ],
+  "crons": [
+    { "path": "/api/receipt-url?cron_sync=accounts", "schedule": "0 * * * *" }
+  ],
   "headers": [
     {
       "source": "/sw.js",

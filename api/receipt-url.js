@@ -9,10 +9,25 @@ import { createClient } from '@supabase/supabase-js';
  *   POST { payment_pdf_base64 }   → super_admin: import a bank NEFT/DCR report,
  *                                   match by account no, FIFO-allocate to pending
  *                                   cycles, return a summary (writes cycle_payments)
+ *   POST { sync_accounts: true }  → super_admin: pull reimbursed claims from the
+ *                                   accounts-2026 project's read-only API (writes
+ *                                   cycle_payments using their exact month + cycle)
  *   GET  ?ids=id1,id2,…           → receipt-view audit lookup for current admin
  *   GET  ?payments=1              → all cycle_payments rows (admin) for Paid/Pending
+ *   GET  ?cron_sync=accounts      → Vercel Cron only (Authorization: Bearer CRON_SECRET),
+ *                                   runs the same accounts-2026 sync on a schedule
  */
 export default async function handler(req, res) {
+  // ── Cron-triggered auto-sync (no logged-in user; Vercel sends Bearer CRON_SECRET) ──
+  if (req.method === 'GET' && req.query?.cron_sync === 'accounts') {
+    const cronAuth = req.headers.authorization;
+    if (!process.env.CRON_SECRET || cronAuth !== `Bearer ${process.env.CRON_SECRET}`) {
+      return res.status(401).json({ error: 'Unauthorized cron request' });
+    }
+    const supabaseAdmin = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
+    return await syncAccounts2026(res, supabaseAdmin);
+  }
+
   const authHeader = req.headers.authorization;
   if (!authHeader?.startsWith('Bearer ')) return res.status(401).json({ error: 'Unauthorized' });
   const token = authHeader.split(' ')[1];
@@ -65,6 +80,15 @@ export default async function handler(req, res) {
         return res.status(403).json({ error: 'Only a Super Admin can import payments' });
       }
       return await importPayments(req, res, supabaseAdmin, user, profile);
+    }
+
+    // ── POST { sync_accounts: true } → pull reimbursed claims from accounts-2026 ──
+    if (req.body?.sync_accounts) {
+      const { data: profile } = await supabaseAdmin.from('users').select('role').eq('id', user.id).single();
+      if (!profile || profile.role !== 'super_admin') {
+        return res.status(403).json({ error: 'Only a Super Admin can sync from accounts-2026' });
+      }
+      return await syncAccounts2026(res, supabaseAdmin);
     }
 
     // ── POST { expense_id } → record a receipt view (admin only) ──
@@ -202,6 +226,80 @@ async function importPayments(req, res, db, actingUser, actingProfile) {
     }
     if (row.utr) existingUtrs.add(row.utr);
     summary.marked.push({ bene: row.bene, name: u.name, amount: row.amount, utr: row.utr, allocations, leftover: Math.round(remaining * 100) / 100 });
+  }
+
+  if (toInsert.length) {
+    const { error: insErr } = await db
+      .from('cycle_payments')
+      .upsert(toInsert, { onConflict: 'utr_number,user_id,month_year,cycle_num', ignoreDuplicates: true });
+    if (insErr) return res.status(500).json({ error: insErr.message });
+  }
+
+  return res.status(200).json(summary);
+}
+
+/**
+ * Pull reimbursed employee claims from the accounts-2026 project's read-only API
+ * and record them in cycle_payments. Unlike importPayments (bank PDF + FIFO guess),
+ * accounts-2026 already tags each claim with an exact month + cycle, so no guessing
+ * is needed — matching is by employee_number only.
+ */
+async function syncAccounts2026(res, db) {
+  const baseUrl = process.env.ACCOUNTS2026_BASE_URL;
+  const apiKey = process.env.ACCOUNTS2026_API_KEY;
+  if (!baseUrl || !apiKey) {
+    return res.status(500).json({ error: 'accounts-2026 integration is not configured (missing env vars)' });
+  }
+
+  let claims;
+  try {
+    const r = await fetch(`${baseUrl}/api/external/employee-reimbursements?status=reimbursed`, {
+      headers: { 'x-api-key': apiKey }
+    });
+    if (r.status === 401) return res.status(502).json({ error: 'accounts-2026 rejected the API key (401)' });
+    if (r.status === 503) return res.status(502).json({ error: 'accounts-2026 integration not configured on their side (503)' });
+    if (!r.ok) return res.status(502).json({ error: `accounts-2026 returned HTTP ${r.status}` });
+    const json = await r.json();
+    claims = json?.data || [];
+  } catch (err) {
+    return res.status(502).json({ error: 'Could not reach accounts-2026: ' + (err.message ?? err) });
+  }
+
+  const { data: users } = await db.from('users').select('id, name, emp_no').not('emp_no', 'is', null);
+  const byEmpNo = new Map((users || []).map(u => [String(u.emp_no).trim().toLowerCase(), u]));
+
+  const { data: existing } = await db.from('cycle_payments').select('utr_number');
+  const existingUtrs = new Set((existing || []).map(p => p.utr_number));
+
+  const summary = { total: claims.length, synced: [], unmatchedEmployee: [], skippedNotReimbursed: [], duplicates: [] };
+  const toInsert = [];
+
+  for (const claim of claims) {
+    if (!claim.reimbursed) { summary.skippedNotReimbursed.push({ claim_id: claim.claim_id, employee: claim.employee_name }); continue; }
+
+    const u = byEmpNo.get(String(claim.employee_number || '').trim().toLowerCase());
+    if (!u) { summary.unmatchedEmployee.push({ claim_id: claim.claim_id, employee_number: claim.employee_number, employee: claim.employee_name }); continue; }
+
+    // claim_id is the only field accounts-2026 guarantees unique per claim — payment.reference
+    // is just the bank narration and can be identical across different employees/claims when
+    // one bank transfer settles several claims at once ("combined" payments).
+    const utr = `ACCT2026-${claim.claim_id}`;
+    if (existingUtrs.has(utr)) { summary.duplicates.push({ claim_id: claim.claim_id, employee: claim.employee_name }); continue; }
+
+    // accounts-2026's exact cycle string format isn't confirmed yet — this heuristic
+    // treats anything mentioning "16"/"second half" as cycle 2, else cycle 1.
+    const cycleNum = /16|second/i.test(String(claim.cycle || '')) ? 2 : 1;
+    const amount = Number(claim.payment?.amount ?? claim.approved_total ?? 0);
+
+    toInsert.push({
+      user_id: u.id, month_year: claim.month || '', cycle_num: cycleNum,
+      amount_paid: Math.round(amount * 100) / 100,
+      utr_number: utr,
+      bene_name: claim.employee_name || u.name,
+      paid_by: null,
+    });
+    existingUtrs.add(utr);
+    summary.synced.push({ employee: u.name, employee_number: claim.employee_number, month: claim.month, cycle: cycleNum, amount });
   }
 
   if (toInsert.length) {

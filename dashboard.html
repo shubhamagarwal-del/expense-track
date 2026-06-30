@@ -150,6 +150,14 @@
           Manage Users
         </a>
 
+        <a href="payment-register.html" class="sidebar-link" id="sb-payment-register-link" style="display:none">
+          <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round"
+              d="M12 8v8m-4-5h8M5 6h14a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2z" />
+          </svg>
+          Payment Register
+        </a>
+
         <a href="help.html" class="sidebar-link" id="sb-help-link">
           <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
             <path stroke-linecap="round" stroke-linejoin="round" d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
@@ -786,7 +794,7 @@
     }
 
     let hierarchyMode = true; // hierarchy is the default view
-    const hierExpanded = { depts: new Set(), mgrs: new Set(), emps: new Set() };
+    const hierExpanded = { depts: new Set(), mgrs: new Set(), emps: new Set(), cycles: new Set() };
 
     const DEPT_ACCENT_COLORS = ['#534AB7','#0F6E56','#993C1D','#993556','#185FA5','#3B6D11','#854F0B','#0c447c'];
     function deptColor(dept){
@@ -1270,6 +1278,13 @@
               Upload Payment
             </button>
             <input type="file" id="pmt-pdf-input" accept="application/pdf,.pdf" style="display:none" onchange="importPaymentPdf(this)">
+            <button id="btn-sync-accounts" onclick="syncFromAccounts2026()"
+              style="display:none;align-items:center;gap:.4rem;height:34px;padding:0 .875rem;background:#6d28d9;color:white;border:none;border-radius:8px;font-size:.8rem;font-weight:600;cursor:pointer;white-space:nowrap"
+              onmouseover="this.style.opacity='.85'" onmouseout="this.style.opacity='1'"
+              title="Pull reimbursed claims from accounts-2026">
+              <svg style="width:14px;height:14px;flex-shrink:0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h5M20 20v-5h-5M5.5 9A7 7 0 0 1 19 12M18.5 15A7 7 0 0 1 5 12"/></svg>
+              Sync from Accounts-2026
+            </button>
           </div>
           <!-- View toggle -->
           <div style="display:flex;align-items:center;gap:.4rem">
@@ -1349,6 +1364,8 @@
       if (currentProfile.role === 'super_admin') {
         const ib = document.getElementById('btn-import-pmt');
         if (ib) ib.style.display = 'inline-flex';
+        const sb = document.getElementById('btn-sync-accounts');
+        if (sb) sb.style.display = 'inline-flex';
       }
 
       loadAdminExpenses();
@@ -2883,6 +2900,66 @@
       }
     }
 
+    /** Pull reimbursed claims from accounts-2026 (exact month+cycle, no FIFO guessing). */
+    async function syncFromAccounts2026() {
+      const btn = document.getElementById('btn-sync-accounts');
+      const orig = btn ? btn.innerHTML : '';
+      if (btn) { btn.disabled = true; btn.innerHTML = '⏳ Syncing…'; }
+      try {
+        const token = (await db.auth.getSession()).data.session?.access_token;
+        const res = await fetch('/api/receipt-url', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+          body: JSON.stringify({ sync_accounts: true })
+        });
+        const result = await res.json();
+        if (!res.ok) { showMessage('Sync failed: ' + (result.error || res.status), 'error'); return; }
+        await loadCyclePayments();
+        refreshListView(true);
+        showAccountsSyncResult(result);
+      } catch (err) {
+        showMessage('Sync error: ' + err.message, 'error');
+      } finally {
+        if (btn) { btn.disabled = false; btn.innerHTML = orig; }
+      }
+    }
+
+    function showAccountsSyncResult(r) {
+      const fmt = n => '₹' + Number(n || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 });
+      const syncedCount = (r.synced || []).length;
+      const rows = (r.synced || []).map(s =>
+        `<tr><td style="padding:.3rem .5rem">${escHtml(s.employee || s.employee_number)}</td>
+         <td style="padding:.3rem .5rem;text-align:right">${fmt(s.amount)}</td>
+         <td style="padding:.3rem .5rem;font-size:.7rem;color:var(--text-muted)">${escHtml(s.month||'')} · cycle ${s.cycle}</td></tr>`
+      ).join('');
+      const problemLine = (label, arr, color) => arr && arr.length
+        ? `<div style="margin-top:.4rem;font-size:.82rem;color:${color}"><strong>${label} (${arr.length}):</strong> ${arr.map(x=>escHtml(x.employee||x.employee_number||'')).join(', ')}</div>` : '';
+
+      const overlay = document.createElement('div');
+      overlay.style.cssText = 'position:fixed;inset:0;z-index:10000;background:rgba(15,23,42,.55);display:flex;align-items:center;justify-content:center;padding:1.25rem';
+      overlay.onclick = e => { if (e.target === overlay) overlay.remove(); };
+      overlay.innerHTML = `
+        <div style="background:#fff;border-radius:16px;max-width:680px;width:100%;max-height:85vh;overflow:auto;padding:1.5rem;box-shadow:0 12px 48px rgba(0,0,0,.3)">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem">
+            <h3 style="margin:0;font-size:1.1rem;font-weight:800">Accounts-2026 Sync Result</h3>
+            <button onclick="this.closest('div[style*=fixed]').remove()" style="background:none;border:none;font-size:1.3rem;cursor:pointer;color:#64748b">✕</button>
+          </div>
+          <div style="font-size:.9rem;margin-bottom:.75rem">
+            ✅ <strong>${syncedCount}</strong> claim${syncedCount!==1?'s':''} synced out of ${r.total} total.
+          </div>
+          ${syncedCount ? `<table style="width:100%;border-collapse:collapse;font-size:.82rem;border:1px solid var(--border);border-radius:8px;overflow:hidden">
+            <thead><tr style="background:var(--bg-2)">
+              <th style="padding:.4rem .5rem;text-align:left;font-size:.7rem;color:var(--text-muted)">EMPLOYEE</th>
+              <th style="padding:.4rem .5rem;text-align:right;font-size:.7rem;color:var(--text-muted)">AMOUNT</th>
+              <th style="padding:.4rem .5rem;text-align:left;font-size:.7rem;color:var(--text-muted)">CYCLE</th>
+            </tr></thead><tbody>${rows}</tbody></table>` : ''}
+          ${problemLine('⚠️ Employee not matched', r.unmatchedEmployee, '#dc2626')}
+          ${problemLine('↩️ Already synced', r.duplicates, '#64748b')}
+          ${problemLine('ℹ️ Not yet reimbursed', r.skippedNotReimbursed, '#64748b')}
+        </div>`;
+      document.body.appendChild(overlay);
+    }
+
     function showPaymentImportResult(r) {
       const fmt = n => '₹' + Number(n || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 });
       const markedCount = (r.marked || []).length;
@@ -3762,6 +3839,8 @@
         <!-- Cycle groups -->
         ${sorted.map(g => {
           const safeKey = `${user.id}|${g.mY}|${g.cT}`;
+          const cycId = safeKey.replace(/[^a-zA-Z0-9]/g, '_');
+          const cycOpen = hierExpanded.cycles.has(cycId);
           const gTotal = g.entries.reduce((s,e)=>{
             if(e.status==='rejected'||e.status==='l1_rejected') return s;
             return s+(e.approved_amount!=null?+e.approved_amount:+e.amount);
@@ -3771,11 +3850,15 @@
           return `
           <div style="border:1px solid var(--border);border-radius:10px;overflow:hidden;margin-bottom:.625rem;background:var(--card-bg,#fff)">
             <div style="padding:.625rem 1rem;background:var(--bg-page,#f9fafb);display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:.5rem">
-              <div>
+              <div style="cursor:pointer;display:flex;align-items:center;gap:.4rem;flex-wrap:wrap" onclick="hierToggleCycle('${cycId}')">
+                <svg id="chev-${cycId}" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"
+                     style="width:13px;height:13px;color:var(--text-muted);transition:transform .2s;flex-shrink:0;transform:${cycOpen?'rotate(180deg)':''}">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/>
+                </svg>
                 <span style="font-weight:700;font-size:.85rem">${escHtml(g.mY)}</span>
-                <span style="background:var(--primary);color:white;border-radius:5px;padding:0 7px;font-size:.68rem;font-weight:700;margin-left:.4rem">${escHtml(g.cT)}</span>
-                <span style="font-size:.72rem;color:var(--text-muted);margin-left:.5rem">${g.entries.length} entries · ${formatCurrency(gTotal)}</span>
-                <span style="background:#dcfce7;color:#166534;border-radius:5px;padding:0 7px;font-size:.68rem;font-weight:700;margin-left:.4rem" title="Paid via bank">💰 Paid: ${formatCurrency(gPaid)}</span>${gPend > 0.005 ? `<span style="background:#fef3c7;color:#92400e;border-radius:5px;padding:0 7px;font-size:.68rem;font-weight:700;margin-left:.3rem" title="Still pending">⏳ Pending: ${formatCurrency(gPend)}</span>` : `<span style="background:#dcfce7;color:#166534;border-radius:5px;padding:0 7px;font-size:.68rem;font-weight:700;margin-left:.3rem">✓ Fully paid</span>`}
+                <span style="background:var(--primary);color:white;border-radius:5px;padding:0 7px;font-size:.68rem;font-weight:700">${escHtml(g.cT)}</span>
+                <span style="font-size:.72rem;color:var(--text-muted)">${g.entries.length} entries · ${formatCurrency(gTotal)}</span>
+                <span style="background:#dcfce7;color:#166534;border-radius:5px;padding:0 7px;font-size:.68rem;font-weight:700" title="Paid via bank">💰 Paid: ${formatCurrency(gPaid)}</span>${gPend > 0.005 ? `<span style="background:#fef3c7;color:#92400e;border-radius:5px;padding:0 7px;font-size:.68rem;font-weight:700" title="Still pending">⏳ Pending: ${formatCurrency(gPend)}</span>` : `<span style="background:#dcfce7;color:#166534;border-radius:5px;padding:0 7px;font-size:.68rem;font-weight:700">✓ Fully paid</span>`}
               </div>
               <div style="display:flex;gap:.3rem;flex-wrap:wrap">
                 <button class="btn btn-primary btn-sm" style="font-size:.7rem;padding:.2rem .55rem;border-radius:7px;display:none" onclick="approveEntireCycle('${safeKey}',this)">✓ Approve Cycle</button>
@@ -3786,7 +3869,7 @@
                 ${currentProfile.role === 'admin' || currentProfile.role === 'super_admin' ? `<button class="btn btn-secondary btn-sm" style="font-size:.7rem;padding:.2rem .55rem;border-radius:7px;background:#0e7490;color:white;border:none" onclick="showPaymentHistory('${user.id}','${escHtml(g.mY)}','${escHtml(g.cT)}')">📜 History</button>` : ''}
               </div>
             </div>
-            <div style="overflow-x:auto">
+            <div id="hnode-${cycId}" style="display:${cycOpen?'block':'none'};overflow-x:auto">
               <table style="width:100%;border-collapse:collapse;font-size:.8rem">
                 <thead>
                   <tr style="background:var(--bg-page,#f9fafb)">
@@ -3872,6 +3955,15 @@
       if (ch) ch.style.transform = open ? '' : 'rotate(180deg)';
     }
 
+    function hierToggleCycle(cycId) {
+      const open = hierExpanded.cycles.has(cycId);
+      if (open) hierExpanded.cycles.delete(cycId); else hierExpanded.cycles.add(cycId);
+      const el = document.getElementById('hnode-' + cycId);
+      const ch = document.getElementById('chev-' + cycId);
+      if (el) el.style.display = open ? 'none' : 'block';
+      if (ch) ch.style.transform = open ? '' : 'rotate(180deg)';
+    }
+
     function hierExpandAll() {
       document.querySelectorAll('[id^="hnode-dept__"]').forEach(el => {
         el.style.display = 'block';
@@ -3886,7 +3978,7 @@
     }
 
     function hierCollapseAll() {
-      hierExpanded.depts.clear(); hierExpanded.mgrs.clear(); hierExpanded.emps.clear();
+      hierExpanded.depts.clear(); hierExpanded.mgrs.clear(); hierExpanded.emps.clear(); hierExpanded.cycles.clear();
       document.querySelectorAll('[id^="hnode-dept__"],[id^="hnode-mgr__"],[id^="hnode-emp__"]').forEach(el => el.style.display = 'none');
       document.querySelectorAll('[id^="chev-dept__"],[id^="chev-mgr__"],[id^="chev-emp__"]').forEach(el => el.style.transform = '');
     }

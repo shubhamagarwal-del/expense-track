@@ -310,6 +310,11 @@ function populateSidebar(profile) {
   if (profile.role === 'admin' || profile.role === 'super_admin') {
     if (el('sb-manage-users-link')) el('sb-manage-users-link').style.display = '';
   }
+
+  // Payment Register visible to admin + super_admin only
+  if (profile.role === 'admin' || profile.role === 'super_admin') {
+    if (el('sb-payment-register-link')) el('sb-payment-register-link').style.display = '';
+  }
 }
 
 
