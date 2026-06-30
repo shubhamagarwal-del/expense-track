@@ -1449,18 +1449,24 @@
       document.getElementById('s-count').textContent = expenses.length;
       document.getElementById('s-total').textContent = formatCurrency(allTotal);
 
-      // Super Admin — extra stat cards
-      if (currentProfile.role === 'super_admin') {
-        const uniqueEmps   = new Set(expenses.map(e => e.user_id)).size;
-        const pendingAct   = expenses.filter(e => e.status === 'pending' || e.status === 'l1_approved').length;
-        const approvedAmt  = expenses.filter(e => e.status === 'approved')
+      // Super Admin / HR / Audit — extra stat cards
+      if (['super_admin', 'hr', 'audit'].includes(currentProfile.role)) {
+        const uniqueEmps  = new Set(expenses.map(e => e.user_id)).size;
+        const role = currentProfile.role;
+        const pendingAct  = role === 'hr'
+          ? expenses.filter(e => e.status === 'l1_approved' || e.status === 'audit_review').length
+          : role === 'audit'
+          ? expenses.filter(e => e.status === 'hr_approved').length
+          : expenses.filter(e => e.status === 'pending' || e.status === 'l1_approved').length;
+        const approvedAmt = expenses
+          .filter(e => ['approved','hr_approved','audit_cleared'].includes(e.status))
           .reduce((s, e) => s + (e.approved_amount != null ? +e.approved_amount : +e.amount), 0);
-        const activeDepts  = new Set(expenses.map(e => e.users?.department).filter(Boolean)).size;
+        const activeDepts = new Set(expenses.map(e => e.users?.department).filter(Boolean)).size;
         const el = id => document.getElementById(id);
-        if (el('sa-emp'))     el('sa-emp').textContent     = uniqueEmps;
-        if (el('sa-pending')) el('sa-pending').textContent = pendingAct;
-        if (el('sa-approved'))el('sa-approved').textContent= formatCurrency(approvedAmt);
-        if (el('sa-depts'))   el('sa-depts').textContent   = activeDepts;
+        if (el('sa-emp'))     el('sa-emp').textContent      = uniqueEmps;
+        if (el('sa-pending')) el('sa-pending').textContent  = pendingAct;
+        if (el('sa-approved'))el('sa-approved').textContent = formatCurrency(approvedAmt);
+        if (el('sa-depts'))   el('sa-depts').textContent    = activeDepts;
       }
     }
 
