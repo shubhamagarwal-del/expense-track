@@ -1105,7 +1105,7 @@
       <!-- Page header -->
       <div class="page-header">
         <div class="page-title-block">
-          <h1>${isDeptAdmin ? 'Manager Dashboard' : 'Super Admin Panel'}</h1>
+          <h1>${isDeptAdmin ? 'Manager Dashboard' : currentProfile.role === 'hr' ? 'HR Panel' : currentProfile.role === 'audit' ? 'Audit Panel' : 'Super Admin Panel'}</h1>
           <p>${deptLabel
               ? `Showing <strong>${escHtml(deptLabel)}</strong> department requests only`
               : 'Overview of all company expenses'}</p>

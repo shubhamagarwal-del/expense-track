@@ -199,37 +199,24 @@ function formatDateTime(iso) {
 
 /** Return a styled status badge HTML string. */
 function statusBadge(status) {
-  if (status === 'l1_approved') {
-    return `<div style="display:inline-flex;flex-direction:column;gap:2px;vertical-align:middle">
-      <span class="status-badge badge-l1" style="white-space:nowrap">✓ Mgr Approved</span>
-      <span style="font-size:.65rem;color:#1e3a8a;opacity:.8;font-weight:700;padding-left:4px">⏳ HR Pending</span>
-    </div>`;
-  }
-  if (status === 'hr_approved') {
-    return `<div style="display:inline-flex;flex-direction:column;gap:2px;vertical-align:middle">
-      <span class="status-badge badge-approved" style="white-space:nowrap;background:#d1fae5;color:#065f46">✓ HR Approved</span>
-      <span style="font-size:.65rem;color:#065f46;opacity:.8;font-weight:700;padding-left:4px">⏳ Audit Pending</span>
-    </div>`;
-  }
-  if (status === 'audit_cleared') {
-    return `<span class="status-badge badge-approved" style="background:#bbf7d0;color:#14532d;white-space:nowrap">✓ Audit Cleared</span>`;
-  }
-  if (status === 'audit_review') {
-    return `<span class="status-badge" style="background:#fef3c7;color:#92400e;white-space:nowrap">⚑ Audit Review</span>`;
-  }
-  const labels = {
-    pending: 'Pending',
-    l1_rejected: 'Rejected (L1)',
-    approved: 'Approved',
-    rejected: 'Rejected',
-  };
-  const cls = {
-    pending: 'badge-pending',
-    l1_rejected: 'badge-rejected',
-    approved: 'badge-approved',
-    rejected: 'badge-rejected',
-  };
-  return `<span class="status-badge ${cls[status] ?? 'badge-pending'}">${labels[status] ?? status}</span>`;
+  const s = (text, style) => `<span style="font-size:11px;white-space:nowrap;${style}">${text}</span>`;
+  const done   = t => s(`✓ ${t}`, 'color:#059669');
+  const active = t => s(`● ${t}`, 'font-weight:500;background:#eff6ff;color:#2563eb;padding:2px 5px;border-radius:4px');
+  const wait   = t => s(t, 'color:#9ca3af');
+  const flag   = t => s(`⚑ ${t}`, 'font-weight:500;background:#fefce8;color:#b45309;padding:2px 5px;border-radius:4px');
+  const rej    = t => s(`✗ ${t}`, 'font-weight:500;color:#dc2626');
+  const sep    = `<span style="color:#d1d5db;font-size:10px;margin:0 1px">›</span>`;
+  const flow   = (...p) => `<span style="display:inline-flex;align-items:center;gap:2px;vertical-align:middle">${p.join(sep)}</span>`;
+
+  if (status === 'pending')       return flow(active('You'), wait('Manager'), wait('HR'), wait('Audit'));
+  if (status === 'l1_approved')   return flow(done('You'), done('Manager'), active('HR'), wait('Audit'));
+  if (status === 'hr_approved')   return flow(done('You'), done('Manager'), done('HR'), active('Audit'));
+  if (status === 'audit_cleared') return flow(done('You'), done('Manager'), done('HR'), done('Audit'));
+  if (status === 'audit_review')  return flow(done('You'), done('Manager'), done('HR'), flag('Audit'));
+  if (status === 'l1_rejected')   return flow(done('You'), rej('Manager'), wait('HR'), wait('Audit'));
+  if (status === 'rejected')      return flow(done('You'), rej('Rejected'), wait('HR'), wait('Audit'));
+  if (status === 'approved')      return `<span class="status-badge badge-approved" style="white-space:nowrap">✓ Approved</span>`;
+  return `<span class="status-badge badge-pending">${status}</span>`;
 }
 
 /**
