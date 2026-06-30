@@ -207,11 +207,12 @@ function statusBadge(status) {
   const rej    = t => s(`✗ ${t}`, 'font-weight:500;color:#dc2626');
   const sep    = `<span style="color:#d1d5db;font-size:10px;margin:0 1px">›</span>`;
   const flow   = (...p) => `<span style="display:inline-flex;align-items:center;gap:2px;vertical-align:middle">${p.join(sep)}</span>`;
+  const approvedTag = `<span class="status-badge badge-approved" style="white-space:nowrap;margin-left:6px">✓ Approved</span>`;
 
   if (status === 'pending')       return flow(active('You'), wait('Manager'), wait('HR'), wait('Audit'));
   if (status === 'l1_approved')   return flow(done('You'), done('Manager'), active('HR'), wait('Audit'));
   if (status === 'hr_approved')   return flow(done('You'), done('Manager'), done('HR'), active('Audit'));
-  if (status === 'audit_cleared') return flow(done('You'), done('Manager'), done('HR'), done('Audit'));
+  if (status === 'audit_cleared') return flow(done('You'), done('Manager'), done('HR'), done('Audit')) + approvedTag;
   if (status === 'audit_review')  return flow(done('You'), done('Manager'), done('HR'), flag('Audit'));
   if (status === 'l1_rejected')   return flow(done('You'), rej('Manager'), wait('HR'), wait('Audit'));
   if (status === 'rejected')      return flow(done('You'), rej('Rejected'), wait('HR'), wait('Audit'));
