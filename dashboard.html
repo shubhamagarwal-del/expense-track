@@ -1150,8 +1150,7 @@
         </div>
       </div>
 
-      ${!isDeptAdmin ? `
-      <!-- Super Admin extra stats row -->
+      <!-- Extra stats row — shown for every admin-side role (admin/HR/audit/super_admin) -->
       <div class="stats-grid" style="margin-top:-.25rem">
         <div class="stat-card" style="border-left:3px solid #6366f1">
           <div class="stat-top">
@@ -1177,6 +1176,7 @@
           <div class="stat-value" id="sa-approved">—</div>
           <div class="stat-sub">Total approved</div>
         </div>
+        ${!isDeptAdmin ? `
         <div class="stat-card" style="border-left:3px solid #8b5cf6">
           <div class="stat-top">
             <span class="stat-label">Departments</span>
@@ -1184,8 +1184,8 @@
           </div>
           <div class="stat-value" id="sa-depts">—</div>
           <div class="stat-sub">Active departments</div>
-        </div>
-      </div>` : ''}
+        </div>` : ''}
+      </div>
 
       <!-- ── Filter & Export Bar ─────────────────────────────────── -->
       <div style="position:sticky;top:56px;z-index:10;background:var(--card-bg,#fff);border-radius:16px;border:1px solid var(--border);box-shadow:0 4px 16px rgba(0,0,0,.07);margin-bottom:1.5rem;overflow:hidden;">
@@ -1467,11 +1467,13 @@
       document.getElementById('s-count').textContent = expenses.length;
       document.getElementById('s-total').textContent = formatCurrency(allTotal);
 
-      // Super Admin / HR / Audit — extra stat cards
-      if (['super_admin', 'hr', 'audit'].includes(currentProfile.role)) {
+      // Admin / HR / Audit / Super Admin — extra stat cards
+      if (['admin', 'super_admin', 'hr', 'audit'].includes(currentProfile.role)) {
         const uniqueEmps  = new Set(expenses.map(e => e.user_id)).size;
         const role = currentProfile.role;
-        const pendingAct  = role === 'hr'
+        const pendingAct  = role === 'admin'
+          ? expenses.filter(e => e.status === 'pending').length
+          : role === 'hr'
           ? expenses.filter(e => e.status === 'l1_approved' || e.status === 'audit_review').length
           : role === 'audit'
           ? expenses.filter(e => e.status === 'hr_approved').length
@@ -1961,20 +1963,47 @@
       return false;
     }
 
-    /** Flat, ungrouped list of every expense needing this role's action — no cycle to open. */
+    // Stage order + labels for grouping the action queue (mainly matters for
+    // super_admin, who can see items sitting at every stage at once).
+    const ACTION_STAGE_INFO = {
+      pending:       { label: '🔍 Needs Manager (L1) Approval', color: '#f59e0b' },
+      l1_approved:   { label: '📋 Needs HR Approval',           color: '#3b82f6' },
+      hr_approved:   { label: '🛡️ Needs Audit Clearance',       color: '#7c3aed' },
+      audit_review:  { label: '⚑ Audit Flagged — Needs HR Re-review', color: '#b45309' },
+    };
+    const ACTION_STAGE_ORDER = ['pending', 'l1_approved', 'hr_approved', 'audit_review'];
+
+    /** Ungrouped-per-stage list of every expense needing this role's action — no cycle to open. */
     function renderActionQueue() {
       const list = document.getElementById('action-queue-list');
       const countEl = document.getElementById('action-queue-count');
       if (!list) return;
-      const items = allExpensesFetched
-        .filter(isActionableForRole)
-        .sort((a, b) => new Date(a.created_at) - new Date(b.created_at)); // oldest first
+      const items = allExpensesFetched.filter(isActionableForRole);
       if (countEl) countEl.textContent = items.length;
       if (!items.length) {
         list.innerHTML = emptyState('All caught up!', 'Nothing is waiting on your approval right now.');
         return;
       }
-      list.innerHTML = `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:1rem">${items.map(adminCard).join('')}</div>`;
+
+      // Group by stage so a role seeing multiple stages (super_admin) doesn't
+      // get one jumbled pile — each stage is its own labeled section.
+      const byStage = {};
+      items.forEach(e => { (byStage[e.status] ??= []).push(e); });
+
+      list.innerHTML = ACTION_STAGE_ORDER
+        .filter(stage => byStage[stage]?.length)
+        .map(stage => {
+          const info = ACTION_STAGE_INFO[stage];
+          const group = byStage[stage].sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
+          return `
+          <div style="margin-bottom:1.5rem">
+            <div style="display:flex;align-items:center;gap:.5rem;margin-bottom:.75rem">
+              <span style="font-weight:700;font-size:.9rem;color:${info.color}">${info.label}</span>
+              <span style="background:${info.color};color:#fff;border-radius:10px;padding:0 8px;font-size:.72rem;font-weight:700">${group.length}</span>
+            </div>
+            <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:1rem">${group.map(adminCard).join('')}</div>
+          </div>`;
+        }).join('');
     }
 
     function setViewMode(mode) {
@@ -3853,8 +3882,8 @@
             <div style="flex:1;min-width:0;display:flex;align-items:center;gap:.625rem;flex-wrap:wrap">
               <span style="font-weight:800;font-size:1rem">${escHtml(dept)}</span>
               <span style="background:var(--bg-2);color:var(--text-muted);border-radius:6px;padding:1px 7px;font-size:.72rem;font-weight:700">${dEmps.size} emp</span>
-              ${dPend ? `<span style="background:#fef3c7;color:#92400e;border-radius:6px;padding:1px 7px;font-size:.72rem;font-weight:700">⏳ ${dPend}</span>` : ''}
-              ${dL1 ? `<span style="background:#ede9fe;color:#5b21b6;border-radius:6px;padding:1px 7px;font-size:.72rem;font-weight:700">🔍 ${dL1}</span>` : ''}
+              ${dPend ? `<span title="Number of expense entries awaiting Manager (L1) approval" style="background:#fef3c7;color:#92400e;border-radius:6px;padding:1px 7px;font-size:.72rem;font-weight:700">⏳ ${dPend} Pending (L1)</span>` : ''}
+              ${dL1 ? `<span title="Number of expense entries approved by Manager, now awaiting HR approval" style="background:#ede9fe;color:#5b21b6;border-radius:6px;padding:1px 7px;font-size:.72rem;font-weight:700">🔍 ${dL1} In Review (HR)</span>` : ''}
               <span style="background:#dcfce7;color:#166534;border-radius:6px;padding:1px 7px;font-size:.72rem;font-weight:700" title="Sum of approved expenses only">✅ Approved: ${formatCurrency(dAppr)}</span>
               <span style="background:var(--bg-2);color:var(--text-muted);border-radius:6px;padding:1px 7px;font-size:.72rem;font-weight:700" title="Sum of pending + in-review + approved (excludes rejected)">Overall: ${formatCurrency(dOverall)}</span>
               <span style="background:#dcfce7;color:#166534;border-radius:6px;padding:1px 7px;font-size:.72rem;font-weight:700" title="Paid via bank">💰 Paid: ${formatCurrency(dPaid)}</span>${(dOverall - dPaid) > 0.005 ? `<span style="background:#fef3c7;color:#92400e;border-radius:6px;padding:1px 7px;font-size:.72rem;font-weight:700" title="Still pending">⏳ Pending: ${formatCurrency(dOverall - dPaid)}</span>` : `<span style="background:#dcfce7;color:#166534;border-radius:6px;padding:1px 7px;font-size:.72rem;font-weight:700">✓ Fully paid</span>`}
@@ -3897,8 +3926,8 @@
                   </div>
                   <div style="display:flex;flex-wrap:wrap;gap:.3rem;align-items:center;justify-content:flex-end">
                     <span style="background:#f3f4f6;border-radius:6px;padding:1px 7px;font-size:.7rem;font-weight:600;color:#374151">${empArr.length} emp</span>
-                    ${mPend ? `<span style="background:#fef3c7;color:#92400e;border-radius:6px;padding:1px 7px;font-size:.7rem;font-weight:700">⏳${mPend}</span>` : ''}
-                    ${mL1 ? `<span style="background:#ede9fe;color:#5b21b6;border-radius:6px;padding:1px 7px;font-size:.7rem;font-weight:700">🔍${mL1}</span>` : ''}
+                    ${mPend ? `<span title="Number of expense entries awaiting Manager (L1) approval" style="background:#fef3c7;color:#92400e;border-radius:6px;padding:1px 7px;font-size:.7rem;font-weight:700">⏳${mPend} Pending (L1)</span>` : ''}
+                    ${mL1 ? `<span title="Number of expense entries approved by Manager, now awaiting HR approval" style="background:#ede9fe;color:#5b21b6;border-radius:6px;padding:1px 7px;font-size:.7rem;font-weight:700">🔍${mL1} In Review (HR)</span>` : ''}
                     <span style="background:#f0fdf4;color:#065f46;border-radius:6px;padding:1px 7px;font-size:.7rem;font-weight:700" title="Sum of approved expenses only">✅ Approved: ${formatCurrency(mAppr)}</span>
                     <span style="background:#f3f4f6;color:#374151;border-radius:6px;padding:1px 7px;font-size:.7rem;font-weight:700" title="Sum of pending + in-review + approved (excludes rejected)">Overall: ${formatCurrency(mOverall)}</span>
                     <span style="background:#dcfce7;color:#166534;border-radius:6px;padding:1px 7px;font-size:.7rem;font-weight:700" title="Paid via bank">💰 Paid: ${formatCurrency(mPaid)}</span>${(mOverall - mPaid) > 0.005 ? `<span style="background:#fef3c7;color:#92400e;border-radius:6px;padding:1px 7px;font-size:.7rem;font-weight:700" title="Still pending">⏳ Pending: ${formatCurrency(mOverall - mPaid)}</span>` : `<span style="background:#dcfce7;color:#166534;border-radius:6px;padding:1px 7px;font-size:.7rem;font-weight:700">✓ Fully paid</span>`}
@@ -3937,8 +3966,8 @@
                           <div style="font-size:.7rem;color:var(--text-muted)">${user.emp_no?`🆔${escHtml(user.emp_no)}`:''}${user.department?` · ${escHtml(user.department)}`:''}</div>
                         </div>
                         <div style="display:flex;flex-wrap:wrap;gap:.25rem;align-items:center;justify-content:flex-end">
-                          ${ePend?`<span style="background:#fef3c7;color:#92400e;border-radius:5px;padding:0 6px;font-size:.68rem;font-weight:700">⏳${ePend}</span>`:''}
-                          ${eL1?`<span style="background:#ede9fe;color:#5b21b6;border-radius:5px;padding:0 6px;font-size:.68rem;font-weight:700">🔍${eL1}</span>`:''}
+                          ${ePend?`<span title="Entries awaiting Manager (L1) approval" style="background:#fef3c7;color:#92400e;border-radius:5px;padding:0 6px;font-size:.68rem;font-weight:700">⏳${ePend} Pending</span>`:''}
+                          ${eL1?`<span title="Entries approved by Manager, awaiting HR" style="background:#ede9fe;color:#5b21b6;border-radius:5px;padding:0 6px;font-size:.68rem;font-weight:700">🔍${eL1} In Review</span>`:''}
                           ${eAppr?`<span style="background:#d1fae5;color:#065f46;border-radius:5px;padding:0 6px;font-size:.68rem;font-weight:700">✓${eAppr}</span>`:''}
                           ${eRej?`<span style="background:#fee2e2;color:#991b1b;border-radius:5px;padding:0 6px;font-size:.68rem;font-weight:700">✗${eRej}</span>`:''}
                           <span style="font-size:.78rem;font-weight:700;color:var(--primary)" title="Sum of pending + in-review + approved (excludes rejected)">Overall: ${formatCurrency(eAmt)}</span>
