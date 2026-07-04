@@ -1703,17 +1703,17 @@
                                 </td>
                                 <td style="padding:.75rem;text-align:right">
                                   <div style="display:flex;gap:.35rem;justify-content:flex-end;flex-wrap:wrap">
-                                    <button class="btn btn-secondary btn-sm" style="padding:.25rem .5rem" onclick="openCommentModal('${e.id}')" title="Comment">💬</button>
+                                    <button class="btn btn-secondary btn-sm" style="padding:.25rem .6rem;font-size:.75rem" onclick="openCommentModal('${e.id}')" title="Add a comment on this expense">💬 Comment</button>
                                     ${(currentProfile.role==='admin' && e.status==='pending') ? `
-                                      <button class="btn btn-primary btn-sm" style="padding:.25rem .5rem;font-size:.75rem" onclick="openApprovalModal('${e.id}')">Review (L1)</button>
+                                      <button class="btn btn-primary btn-sm" style="padding:.25rem .6rem;font-size:.75rem;white-space:nowrap" onclick="openApprovalModal('${e.id}')" title="Review and approve/reject as this employee's Manager">👔 Manager Review</button>
                                     ` : ''}
                                     ${(currentProfile.role==='super_admin' && e.status==='l1_approved') ? `
-                                      <button class="btn btn-primary btn-sm" style="padding:.25rem .5rem;font-size:.75rem;background:#7c3aed" onclick="openApprovalModal('${e.id}')">Final (L2)</button>
+                                      <button class="btn btn-primary btn-sm" style="padding:.25rem .6rem;font-size:.75rem;background:#7c3aed;white-space:nowrap" onclick="openApprovalModal('${e.id}')" title="Give the final Super Admin approval — moves to HR Approved">⚡ Final Approval</button>
                                     ` : ''}
                                     ${(currentProfile.role==='super_admin' && e.status==='pending') ? `
-                                      <button class="btn btn-primary btn-sm" style="padding:.25rem .5rem;font-size:.75rem;background:#6b7280" onclick="openApprovalModal('${e.id}')" title="L1 not done — approving here auto-completes L1">Direct Approve</button>
+                                      <button class="btn btn-primary btn-sm" style="padding:.25rem .6rem;font-size:.75rem;background:#7c3aed;white-space:nowrap" onclick="openApprovalModal('${e.id}')" title="Manager hasn't reviewed yet — approving here skips straight past that step">⚡ Approve Directly</button>
                                     ` : ''}
-                                    <button class="btn btn-secondary btn-sm" style="padding:.25rem .5rem;color:var(--red)" onclick="deleteExpense('${e.id}')" title="Delete">🗑️</button>
+                                    <button class="btn btn-secondary btn-sm" style="padding:.25rem .6rem;font-size:.75rem;color:var(--red)" onclick="deleteExpense('${e.id}')" title="Permanently delete this expense">🗑️ Delete</button>
                                   </div>
                                 </td>
                               </tr>`;
