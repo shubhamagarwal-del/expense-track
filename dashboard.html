@@ -2508,6 +2508,7 @@
       try {
         const { error } = await db.from('expenses').delete().eq('id', id);
         if (error) throw error;
+        invalidateExpensesCache(); // direct Supabase delete — clear cached lists
         showMessage('Expense deleted!', 'success');
         await loadAdminExpenses();
       } catch (err) {

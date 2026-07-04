@@ -1484,6 +1484,7 @@
         });
 
         if (newEntries.length > 0) await db.from('expenses').insert(newEntries);
+        invalidateExpensesCache(); // new/edited rows — clear cached lists
         showMessage('Entries updated successfully! ✨', 'success');
         closeEntryPanel();
         await renderSheet();

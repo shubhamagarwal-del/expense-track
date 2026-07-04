@@ -382,12 +382,64 @@ async function fetchLineManagers() {
 
 // ── DATA FETCHING ─────────────────────────────────────────
 
+// ── Expenses cache ────────────────────────────────────────
+// Caches fetchExpenses results (per query-params) in sessionStorage so
+// moving between pages (dashboard ↔ payment register ↔ back) reuses the
+// same data instead of re-downloading thousands of rows every time.
+// A short TTL bounds staleness; any create/approve/delete clears it via
+// invalidateExpensesCache() for immediate freshness.
+const EXP_CACHE_TTL = 120_000; // 2 minutes
+function _expCacheKey(opts) { return '_expc_' + JSON.stringify(opts || {}); }
+function _readExpCache(key) {
+  try {
+    const raw = sessionStorage.getItem(key);
+    if (!raw) return null;
+    const { ts, data } = JSON.parse(raw);
+    if (Date.now() - ts > EXP_CACHE_TTL) { sessionStorage.removeItem(key); return null; }
+    return data;
+  } catch { return null; }
+}
+function _writeExpCache(key, data) {
+  try { sessionStorage.setItem(key, JSON.stringify({ ts: Date.now(), data })); }
+  catch { /* quota exceeded — skip caching this payload */ }
+}
+/** Clear every cached expense fetch. Call after any create/approve/delete. */
+function invalidateExpensesCache() {
+  try {
+    Object.keys(sessionStorage)
+      .filter(k => k.startsWith('_expc_'))
+      .forEach(k => sessionStorage.removeItem(k));
+  } catch {}
+}
+window.invalidateExpensesCache = invalidateExpensesCache;
+
+// Auto-clear the cache whenever a data-changing API call succeeds, so a
+// cached list can never go stale after an approval, deletion, or user edit.
+(() => {
+  const _origFetch = window.fetch.bind(window);
+  const MUTATING = ['/api/approve-expense', '/api/delete-expenses', '/api/create-user', '/api/update-user'];
+  window.fetch = async (input, init) => {
+    const res = await _origFetch(input, init);
+    try {
+      const url = typeof input === 'string' ? input : (input && input.url) || '';
+      const method = ((init && init.method) || (typeof input === 'object' && input && input.method) || 'GET').toUpperCase();
+      if (res.ok && method === 'POST' && MUTATING.some(p => url.includes(p))) invalidateExpensesCache();
+    } catch {}
+    return res;
+  };
+})();
+
 /**
  * Fetch expenses. RLS on the server automatically scopes the result —
- * employees only get their own rows, admins get every row.
+ * employees only get their own rows, admins get every row. Results are
+ * cached per query-params (see cache helpers above).
  * @param {{ from?: string, to?: string, userId?: string }} opts
  */
 async function fetchExpenses({ from, to, userId, companyId, limit } = {}) {
+  const cacheKey = _expCacheKey({ from, to, userId, companyId, limit });
+  const cached = _readExpCache(cacheKey);
+  if (cached) return cached;
+
   await initSupabase();
   let q = db
     .from('expenses')
@@ -405,6 +457,7 @@ async function fetchExpenses({ from, to, userId, companyId, limit } = {}) {
 
   const { data, error } = await q;
   if (error) throw error;
+  _writeExpCache(cacheKey, data);
   return data;
 }
 
