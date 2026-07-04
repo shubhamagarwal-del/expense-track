@@ -800,6 +800,7 @@
 
     let hierarchyMode = true; // hierarchy is the default view
     const hierExpanded = { depts: new Set(), mgrs: new Set(), emps: new Set(), cycles: new Set() };
+    let hierDetailMap = {}; // lazy per-employee detail builders (keyed by eId)
 
     const DEPT_ACCENT_COLORS = ['#534AB7','#0F6E56','#993C1D','#993556','#185FA5','#3B6D11','#854F0B','#0c447c'];
     function deptColor(dept){
@@ -3711,6 +3712,7 @@
       });
       filtered = applyDeptSelectFilter(filtered);
 
+      hierDetailMap = {}; // reset lazy builders each render
       const tree = buildHierarchyTree(filtered);
       const depts = Object.keys(tree).sort((a, b) =>
         a === 'Unassigned' ? 1 : b === 'Unassigned' ? -1 : a.localeCompare(b)
@@ -3873,6 +3875,7 @@
                     const eOpen = hierExpanded.emps.has(eId);
                     const ei = (user.name?.[0]||user.email?.[0]||'?').toUpperCase();
                     const lmsE = getLM(user.department);
+                    hierDetailMap[eId] = () => renderHierEmpDetail(user, exps, lmsE);
 
                     return `
                     <div style="border-top:1px solid var(--border)">
@@ -3897,8 +3900,8 @@
                           </svg>
                         </div>
                       </div>
-                      <div id="hnode-${eId}" style="display:${eOpen?'block':'none'};background:var(--bg-page,#f9fafb);border-top:1px solid var(--border)">
-                        ${renderHierEmpDetail(user, exps, lmsE)}
+                      <div id="hnode-${eId}" style="display:${eOpen?'block':'none'};background:var(--bg-page,#f9fafb);border-top:1px solid var(--border)"${eOpen?' data-built="1"':''}>
+                        ${eOpen ? renderHierEmpDetail(user, exps, lmsE) : ''}
                       </div>
                     </div>`;
                   }).join('')}
@@ -4088,6 +4091,10 @@
       if (open) hierExpanded.emps.delete(id); else hierExpanded.emps.add(id);
       const el = document.getElementById('hnode-' + id);
       const ch = document.getElementById('chev-' + id);
+      if (el && !open && !el.dataset.built && hierDetailMap[id]) {
+        el.innerHTML = hierDetailMap[id]();
+        el.dataset.built = '1';
+      }
       if (el) el.style.display = open ? 'none' : 'block';
       if (ch) ch.style.transform = open ? '' : 'rotate(180deg)';
     }
