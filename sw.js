@@ -12,7 +12,7 @@
 // This string MUST change with every deployment so the browser
 // detects a new SW, evicts the old cache, and reloads clients.
 // Format: YYYY-MM-DD-NNN  (increment NNN for same-day deploys)
-const CACHE_VERSION = '2026-07-04-004';
+const CACHE_VERSION = '2026-07-04-005';
 const CACHE_NAME    = `expensetrack-${CACHE_VERSION}`;
 
 // Same-origin static assets (CSS / JS / icons / manifest)
@@ -112,10 +112,13 @@ self.addEventListener('fetch', (event) => {
 
 // ── Strategies ────────────────────────────────────────────
 
-/** Network first. On failure serve cached version. On success update cache. */
+/** Network first. On failure serve cached version. On success update cache.
+ *  Uses cache: 'no-store' so the browser's own HTTP disk cache (Vercel sets
+ *  max-age=86400 on static assets) can't silently short-circuit the fetch
+ *  and hand back yesterday's file — this SW's cache is the only cache. */
 async function networkFirstHTML(request) {
   try {
-    const response = await fetch(request);
+    const response = await fetch(request, { cache: 'no-store' });
     if (response.ok) {
       const cache = await caches.open(CACHE_NAME);
       cache.put(request, response.clone());

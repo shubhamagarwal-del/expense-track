@@ -1161,7 +1161,7 @@
           <div class="stat-value" id="sa-emp">—</div>
           <div class="stat-sub">Unique submitters</div>
         </div>
-        <div class="stat-card" style="border-left:3px solid #f59e0b">
+        <div class="stat-card" style="border-left:3px solid #f59e0b;cursor:pointer" onclick="setViewMode('action')" title="Show the flat list of everything waiting on you">
           <div class="stat-top">
             <span class="stat-label">Pending Actions</span>
             <div class="stat-icon ic-amber">⏳</div>
@@ -1322,6 +1322,10 @@
               <svg style="width:13px;height:13px" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 12h16M4 18h16"/></svg>
               List
             </button>
+            <button id="btn-view-action" onclick="setViewMode('action')"
+              style="display:inline-flex;align-items:center;gap:.35rem;height:34px;padding:0 .8rem;border-radius:8px;border:1.5px solid #f59e0b;background:transparent;color:#92400e;font-size:.8rem;font-weight:700;cursor:pointer">
+              ⚡ Needs Action <span id="action-queue-count" style="background:#f59e0b;color:#fff;border-radius:10px;padding:0 6px;font-size:.72rem">0</span>
+            </button>
           </div>
         </div>
 
@@ -1333,6 +1337,14 @@
         <div id="hier-container">
           <div class="loading-state"><div class="spinner"></div><span>Building hierarchy…</span></div>
         </div>
+      </div>
+
+      <!-- ── Needs Action View (flat, ungrouped — no cycle to open) ── -->
+      <div id="action-queue-view" style="display:none">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.875rem">
+          <span style="font-weight:700;font-size:.9375rem">⚡ Expenses awaiting your action</span>
+        </div>
+        <div id="action-queue-list"></div>
       </div>
 
       <!-- ── List View ──────────────────────────────────────────── -->
@@ -1430,6 +1442,7 @@
         loadCyclePayments().then(() => refreshListView(true));
         refreshListView();
         renderAdminCharts(expenses);
+        renderActionQueue(); // keep the "Needs Action" badge/list fresh regardless of active view
       } catch (err) {
         showMessage('Failed to load expenses: ' + err.message, 'error');
       }
@@ -1936,19 +1949,54 @@
       await loadAdminExpenses();
     }
 
+    let actionQueueMode = false;
+
+    /** True if this expense is sitting at the stage where currentProfile's role must act on it. */
+    function isActionableForRole(e) {
+      const role = currentProfile.role;
+      if (role === 'admin')       return e.status === 'pending';
+      if (role === 'hr')          return e.status === 'l1_approved' || e.status === 'audit_review';
+      if (role === 'audit')       return e.status === 'hr_approved';
+      if (role === 'super_admin') return ['pending', 'l1_approved', 'hr_approved', 'audit_review'].includes(e.status);
+      return false;
+    }
+
+    /** Flat, ungrouped list of every expense needing this role's action — no cycle to open. */
+    function renderActionQueue() {
+      const list = document.getElementById('action-queue-list');
+      const countEl = document.getElementById('action-queue-count');
+      if (!list) return;
+      const items = allExpensesFetched
+        .filter(isActionableForRole)
+        .sort((a, b) => new Date(a.created_at) - new Date(b.created_at)); // oldest first
+      if (countEl) countEl.textContent = items.length;
+      if (!items.length) {
+        list.innerHTML = emptyState('All caught up!', 'Nothing is waiting on your approval right now.');
+        return;
+      }
+      list.innerHTML = `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:1rem">${items.map(adminCard).join('')}</div>`;
+    }
+
     function setViewMode(mode) {
+      actionQueueMode = mode === 'action';
       hierarchyMode = mode === 'hierarchy';
-      const hierView = document.getElementById('hier-view');
-      const listWrap = document.getElementById('list-view-wrap');
-      const hierBtn  = document.getElementById('btn-view-hier');
-      const listBtn  = document.getElementById('btn-view-list');
+      const hierView   = document.getElementById('hier-view');
+      const listWrap   = document.getElementById('list-view-wrap');
+      const actionView = document.getElementById('action-queue-view');
+      const hierBtn    = document.getElementById('btn-view-hier');
+      const listBtn    = document.getElementById('btn-view-list');
+      const actionBtn  = document.getElementById('btn-view-action');
 
-      if (hierView) hierView.style.display = hierarchyMode ? 'block' : 'none';
-      if (listWrap) listWrap.style.display = hierarchyMode ? 'none'  : 'block';
-      if (hierBtn)  { hierBtn.className  = hierarchyMode ? 'btn btn-primary btn-sm'   : 'btn btn-secondary btn-sm'; hierBtn.style.borderRadius='8px'; }
-      if (listBtn)  { listBtn.className  = hierarchyMode ? 'btn btn-secondary btn-sm' : 'btn btn-primary btn-sm';   listBtn.style.borderRadius='8px'; }
+      if (hierView)   hierView.style.display   = (!actionQueueMode && hierarchyMode) ? 'block' : 'none';
+      if (listWrap)   listWrap.style.display   = (!actionQueueMode && !hierarchyMode) ? 'block' : 'none';
+      if (actionView) actionView.style.display = actionQueueMode ? 'block' : 'none';
+      if (hierBtn)   { hierBtn.className   = (!actionQueueMode && hierarchyMode)  ? 'btn btn-primary btn-sm'   : 'btn btn-secondary btn-sm'; hierBtn.style.borderRadius='8px'; }
+      if (listBtn)   { listBtn.className   = (!actionQueueMode && !hierarchyMode) ? 'btn btn-primary btn-sm'   : 'btn btn-secondary btn-sm'; listBtn.style.borderRadius='8px'; }
+      if (actionBtn) { actionBtn.style.background = actionQueueMode ? '#f59e0b' : 'transparent'; actionBtn.style.color = actionQueueMode ? '#fff' : '#92400e'; }
 
-      if (hierarchyMode) {
+      if (actionQueueMode) {
+        renderActionQueue();
+      } else if (hierarchyMode) {
         renderHierarchyView(allExpensesFetched);
       } else {
         refreshListView();
