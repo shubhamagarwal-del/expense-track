@@ -877,14 +877,6 @@
       refreshListView();
     }
 
-    /** Clicking a hierarchy-view summary chip (Employees/Pending/In Review/Approved) applies the matching status filter. */
-    function filterByStatusChip(status) {
-      const sel = document.getElementById('f-status');
-      if (sel) sel.value = status;
-      refreshListView(true);
-      hierExpandAll();
-    }
-
     // Debounced wrapper so rapid search keystrokes don't re-render on every character
     const _debouncedRefresh = debounce(_doRefreshListView, 200);
     function refreshListView(skipCharts = false) { _debouncedRefresh(skipCharts); }
@@ -3770,6 +3762,22 @@
       return tree;
     }
 
+    // Clicking any status chip in the hierarchy view (top summary OR the
+    // per-dept/manager/employee ⏳/🔍/✅ chips) prunes the SAME tree below to
+    // just matching entries, instead of switching away to a different view.
+    let hierStatusFilter = 'all';
+    function hierChipMatches(e, key) {
+      if (key === 'all') return true;
+      if (key === 'approved') return ['approved', 'hr_approved', 'audit_cleared'].includes(e.status);
+      return e.status === key;
+    }
+    function setHierStatusFilter(status) {
+      hierStatusFilter = (hierStatusFilter === status) ? 'all' : status; // click again to clear
+      renderHierarchyView(allExpensesFetched);
+    }
+    // Back-compat alias — older markup calls filterByStatusChip(...)
+    function filterByStatusChip(status) { setHierStatusFilter(status); }
+
     function renderHierarchyView(expenses) {
       const container = document.getElementById('hier-container');
       const summaryEl = document.getElementById('hier-summary');
@@ -3789,6 +3797,8 @@
         return lms && lms.some(m => m.name === mgrFilter);
       });
       filtered = applyDeptSelectFilter(filtered);
+      const countsBase = filtered; // pre-status-filter set — chip counts always show true totals
+      filtered = filtered.filter(e => hierChipMatches(e, hierStatusFilter));
 
       hierDetailMap = {}; // reset lazy builders each render
       const tree = buildHierarchyTree(filtered);
@@ -3796,40 +3806,48 @@
         a === 'Unassigned' ? 1 : b === 'Unassigned' ? -1 : a.localeCompare(b)
       );
 
-      // Summary chips
-      const totalEmps = new Set(filtered.map(e => e.user_id)).size;
-      const pendingCnt = filtered.filter(e => e.status === 'pending').length;
-      const l1Cnt = filtered.filter(e => e.status === 'l1_approved').length;
-      const approvedSum = filtered.filter(e => e.status === 'approved')
+      // Summary chips — counts always reflect the true totals (search/mgr/dept
+      // filters applied, but NOT the status chip filter itself), so every chip
+      // stays visible and clickable no matter which one is currently active.
+      const totalEmps = new Set(countsBase.map(e => e.user_id)).size;
+      const pendingCnt = countsBase.filter(e => e.status === 'pending').length;
+      const l1Cnt = countsBase.filter(e => e.status === 'l1_approved').length;
+      const approvedSum = countsBase.filter(e => e.status === 'approved')
         .reduce((s, e) => s + (e.approved_amount != null ? +e.approved_amount : +e.amount), 0);
+      const chipStyle = key => hierStatusFilter === key
+        ? 'outline:2px solid currentColor;outline-offset:-2px'
+        : '';
       if (summaryEl) summaryEl.innerHTML = `
-        <div style="display:flex;justify-content:flex-end;gap:.4rem;margin-bottom:.625rem">
-          <button class="btn btn-secondary btn-sm" style="font-size:.75rem;border-radius:8px" onclick="hierExpandAll()">Expand All</button>
-          <button class="btn btn-secondary btn-sm" style="font-size:.75rem;border-radius:8px" onclick="hierCollapseAll()">Collapse All</button>
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:.4rem;margin-bottom:.625rem;flex-wrap:wrap">
+          <div>${hierStatusFilter !== 'all' ? `<button class="btn btn-secondary btn-sm" style="font-size:.75rem;border-radius:8px" onclick="setHierStatusFilter('all')">✕ Clear status filter</button>` : ''}</div>
+          <div style="display:flex;gap:.4rem">
+            <button class="btn btn-secondary btn-sm" style="font-size:.75rem;border-radius:8px" onclick="hierExpandAll()">Expand All</button>
+            <button class="btn btn-secondary btn-sm" style="font-size:.75rem;border-radius:8px" onclick="hierCollapseAll()">Collapse All</button>
+          </div>
         </div>
         <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:.75rem;margin-bottom:1.25rem">
-          <div class="stat-card" style="border-left:3px solid var(--primary);cursor:pointer;padding:1rem 1.125rem;gap:.5rem" onclick="filterByStatusChip('all')" title="Show all statuses">
+          <div class="stat-card" style="border-left:3px solid var(--primary);cursor:pointer;padding:1rem 1.125rem;gap:.5rem;color:var(--primary);${chipStyle('all')}" onclick="setHierStatusFilter('all')" title="Show all statuses">
             <div class="stat-top">
               <span class="stat-label">Employees</span>
               <div class="stat-icon ic-indigo">👥</div>
             </div>
             <div class="stat-value" style="font-size:1.5rem">${totalEmps}</div>
           </div>
-          ${pendingCnt ? `<div class="stat-card" style="border-left:3px solid #f59e0b;cursor:pointer;padding:1rem 1.125rem;gap:.5rem" onclick="filterByStatusChip('pending')" title="Filter: Pending">
+          ${pendingCnt ? `<div class="stat-card" style="border-left:3px solid #f59e0b;cursor:pointer;padding:1rem 1.125rem;gap:.5rem;color:#f59e0b;${chipStyle('pending')}" onclick="setHierStatusFilter('pending')" title="Filter: Pending">
             <div class="stat-top">
               <span class="stat-label">Pending</span>
               <div class="stat-icon ic-amber">⏳</div>
             </div>
             <div class="stat-value" style="font-size:1.5rem">${pendingCnt}</div>
           </div>` : ''}
-          ${l1Cnt ? `<div class="stat-card" style="border-left:3px solid #8b5cf6;cursor:pointer;padding:1rem 1.125rem;gap:.5rem" onclick="filterByStatusChip('l1_approved')" title="Filter: In Review (L1)">
+          ${l1Cnt ? `<div class="stat-card" style="border-left:3px solid #8b5cf6;cursor:pointer;padding:1rem 1.125rem;gap:.5rem;color:#8b5cf6;${chipStyle('l1_approved')}" onclick="setHierStatusFilter('l1_approved')" title="Filter: In Review (L1)">
             <div class="stat-top">
               <span class="stat-label">In Review</span>
               <div class="stat-icon ic-violet">🔍</div>
             </div>
             <div class="stat-value" style="font-size:1.5rem">${l1Cnt}</div>
           </div>` : ''}
-          <div class="stat-card" style="border-left:3px solid #22c55e;cursor:pointer;padding:1rem 1.125rem;gap:.5rem" onclick="filterByStatusChip('approved')" title="Filter: Approved">
+          <div class="stat-card" style="border-left:3px solid #22c55e;cursor:pointer;padding:1rem 1.125rem;gap:.5rem;color:#22c55e;${chipStyle('approved')}" onclick="setHierStatusFilter('approved')" title="Filter: Approved">
             <div class="stat-top">
               <span class="stat-label">Approved</span>
               <div class="stat-icon ic-green">✅</div>
@@ -3843,7 +3861,7 @@
         return;
       }
 
-      if (search || mgrFilter) {
+      if (search || mgrFilter || hierStatusFilter !== 'all') {
         depts.forEach(dept => {
           hierExpanded.depts.add(dept);
           Object.keys(tree[dept].managers).forEach(mk => hierExpanded.mgrs.add(mk + '||' + dept));
@@ -3882,9 +3900,9 @@
             <div style="flex:1;min-width:0;display:flex;align-items:center;gap:.625rem;flex-wrap:wrap">
               <span style="font-weight:800;font-size:1rem">${escHtml(dept)}</span>
               <span style="background:var(--bg-2);color:var(--text-muted);border-radius:6px;padding:1px 7px;font-size:.72rem;font-weight:700">${dEmps.size} emp</span>
-              ${dPend ? `<span title="Number of expense entries awaiting Manager (L1) approval" style="background:#fef3c7;color:#92400e;border-radius:6px;padding:1px 7px;font-size:.72rem;font-weight:700">⏳ ${dPend} Pending (L1)</span>` : ''}
-              ${dL1 ? `<span title="Number of expense entries approved by Manager, now awaiting HR approval" style="background:#ede9fe;color:#5b21b6;border-radius:6px;padding:1px 7px;font-size:.72rem;font-weight:700">🔍 ${dL1} In Review (HR)</span>` : ''}
-              <span style="background:#dcfce7;color:#166534;border-radius:6px;padding:1px 7px;font-size:.72rem;font-weight:700" title="Sum of approved expenses only">✅ Approved: ${formatCurrency(dAppr)}</span>
+              ${dPend ? `<span onclick="event.stopPropagation();setHierStatusFilter('pending')" title="Click to show only these — awaiting Manager (L1) approval" style="cursor:pointer;background:#fef3c7;color:#92400e;border-radius:6px;padding:1px 7px;font-size:.72rem;font-weight:700">⏳ ${dPend} Pending (L1)</span>` : ''}
+              ${dL1 ? `<span onclick="event.stopPropagation();setHierStatusFilter('l1_approved')" title="Click to show only these — approved by Manager, awaiting HR" style="cursor:pointer;background:#ede9fe;color:#5b21b6;border-radius:6px;padding:1px 7px;font-size:.72rem;font-weight:700">🔍 ${dL1} In Review (HR)</span>` : ''}
+              <span onclick="event.stopPropagation();setHierStatusFilter('approved')" style="cursor:pointer;background:#dcfce7;color:#166534;border-radius:6px;padding:1px 7px;font-size:.72rem;font-weight:700" title="Click to show only approved expenses">✅ Approved: ${formatCurrency(dAppr)}</span>
               <span style="background:var(--bg-2);color:var(--text-muted);border-radius:6px;padding:1px 7px;font-size:.72rem;font-weight:700" title="Sum of pending + in-review + approved (excludes rejected)">Overall: ${formatCurrency(dOverall)}</span>
               <span style="background:#dcfce7;color:#166534;border-radius:6px;padding:1px 7px;font-size:.72rem;font-weight:700" title="Paid via bank">💰 Paid: ${formatCurrency(dPaid)}</span>${(dOverall - dPaid) > 0.005 ? `<span style="background:#fef3c7;color:#92400e;border-radius:6px;padding:1px 7px;font-size:.72rem;font-weight:700" title="Still pending">⏳ Pending: ${formatCurrency(dOverall - dPaid)}</span>` : `<span style="background:#dcfce7;color:#166534;border-radius:6px;padding:1px 7px;font-size:.72rem;font-weight:700">✓ Fully paid</span>`}
             </div>
@@ -3926,9 +3944,9 @@
                   </div>
                   <div style="display:flex;flex-wrap:wrap;gap:.3rem;align-items:center;justify-content:flex-end">
                     <span style="background:#f3f4f6;border-radius:6px;padding:1px 7px;font-size:.7rem;font-weight:600;color:#374151">${empArr.length} emp</span>
-                    ${mPend ? `<span title="Number of expense entries awaiting Manager (L1) approval" style="background:#fef3c7;color:#92400e;border-radius:6px;padding:1px 7px;font-size:.7rem;font-weight:700">⏳${mPend} Pending (L1)</span>` : ''}
-                    ${mL1 ? `<span title="Number of expense entries approved by Manager, now awaiting HR approval" style="background:#ede9fe;color:#5b21b6;border-radius:6px;padding:1px 7px;font-size:.7rem;font-weight:700">🔍${mL1} In Review (HR)</span>` : ''}
-                    <span style="background:#f0fdf4;color:#065f46;border-radius:6px;padding:1px 7px;font-size:.7rem;font-weight:700" title="Sum of approved expenses only">✅ Approved: ${formatCurrency(mAppr)}</span>
+                    ${mPend ? `<span onclick="event.stopPropagation();setHierStatusFilter('pending')" title="Click to show only these — awaiting Manager (L1) approval" style="cursor:pointer;background:#fef3c7;color:#92400e;border-radius:6px;padding:1px 7px;font-size:.7rem;font-weight:700">⏳${mPend} Pending (L1)</span>` : ''}
+                    ${mL1 ? `<span onclick="event.stopPropagation();setHierStatusFilter('l1_approved')" title="Click to show only these — approved by Manager, awaiting HR" style="cursor:pointer;background:#ede9fe;color:#5b21b6;border-radius:6px;padding:1px 7px;font-size:.7rem;font-weight:700">🔍${mL1} In Review (HR)</span>` : ''}
+                    <span onclick="event.stopPropagation();setHierStatusFilter('approved')" style="cursor:pointer;background:#f0fdf4;color:#065f46;border-radius:6px;padding:1px 7px;font-size:.7rem;font-weight:700" title="Click to show only approved expenses">✅ Approved: ${formatCurrency(mAppr)}</span>
                     <span style="background:#f3f4f6;color:#374151;border-radius:6px;padding:1px 7px;font-size:.7rem;font-weight:700" title="Sum of pending + in-review + approved (excludes rejected)">Overall: ${formatCurrency(mOverall)}</span>
                     <span style="background:#dcfce7;color:#166534;border-radius:6px;padding:1px 7px;font-size:.7rem;font-weight:700" title="Paid via bank">💰 Paid: ${formatCurrency(mPaid)}</span>${(mOverall - mPaid) > 0.005 ? `<span style="background:#fef3c7;color:#92400e;border-radius:6px;padding:1px 7px;font-size:.7rem;font-weight:700" title="Still pending">⏳ Pending: ${formatCurrency(mOverall - mPaid)}</span>` : `<span style="background:#dcfce7;color:#166534;border-radius:6px;padding:1px 7px;font-size:.7rem;font-weight:700">✓ Fully paid</span>`}
                     <svg id="chev-${mId}" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"
@@ -3966,9 +3984,9 @@
                           <div style="font-size:.7rem;color:var(--text-muted)">${user.emp_no?`🆔${escHtml(user.emp_no)}`:''}${user.department?` · ${escHtml(user.department)}`:''}</div>
                         </div>
                         <div style="display:flex;flex-wrap:wrap;gap:.25rem;align-items:center;justify-content:flex-end">
-                          ${ePend?`<span title="Entries awaiting Manager (L1) approval" style="background:#fef3c7;color:#92400e;border-radius:5px;padding:0 6px;font-size:.68rem;font-weight:700">⏳${ePend} Pending</span>`:''}
-                          ${eL1?`<span title="Entries approved by Manager, awaiting HR" style="background:#ede9fe;color:#5b21b6;border-radius:5px;padding:0 6px;font-size:.68rem;font-weight:700">🔍${eL1} In Review</span>`:''}
-                          ${eAppr?`<span style="background:#d1fae5;color:#065f46;border-radius:5px;padding:0 6px;font-size:.68rem;font-weight:700">✓${eAppr}</span>`:''}
+                          ${ePend?`<span onclick="event.stopPropagation();setHierStatusFilter('pending')" title="Click to show only these — awaiting Manager (L1) approval" style="cursor:pointer;background:#fef3c7;color:#92400e;border-radius:5px;padding:0 6px;font-size:.68rem;font-weight:700">⏳${ePend} Pending</span>`:''}
+                          ${eL1?`<span onclick="event.stopPropagation();setHierStatusFilter('l1_approved')" title="Click to show only these — approved by Manager, awaiting HR" style="cursor:pointer;background:#ede9fe;color:#5b21b6;border-radius:5px;padding:0 6px;font-size:.68rem;font-weight:700">🔍${eL1} In Review</span>`:''}
+                          ${eAppr?`<span onclick="event.stopPropagation();setHierStatusFilter('approved')" title="Click to show only approved expenses" style="cursor:pointer;background:#d1fae5;color:#065f46;border-radius:5px;padding:0 6px;font-size:.68rem;font-weight:700">✓${eAppr}</span>`:''}
                           ${eRej?`<span style="background:#fee2e2;color:#991b1b;border-radius:5px;padding:0 6px;font-size:.68rem;font-weight:700">✗${eRej}</span>`:''}
                           <span style="font-size:.78rem;font-weight:700;color:var(--primary)" title="Sum of pending + in-review + approved (excludes rejected)">Overall: ${formatCurrency(eAmt)}</span>
                           ${(() => { const paid = paidForExpenses(exps); const pend = eAmt - paid; return `<span style="background:#dcfce7;color:#166534;border-radius:5px;padding:0 6px;font-size:.68rem;font-weight:700" title="Paid via bank">💰 Paid: ${formatCurrency(paid)}</span>${pend > 0.005 ? `<span style="background:#fef3c7;color:#92400e;border-radius:5px;padding:0 6px;font-size:.68rem;font-weight:700" title="Still pending">⏳ Pending: ${formatCurrency(pend)}</span>` : `<span style="background:#dcfce7;color:#166534;border-radius:5px;padding:0 6px;font-size:.68rem;font-weight:700">✓ Fully paid</span>`}`; })()}
