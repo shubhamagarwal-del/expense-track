@@ -383,12 +383,16 @@ async function fetchLineManagers() {
 // ── DATA FETCHING ─────────────────────────────────────────
 
 // ── Expenses cache ────────────────────────────────────────
-// Caches fetchExpenses results (per query-params) in sessionStorage so
-// moving between pages (dashboard ↔ payment register ↔ back) reuses the
-// same data instead of re-downloading thousands of rows every time.
-// A short TTL bounds staleness; any create/approve/delete clears it via
-// invalidateExpensesCache() for immediate freshness.
-const EXP_CACHE_TTL = 120_000; // 2 minutes
+// Caches fetchExpenses results (per query-params) in sessionStorage so the
+// data is downloaded ONCE per tab session. Moving between pages
+// (dashboard ↔ payment register ↔ back) reuses it instantly — no refetch.
+// The cache is only refreshed when:
+//   • the user reloads the page (F5 / pull-to-refresh) — see reload check below
+//   • data changes (create/approve/delete) — invalidateExpensesCache()
+// sessionStorage is per-tab and cleared when the tab closes, so the cache
+// naturally lasts exactly one browsing session. A long TTL is just a safety
+// net against a missed invalidation; it does NOT cause routine refetches.
+const EXP_CACHE_TTL = 12 * 60 * 60_000; // 12h safety net (session-scoped in practice)
 function _expCacheKey(opts) { return '_expc_' + JSON.stringify(opts || {}); }
 function _readExpCache(key) {
   try {
@@ -412,6 +416,14 @@ function invalidateExpensesCache() {
   } catch {}
 }
 window.invalidateExpensesCache = invalidateExpensesCache;
+
+// A genuine page reload (F5 / hard refresh / pull-to-refresh) means the user
+// wants fresh data — so drop the cache on reload. Plain navigation between
+// pages (clicking a sidebar link, back/forward) keeps the cache → instant.
+try {
+  const _nav = performance.getEntriesByType('navigation')[0];
+  if (_nav && _nav.type === 'reload') invalidateExpensesCache();
+} catch {}
 
 // Auto-clear the cache whenever a data-changing API call succeeds, so a
 // cached list can never go stale after an approval, deletion, or user edit.
