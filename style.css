@@ -879,6 +879,7 @@ tbody tr:hover { background: #fafbff; }
 .cp-Food      { background: #dcfce7; color: #15803d; }
 .cp-Other     { background: #f3e8ff; color: #6d28d9; }
 .cp-Room-Rent { background: #fce7f3; color: #9d174d; }
+.cp-Courier-\/-Parcel { background: #e0e7ff; color: #3730a3; }
 /* Legacy / sub-type pills */
 .cp-Bus       { background: #e0f2fe; color: #0369a1; }
 .cp-Taxi      { background: #fef3c7; color: #b45309; }
@@ -1397,6 +1398,25 @@ tbody tr:hover { background: #fafbff; }
 .expense-card:hover,
 .day-card:hover {
   will-change: transform;
+}
+
+/* Status badge pulse animation for active step */
+@keyframes statusPulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.7; transform: scale(1.15); }
+}
+
+/* Make approval stepper clickable with hover feedback */
+.approval-stepper[data-id]:not([data-status="approved"]):not([data-status="audit_cleared"]):not([data-status="rejected"]):not([data-status="l1_rejected"]) {
+  cursor: pointer !important;
+  border-radius: 8px;
+  transition: all 0.15s;
+}
+.approval-stepper[data-id]:not([data-status="approved"]):not([data-status="audit_cleared"]):not([data-status="rejected"]):not([data-status="l1_rejected"]):hover {
+  background: #dbeafe !important;
+  border-color: #3b82f6 !important;
+  box-shadow: 0 2px 12px rgba(37,99,235,0.15);
+  transform: translateY(-1px);
 }
 
 /* Reduce motion for users who prefer it */
