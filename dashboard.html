@@ -2032,6 +2032,12 @@
       const byStage = {};
       items.forEach(e => { (byStage[e.status] ??= []).push(e); });
 
+      // Lazy per-employee card builders — with hundreds/thousands of items,
+      // rendering every adminCard() upfront freezes the page. Each employee
+      // group starts collapsed (just name + count + total); the actual cards
+      // are only built the first time that group is expanded.
+      actionQueueDetailMap = {};
+
       list.innerHTML = ACTION_STAGE_ORDER
         .filter(stage => byStage[stage]?.length)
         .map(stage => {
@@ -2040,12 +2046,43 @@
 
           // Within a stage, cluster by employee so one person's items sit
           // together instead of being interleaved by date across everyone.
+          // Sorted by department first so employees in the same department
+          // are visually grouped under a department heading (no extra click —
+          // the heading is just a label, employee cards stay collapsed/lazy).
           const byEmp = {};
           group.forEach(e => { (byEmp[e.user_id] ??= { user: e.users, exps: [] }).exps.push(e); });
-          const empGroups = Object.values(byEmp).sort((a, b) =>
-            (a.user?.name || '').localeCompare(b.user?.name || '')
-          );
-          empGroups.forEach(g => g.exps.sort((a, b) => new Date(a.created_at) - new Date(b.created_at)));
+          const empGroups = Object.values(byEmp).sort((a, b) => {
+            const dCmp = (a.user?.department || 'Unassigned').localeCompare(b.user?.department || 'Unassigned');
+            return dCmp !== 0 ? dCmp : (a.user?.name || '').localeCompare(b.user?.name || '');
+          });
+
+          let lastDept = null;
+          const rows = empGroups.map(g => {
+            g.exps.sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
+            const gId = 'aq__' + stage + '__' + (g.user?.id || 'x').replace(/[^a-z0-9]/gi, '_');
+            const total = g.exps.reduce((s, e) => s + (e.approved_amount != null ? +e.approved_amount : +e.amount), 0);
+            actionQueueDetailMap[gId] = () =>
+              `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:1rem">${g.exps.map(adminCard).join('')}</div>`;
+
+            const dept = g.user?.department || 'Unassigned';
+            const deptHeader = dept !== lastDept ? `
+              <div style="display:flex;align-items:center;gap:.4rem;margin:.9rem 0 .4rem;padding-left:.1rem">
+                <span style="font-weight:700;font-size:.78rem;color:var(--text-muted);text-transform:uppercase;letter-spacing:.04em">🏢 ${escHtml(dept)}</span>
+              </div>` : '';
+            lastDept = dept;
+
+            return deptHeader + `
+              <div style="margin-bottom:.5rem;border:1px solid var(--border);border-radius:10px;overflow:hidden">
+                <div onclick="toggleActionEmpGroup('${gId}')" style="display:flex;align-items:center;gap:.5rem;padding:.6rem .875rem;cursor:pointer;background:var(--bg-2)">
+                  <svg id="chev-${gId}" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5" style="width:14px;height:14px;flex-shrink:0;color:var(--text-muted);transition:transform .15s"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7"/></svg>
+                  <span style="font-weight:600;font-size:.82rem;color:var(--text-1)">👤 ${escHtml(g.user?.name || 'Unknown')}</span>
+                  <span style="font-size:.72rem;color:var(--text-muted)">(${escHtml(g.user?.emp_no || '—')})</span>
+                  <span style="background:${info.color};color:#fff;border-radius:10px;padding:0 7px;font-size:.68rem;font-weight:700">${g.exps.length}</span>
+                  <span style="margin-left:auto;font-weight:700;font-size:.85rem;color:var(--primary)">${formatCurrency(total)}</span>
+                </div>
+                <div id="body-${gId}" style="display:none;padding:.875rem"></div>
+              </div>`;
+          }).join('');
 
           return `
           <div style="margin-bottom:1.5rem">
@@ -2053,17 +2090,23 @@
               <span style="font-weight:700;font-size:.9rem;color:${info.color}">${info.label}</span>
               <span style="background:${info.color};color:#fff;border-radius:10px;padding:0 8px;font-size:.72rem;font-weight:700">${group.length}</span>
             </div>
-            ${empGroups.map(g => `
-              <div style="margin-bottom:1rem">
-                <div style="display:flex;align-items:center;gap:.4rem;margin-bottom:.5rem;padding-left:.15rem">
-                  <span style="font-weight:600;font-size:.82rem;color:var(--text-1)">👤 ${escHtml(g.user?.name || 'Unknown')}</span>
-                  <span style="font-size:.72rem;color:var(--text-muted)">(${escHtml(g.user?.emp_no || '—')})</span>
-                  <span style="background:var(--bg-2);color:var(--text-muted);border-radius:10px;padding:0 7px;font-size:.68rem;font-weight:700">${g.exps.length}</span>
-                </div>
-                <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:1rem">${g.exps.map(adminCard).join('')}</div>
-              </div>`).join('')}
+            ${rows}
           </div>`;
         }).join('');
+    }
+
+    let actionQueueDetailMap = {};
+    function toggleActionEmpGroup(gId) {
+      const body = document.getElementById('body-' + gId);
+      const chev = document.getElementById('chev-' + gId);
+      if (!body) return;
+      const opening = body.style.display === 'none';
+      if (opening && !body.dataset.built && actionQueueDetailMap[gId]) {
+        body.innerHTML = actionQueueDetailMap[gId]();
+        body.dataset.built = '1';
+      }
+      body.style.display = opening ? 'block' : 'none';
+      if (chev) chev.style.transform = opening ? 'rotate(90deg)' : '';
     }
 
     function setViewMode(mode) {
