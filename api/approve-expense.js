@@ -58,6 +58,10 @@ export default async function handler(req, res) {
       eligibleIds = expenses
         .filter(e => e.status === 'l1_approved' || e.status === 'audit_review')
         .map(e => e.id);
+    } else if (profile.role === 'audit') {
+      eligibleIds = expenses
+        .filter(e => e.status === 'hr_approved')
+        .map(e => e.id);
     } else {
       // super_admin: can bulk-approve pending, l1_approved, or hr_approved
       eligibleIds = expenses
@@ -93,6 +97,21 @@ export default async function handler(req, res) {
           hr_at:      now,
           audit_note: null,
           status:     'hr_approved',
+        })
+        .in('id', eligibleIds);
+      if (updateErr) return res.status(500).json({ error: updateErr.message });
+
+    } else if (profile.role === 'audit') {
+      // ── Audit: hr_approved → audit_cleared (bulk clear only; flagging
+      // a review always requires a per-expense reason, so it isn't a bulk action) ─
+      const { error: updateErr } = await supabaseAdmin
+        .from('expenses')
+        .update({
+          audit_by:      user.id,
+          audit_by_name: profile.name,
+          audit_at:      now,
+          audit_note:    null,
+          status:        'audit_cleared',
         })
         .in('id', eligibleIds);
       if (updateErr) return res.status(500).json({ error: updateErr.message });

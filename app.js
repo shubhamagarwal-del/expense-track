@@ -199,34 +199,77 @@ function formatDateTime(iso) {
 
 /** Return a styled status badge HTML string. */
 function statusBadge(status) {
-  const s = (text, style) => `<span style="font-size:11px;white-space:nowrap;${style}">${text}</span>`;
-  const done   = t => s(`✓ ${t}`, 'color:#059669');
-  const active = t => s(`● ${t}`, 'font-weight:500;background:#eff6ff;color:#2563eb;padding:2px 5px;border-radius:4px');
-  const wait   = t => s(t, 'color:#9ca3af');
-  const flag   = t => s(`⚑ ${t}`, 'font-weight:500;background:#fefce8;color:#b45309;padding:2px 5px;border-radius:4px');
-  const rej    = t => s(`✗ ${t}`, 'font-weight:500;color:#dc2626');
-  const sep    = `<span style="color:#d1d5db;font-size:10px;margin:0 1px">›</span>`;
-  const flow   = (...p) => `<span style="display:inline-flex;align-items:center;gap:2px;vertical-align:middle">${p.join(sep)}</span>`;
-  const approvedTag = `<span class="status-badge badge-approved" style="white-space:nowrap;margin-left:6px">✓ Approved</span>`;
+  const step = (color, bg, label, icon, active) =>
+    `<span style="display:inline-flex;align-items:center;gap:3px;font-size:11px;padding:2px 5px;border-radius:4px;${bg ? 'background:'+bg+';' : ''}${active ? 'font-weight:600' : ''}">
+      <span style="width:8px;height:8px;border-radius:50%;background:${color};display:inline-block;flex-shrink:0${active ? ';animation:statusPulse 1.5s ease-in-out infinite' : ''}"></span>
+      <span style="color:${color}">${icon}${label}</span>
+    </span>`;
+  const conn = `<span style="color:#d1d5db;font-size:10px">▸</span>`;
+  const flow = (...p) => `<span style="display:inline-flex;align-items:center;gap:1px;vertical-align:middle;flex-wrap:wrap">${p.join(conn)}</span>`;
+
+  const done   = l => step('#059669', '#f0fdf4', l, '✓', false);
+  const active = l => step('#2563eb', '#eff6ff', l, '●', true);
+  const wait   = l => step('#9ca3af', '', l, '', false);
+  const flag   = l => step('#d97706', '#fefce8', l, '⚑', true);
+  const rej    = l => step('#dc2626', '#fef2f2', l, '✗', false);
+  const approvedTag = `<span class="status-badge badge-approved" style="white-space:nowrap">✓ Approved</span>`;
 
   if (status === 'pending')       return flow(active('You'), wait('Manager'), wait('HR'), wait('Audit'));
   if (status === 'l1_approved')   return flow(done('You'), done('Manager'), active('HR'), wait('Audit'));
   if (status === 'hr_approved')   return flow(done('You'), done('Manager'), done('HR'), active('Audit'));
-  if (status === 'audit_cleared') return flow(done('You'), done('Manager'), done('HR'), done('Audit')) + approvedTag;
+  if (status === 'audit_cleared') return flow(done('You'), done('Manager'), done('HR'), done('Audit')) + ' ' + approvedTag;
   if (status === 'audit_review')  return flow(done('You'), done('Manager'), done('HR'), flag('Audit'));
   if (status === 'l1_rejected')   return flow(done('You'), rej('Manager'), wait('HR'), wait('Audit'));
   if (status === 'rejected')      return flow(done('You'), rej('Rejected'), wait('HR'), wait('Audit'));
-  if (status === 'approved')      return `<span class="status-badge badge-approved" style="white-space:nowrap">✓ Approved</span>`;
+  if (status === 'approved')      return approvedTag;
   return `<span class="status-badge badge-pending">${status}</span>`;
 }
 
-/**
- * Legacy 3-step stepper (Filed › Manager › Admin). Superseded by the
- * flow-ticks statusBadge() which shows the full You › Manager › HR › Audit
- * pipeline. Kept as a no-op so existing call sites stay valid.
- */
+/** Return a visual approval pipeline stepper with role icons and status dots. */
 function approvalStepper(e) {
-  return '';
+  const stat = e.status;
+  const isFinal = stat === 'approved' || stat === 'audit_cleared' || stat === 'rejected' || stat === 'l1_rejected';
+  const roles = [
+    { key: 'you',     label: 'You',     icon: '🧑', done: true },
+    { key: 'manager', label: 'Manager', icon: '👔', done: stat !== 'pending' && stat !== 'l1_rejected' && stat !== 'rejected',
+      active: stat === 'pending' },
+    { key: 'hr',      label: 'HR',      icon: '🛡️', done: ['hr_approved','audit_cleared','audit_review'].includes(stat),
+      active: stat === 'l1_approved' },
+    { key: 'audit',   label: 'Audit',   icon: '🔍', done: stat === 'audit_cleared',
+      active: stat === 'hr_approved' || stat === 'audit_review' },
+  ];
+  const isRejected = stat === 'rejected' || stat === 'l1_rejected';
+
+  const dot = (color, pulse) =>
+    `<span style="width:10px;height:10px;border-radius:50%;background:${color};display:inline-block;flex-shrink:0;${pulse ? 'animation:statusPulse 1.5s ease-in-out infinite;box-shadow:0 0 0 3px rgba(37,99,235,0.2)' : ''}"></span>`;
+
+  const segments = roles.map((r, i) => {
+    const isActive = r.active && !isRejected;
+    const isDone = r.done && !isRejected;
+    const color = isRejected && i === 1 ? '#dc2626' : isDone ? '#059669' : isActive ? '#2563eb' : '#d1d5db';
+    const bg = isRejected && i === 1 ? '#fef2f2' : isDone ? '#f0fdf4' : isActive ? '#eff6ff' : '';
+    const labelColor = isRejected && i === 1 ? '#dc2626' : isActive ? '#2563eb' : isDone ? '#059669' : '#9ca3af';
+    const labelWeight = isActive ? '600' : '400';
+    const icon = isRejected && i === 1 ? '✗ ' : isDone ? '✓ ' : isActive ? '● ' : '○ ';
+    return `<span style="display:inline-flex;align-items:center;gap:3px;padding:2px 6px;border-radius:4px;${bg ? 'background:'+bg+';' : ''}font-size:11px;font-weight:${labelWeight};color:${labelColor}">
+      ${dot(color, isActive)}
+      <span>${icon}${r.label}</span>
+    </span>`;
+  });
+
+  const conn = `<span style="color:#d1d5db;font-size:9px;margin:0 1px">▸</span>`;
+  const pipelineInner = segments.join(conn);
+
+  let suffix = '';
+  if (isRejected) {
+    const rejectedAt = stat === 'l1_rejected' ? 'Manager' : '';
+    suffix = `<span style="margin-left:4px;font-size:11px;color:#dc2626;font-weight:600;background:#fef2f2;padding:1px 6px;border-radius:4px">✗ Rejected${rejectedAt ? ' by '+rejectedAt : ''}</span>`;
+  } else if (stat === 'approved' || stat === 'audit_cleared') {
+    suffix = `<span style="margin-left:4px;font-size:11px;color:#059669;font-weight:600;background:#f0fdf4;padding:1px 6px;border-radius:4px">✓ Fully Approved</span>`;
+  }
+
+  const clickableAttr = !isFinal ? 'cursor:pointer;background:#f8faff;border:1px dashed #bfdbfe;border-radius:8px;padding:4px 8px;margin:-4px -8px;transition:all .15s' : '';
+  return `<span class="approval-stepper" data-id="${e.id}" data-status="${stat}" style="display:inline-flex;align-items:center;gap:1px;flex-wrap:wrap;${clickableAttr}" title="${!isFinal ? 'Tap to review or approve this expense' : ''}">${pipelineInner}${!isFinal ? '<span style="font-size:10px;color:#2563eb;font-weight:600;margin-left:6px">👆 Tap</span>' : ''}</span>${suffix}`;
 }
 
 /** Return a styled category pill HTML string. */

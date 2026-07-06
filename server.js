@@ -31,14 +31,16 @@ const __dirname = path.dirname(__filename);
 // script injected directly instead.)
 const LIVERELOAD_ENABLED = !process.env.VERCEL;
 if (LIVERELOAD_ENABLED) {
+  const lrPort = parseInt(process.env.LR_PORT || '35730', 10);
   const lrServer = livereload.createServer({
+    port: lrPort,
     exts: ['html', 'css', 'js'],
     delay: 100,
     exclusions: [/node_modules/, /[\\/]public[\\/]/, /[\\/]\.vercel[\\/]/, /[\\/]\.git[\\/]/],
   });
   lrServer.watch(__dirname);
 }
-const LIVERELOAD_SNIPPET = '<script src="http://localhost:35729/livereload.js?snipver=1"></script>';
+const LIVERELOAD_SNIPPET = `<script src="http://localhost:${process.env.LR_PORT || '35730'}/livereload.js?snipver=1"></script>`;
 
 function serveHtmlWithLivereload(filePath, res, next) {
   fs.readFile(filePath, 'utf8', (err, html) => {
