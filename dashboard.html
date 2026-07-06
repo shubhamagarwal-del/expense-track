@@ -188,8 +188,8 @@
         <div id="bulk-bar" class="bulk-bar">
           <span class="bulk-info" id="bulk-count-text">0 items selected</span>
           <div style="display:flex; gap: 0.5rem">
-            <button class="btn btn-primary btn-sm" onclick="bulkStatusUpdate('approved')">Approve Selected</button>
-            <button class="btn btn-secondary btn-sm" onclick="bulkStatusUpdate('rejected')">Reject Selected</button>
+            <button class="btn btn-primary btn-sm" onclick="bulkStatusUpdate('approved')" style="background:#2563eb;border-color:#2563eb">✓ Approve Selected</button>
+            <button class="btn btn-secondary btn-sm" onclick="bulkStatusUpdate('rejected')" style="color:#dc2626;border-color:#fecaca">✕ Reject Selected</button>
           </div>
         </div>
 
@@ -283,6 +283,7 @@
           style="background:#fef2f2;border:1px solid #fecaca;color:#dc2626;font-weight:700"
           onclick="submitApprovalAction('rejected')">✕ Reject</button>
         <button class="btn btn-primary" id="am-approve-btn"
+          style="background:#2563eb;border-color:#2563eb"
           onclick="submitApprovalAction('approved')">✓ Approve</button>
       </div>
     </div>
@@ -456,14 +457,18 @@
       } catch (_) { /* use hardcoded DEPT_MANAGERS fallback */ }
 
       if (['admin', 'super_admin', 'hr', 'audit'].includes(profile.role)) {
+        const roleColors = { admin:'#2563eb', super_admin:'#7c3aed', hr:'#059669', audit:'#d97706' };
+        const roleIcons  = { admin:'👔', super_admin:'⚡', hr:'🛡️', audit:'🔍' };
         const titleMap = {
           super_admin: 'Super Admin Panel',
           hr: 'HR Panel',
           audit: 'Audit Panel',
         };
         const titleSuffix = profile.role === 'admin' && profile.department ? ` · ${profile.department}` : '';
-        document.getElementById('topbar-title').textContent =
-          titleMap[profile.role] || `Manager Dashboard${titleSuffix}`;
+        const titleEl = document.getElementById('topbar-title');
+        titleEl.innerHTML =
+          `${roleIcons[profile.role] || ''} ${titleMap[profile.role] || `Manager Dashboard${titleSuffix}`}` +
+          ` <span style="display:inline-block;font-size:.65rem;font-weight:700;text-transform:uppercase;padding:2px 8px;border-radius:6px;background:${roleColors[profile.role]};color:#fff;vertical-align:middle;margin-left:6px">${profile.role}</span>`;
         renderAdminDashboard();
       } else {
         document.getElementById('topbar-title').textContent = 'My Expenses';
@@ -503,6 +508,18 @@
         })
         .subscribe();
     }
+
+    // ─── CLICKABLE STATUS STEPPER ─────────────────────────
+    document.addEventListener('click', (ev) => {
+      const stepper = ev.target.closest('.approval-stepper[data-id]');
+      if (!stepper) return;
+      const id = stepper.dataset.id;
+      const status = stepper.dataset.status;
+      if (['approved','audit_cleared','rejected','l1_rejected'].includes(status)) return;
+      if (typeof openApprovalModal === 'function') {
+        openApprovalModal(id);
+      }
+    });
 
     // ─── EMPLOYEE VIEW ──────────────────────────────────────────
     function renderEmployeeDashboard() {
@@ -931,6 +948,7 @@
           renderAdminCards(filtered);
           if (!skipCharts) renderAdminCharts(filtered);
         }
+        renderActionQueue(); // keep the dept/employee-filtered action queue in sync with other views
       } else {
         renderEmpTable(filtered);
         renderEmpCards(filtered);
@@ -1333,8 +1351,11 @@
 
       <!-- ── Needs Action View (flat, ungrouped — no cycle to open) ── -->
       <div id="action-queue-view" style="display:none">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.875rem">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.5rem">
           <span style="font-weight:700;font-size:.9375rem">⚡ Expenses awaiting your action</span>
+        </div>
+        <div style="margin-bottom:.875rem;padding:.5rem .75rem;background:#fffbeb;border-radius:8px;border:1px solid #fde68a;font-size:.78rem;color:#92400e">
+          <span id="action-hint"></span>
         </div>
         <div id="action-queue-list"></div>
       </div>
@@ -1702,18 +1723,24 @@
                                   ${l2Done ? `<div style="font-size:.68rem;color:var(--text-muted)">L2: ${escHtml(e.l2_by_name||'—')}${e.l2_remark?` — ${escHtml(e.l2_remark)}`:''}</div>` : ''}
                                 </td>
                                 <td style="padding:.75rem;text-align:right">
-                                  <div style="display:flex;gap:.35rem;justify-content:flex-end;flex-wrap:wrap">
-                                    <button class="btn btn-secondary btn-sm" style="padding:.25rem .6rem;font-size:.75rem" onclick="openCommentModal('${e.id}')" title="Add a comment on this expense">💬 Comment</button>
+                                  <div style="display:flex;gap:.4rem;justify-content:flex-end;align-items:center;flex-wrap:wrap">
+                                    <button onclick="openCommentModal('${e.id}')" title="Comment" style="background:none;border:1px solid var(--border);border-radius:8px;padding:.4rem .6rem;cursor:pointer;font-size:.85rem;color:var(--text-2);transition:background .15s" onmouseover="this.style.background='var(--bg-2)'" onmouseout="this.style.background='none'">💬</button>
                                     ${(currentProfile.role==='admin' && e.status==='pending') ? `
-                                      <button class="btn btn-primary btn-sm" style="padding:.25rem .6rem;font-size:.75rem;white-space:nowrap" onclick="openApprovalModal('${e.id}')" title="Review and approve/reject as this employee's Manager">👔 Manager Review</button>
+                                      <button onclick="openApprovalModal('${e.id}')" title="Approve this expense as Manager" style="background:#2563eb;color:#fff;border:none;border-radius:10px;padding:.45rem 1rem;cursor:pointer;font-size:.82rem;font-weight:700;white-space:nowrap;box-shadow:0 2px 8px rgba(37,99,235,0.3);transition:all .15s" onmouseover="this.style.background='#1d4ed8';this.style.transform='translateY(-1px)'" onmouseout="this.style.background='#2563eb';this.style.transform=''">✅ Approve</button>
                                     ` : ''}
                                     ${(currentProfile.role==='super_admin' && e.status==='l1_approved') ? `
-                                      <button class="btn btn-primary btn-sm" style="padding:.25rem .6rem;font-size:.75rem;background:#7c3aed;white-space:nowrap" onclick="openApprovalModal('${e.id}')" title="Give the final Super Admin approval — moves to HR Approved">⚡ Final Approval</button>
+                                      <button onclick="openApprovalModal('${e.id}')" title="Approve as Super Admin" style="background:#7c3aed;color:#fff;border:none;border-radius:10px;padding:.45rem 1rem;cursor:pointer;font-size:.82rem;font-weight:700;white-space:nowrap;box-shadow:0 2px 8px rgba(124,58,237,0.3);transition:all .15s" onmouseover="this.style.background='#6d28d9';this.style.transform='translateY(-1px)'" onmouseout="this.style.background='#7c3aed';this.style.transform=''">⚡ Approve</button>
                                     ` : ''}
                                     ${(currentProfile.role==='super_admin' && e.status==='pending') ? `
-                                      <button class="btn btn-primary btn-sm" style="padding:.25rem .6rem;font-size:.75rem;background:#7c3aed;white-space:nowrap" onclick="openApprovalModal('${e.id}')" title="Manager hasn't reviewed yet — approving here skips straight past that step">⚡ Approve Directly</button>
+                                      <button onclick="openApprovalModal('${e.id}')" title="Skip Manager — approve directly" style="background:#7c3aed;color:#fff;border:none;border-radius:10px;padding:.45rem 1rem;cursor:pointer;font-size:.82rem;font-weight:700;white-space:nowrap;box-shadow:0 2px 8px rgba(124,58,237,0.3);transition:all .15s" onmouseover="this.style.background='#6d28d9';this.style.transform='translateY(-1px)'" onmouseout="this.style.background='#7c3aed';this.style.transform=''">⚡ Approve</button>
                                     ` : ''}
-                                    <button class="btn btn-secondary btn-sm" style="padding:.25rem .6rem;font-size:.75rem;color:var(--red)" onclick="deleteExpense('${e.id}')" title="Permanently delete this expense">🗑️ Delete</button>
+                                    ${(currentProfile.role==='hr' && (e.status==='l1_approved'||e.status==='audit_review')) ? `
+                                      <button onclick="openApprovalModal('${e.id}')" title="Approve as HR" style="background:#059669;color:#fff;border:none;border-radius:10px;padding:.45rem 1rem;cursor:pointer;font-size:.82rem;font-weight:700;white-space:nowrap;box-shadow:0 2px 8px rgba(5,150,105,0.3);transition:all .15s" onmouseover="this.style.background='#047857';this.style.transform='translateY(-1px)'" onmouseout="this.style.background='#059669';this.style.transform=''">🛡️ Approve</button>
+                                    ` : ''}
+                                    ${(currentProfile.role==='audit' && e.status==='hr_approved') ? `
+                                      <button onclick="auditClearExpense('${e.id}')" title="Audit Clear" style="background:#14532d;color:#fff;border:none;border-radius:10px;padding:.45rem 1rem;cursor:pointer;font-size:.82rem;font-weight:700;white-space:nowrap;box-shadow:0 2px 8px rgba(20,83,45,0.3);transition:all .15s" onmouseover="this.style.background='#0f4423';this.style.transform='translateY(-1px)'" onmouseout="this.style.background='#14532d';this.style.transform=''">🔍 Clear</button>
+                                    ` : ''}
+                                    <button onclick="deleteExpense('${e.id}')" title="Delete" style="background:none;border:1px solid #fecaca;border-radius:8px;padding:.4rem .6rem;cursor:pointer;font-size:.85rem;color:#dc2626;transition:background .15s" onmouseover="this.style.background='#fef2f2'" onmouseout="this.style.background='none'">🗑️</button>
                                   </div>
                                 </td>
                               </tr>`;
@@ -1969,9 +1996,32 @@
     function renderActionQueue() {
       const list = document.getElementById('action-queue-list');
       const countEl = document.getElementById('action-queue-count');
+      const hintEl = document.getElementById('action-hint');
       if (!list) return;
-      const items = allExpensesFetched.filter(isActionableForRole);
+
+      // Same department/employee/search filters as Hierarchy & List views —
+      // lets you narrow the action queue to one department or one employee.
+      const search = (document.getElementById('f-user-search')?.value || '').toLowerCase().trim();
+      let base = allExpensesFetched;
+      if (search) base = base.filter(e =>
+        (e.users?.name || '').toLowerCase().includes(search) ||
+        (e.users?.email || '').toLowerCase().includes(search) ||
+        (e.users?.emp_no || '').toLowerCase().includes(search)
+      );
+      base = applyDeptSelectFilter(base);
+      base = applyEmployeeSelectFilter(base);
+
+      const items = base.filter(isActionableForRole);
       if (countEl) countEl.textContent = items.length;
+      if (hintEl) {
+        const roleHints = {
+          admin: '👔 As a <strong>Manager</strong>, review pending expenses from your team members. Click <strong>"Manager Review"</strong> to approve or reject.',
+          hr: '🛡️ As <strong>HR</strong>, review expenses already approved by Managers. Verify receipts and approve or flag for audit.',
+          audit: '🔍 As <strong>Audit</strong>, review expenses cleared by HR. Click <strong>"Audit Clear"</strong> to approve or <strong>"Flag for Review"</strong> to send back.',
+          super_admin: '⚡ As <strong>Super Admin</strong>, you can override any step. Use <strong>"Super Admin Approve"</strong> to skip remaining stages.',
+        };
+        hintEl.innerHTML = roleHints[currentProfile?.role] || 'Review expenses awaiting your action below.';
+      }
       if (!items.length) {
         list.innerHTML = emptyState('All caught up!', 'Nothing is waiting on your approval right now.');
         return;
@@ -1986,14 +2036,32 @@
         .filter(stage => byStage[stage]?.length)
         .map(stage => {
           const info = ACTION_STAGE_INFO[stage];
-          const group = byStage[stage].sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
+          const group = byStage[stage];
+
+          // Within a stage, cluster by employee so one person's items sit
+          // together instead of being interleaved by date across everyone.
+          const byEmp = {};
+          group.forEach(e => { (byEmp[e.user_id] ??= { user: e.users, exps: [] }).exps.push(e); });
+          const empGroups = Object.values(byEmp).sort((a, b) =>
+            (a.user?.name || '').localeCompare(b.user?.name || '')
+          );
+          empGroups.forEach(g => g.exps.sort((a, b) => new Date(a.created_at) - new Date(b.created_at)));
+
           return `
           <div style="margin-bottom:1.5rem">
             <div style="display:flex;align-items:center;gap:.5rem;margin-bottom:.75rem">
               <span style="font-weight:700;font-size:.9rem;color:${info.color}">${info.label}</span>
               <span style="background:${info.color};color:#fff;border-radius:10px;padding:0 8px;font-size:.72rem;font-weight:700">${group.length}</span>
             </div>
-            <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:1rem">${group.map(adminCard).join('')}</div>
+            ${empGroups.map(g => `
+              <div style="margin-bottom:1rem">
+                <div style="display:flex;align-items:center;gap:.4rem;margin-bottom:.5rem;padding-left:.15rem">
+                  <span style="font-weight:600;font-size:.82rem;color:var(--text-1)">👤 ${escHtml(g.user?.name || 'Unknown')}</span>
+                  <span style="font-size:.72rem;color:var(--text-muted)">(${escHtml(g.user?.emp_no || '—')})</span>
+                  <span style="background:var(--bg-2);color:var(--text-muted);border-radius:10px;padding:0 7px;font-size:.68rem;font-weight:700">${g.exps.length}</span>
+                </div>
+                <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:1rem">${g.exps.map(adminCard).join('')}</div>
+              </div>`).join('')}
           </div>`;
         }).join('');
     }
@@ -2180,13 +2248,13 @@
       <td>${receiptCell(e)}</td>
       <td>
         ${e.status === 'pending' ? `
-          <button onclick="updateExpenseStatus('${e.id}', 'approved')" class="btn btn-primary btn-sm" style="padding: 0.2rem 0.5rem; font-size: 0.75rem; margin-bottom: 0.2rem; display:block; width: 100%;">Approve</button>
-          <button onclick="promptRejectExpense('${e.id}')" class="btn btn-secondary btn-sm" style="padding: 0.2rem 0.5rem; font-size: 0.75rem; margin-bottom: 0.2rem; display:block; width: 100%;">Reject</button>
-          <button onclick="promptAddComment('${e.id}')" class="btn btn-secondary btn-sm" style="padding: 0.2rem 0.5rem; font-size: 0.75rem; margin-bottom: 0.2rem; display:block; width: 100%;">Add Comment</button>
-          <button onclick="deleteExpense('${e.id}')" class="btn btn-secondary btn-sm" style="padding: 0.2rem 0.5rem; font-size: 0.75rem; display:block; width: 100%; color: var(--red);">Delete</button>
+          <button onclick="updateExpenseStatus('${e.id}', 'approved')" class="btn btn-primary btn-sm" style="padding: 0.2rem 0.5rem; font-size: 0.75rem; margin-bottom: 0.2rem; display:block; width: 100%;background:#2563eb;border-color:#2563eb;font-weight:700">✅ Approve</button>
+          <button onclick="promptRejectExpense('${e.id}')" class="btn btn-secondary btn-sm" style="padding: 0.2rem 0.5rem; font-size: 0.75rem; margin-bottom: 0.2rem; display:block; width: 100%;color:#dc2626;border-color:#fecaca">✕ Reject</button>
+          <button onclick="promptAddComment('${e.id}')" class="btn btn-secondary btn-sm" style="padding: 0.2rem 0.5rem; font-size: 0.75rem; margin-bottom: 0.2rem; display:block; width: 100%;">💬 Comment</button>
+          <button onclick="deleteExpense('${e.id}')" class="btn btn-secondary btn-sm" style="padding: 0.2rem 0.5rem; font-size: 0.75rem; display:block; width: 100%; color:#dc2626;border-color:#fecaca">🗑️ Delete</button>
         ` : `
-          <button onclick="promptAddComment('${e.id}')" class="btn btn-secondary btn-sm" style="padding: 0.2rem 0.5rem; font-size: 0.75rem; margin-bottom: 0.2rem; display:block; width: 100%;">Edit Comment</button>
-          <button onclick="deleteExpense('${e.id}')" class="btn btn-secondary btn-sm" style="padding: 0.2rem 0.5rem; font-size: 0.75rem; display:block; width: 100%; color: var(--red);">Delete</button>
+          <button onclick="promptAddComment('${e.id}')" class="btn btn-secondary btn-sm" style="padding: 0.2rem 0.5rem; font-size: 0.75rem; margin-bottom: 0.2rem; display:block; width: 100%;">💬 Edit Comment</button>
+          <button onclick="deleteExpense('${e.id}')" class="btn btn-secondary btn-sm" style="padding: 0.2rem 0.5rem; font-size: 0.75rem; display:block; width: 100%; color:#dc2626;border-color:#fecaca">🗑️ Delete</button>
         `}
       </td>
     </tr>`;
@@ -2236,8 +2304,28 @@
       const showAuditBtns = currentProfile.role === 'audit' && e.status === 'hr_approved';
       const showL2Btn     = currentProfile.role === 'super_admin' && ['pending','l1_approved','hr_approved','audit_review','l1_rejected','rejected'].includes(e.status);
 
+      const needsAction = showL1Btn || showHRBtn || showAuditBtns || showL2Btn;
+      const actionBanner = needsAction ? (() => {
+        const isReview = e.status === 'audit_review';
+        const cfg = showL1Btn     ? { color:'#2563eb', bg:'#eff6ff', icon:'✅', label:'Manager — Approve this expense', border:'#bfdbfe' }
+                  : showHRBtn     ? { color:'#059669', bg:'#f0fdf4', icon:'✅', label:`HR — ${isReview ? 'Re-review flagged expense' : 'Approve this expense'}`, border:'#bbf7d0' }
+                  : showAuditBtns ? { color:'#14532d', bg:'#f0fdf4', icon:'✅', label:'Audit — Clear or flag this expense', border:'#bbf7d0' }
+                  : showL2Btn     ? { color:'#7c3aed', bg:'#f5f3ff', icon:'✅', label:'Super Admin — Approve (override)', border:'#ddd6fe' }
+                  : null;
+        if (!cfg) return '';
+        return `<div style="background:${cfg.bg};border:2px solid ${cfg.border};border-radius:10px;padding:.6rem .75rem;margin-bottom:.75rem;display:flex;align-items:center;gap:.6rem;cursor:pointer;box-shadow:0 2px 8px rgba(0,0,0,0.06)" onclick="openApprovalModal('${e.id}')" title="Click to review and approve this expense">
+          <span style="background:${cfg.color};color:#fff;border-radius:50%;width:28px;height:28px;display:flex;align-items:center;justify-content:center;font-size:.85rem;font-weight:700;flex-shrink:0">✓</span>
+          <div style="flex:1">
+            <div style="font-weight:700;font-size:.85rem;color:${cfg.color}">⚠️ Approve this expense</div>
+            <div style="font-size:.72rem;color:#6b7280">${cfg.label} →</div>
+          </div>
+          <span style="font-size:1.5rem;color:${cfg.color}">›</span>
+        </div>`;
+      })() : '';
+
       return `
     <div class="expense-card">
+      ${actionBanner}
       <div class="expense-card-top">
         <div>
           ${amtChanged ? `<div style="text-decoration:line-through;color:var(--text-muted);font-size:.78rem">${formatCurrency(e.amount)}</div>` : ''}
@@ -2266,15 +2354,15 @@
       ${e.l2_remark ? `<div class="expense-card-desc" style="background:#f0fdf4;padding:.4rem;border-radius:4px;margin-top:.25rem;font-size:.78rem;border-left:3px solid #22c55e"><strong>L2 Remark:</strong> ${escHtml(e.l2_remark)}</div>` : ''}
       ${receiptCardFooter(e)}
       <div class="expense-card-footer" style="display:grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; margin-top: 0.5rem; border-top: 1px solid var(--border); padding-top: 0.5rem;">
-        ${showL1Btn ? `<button onclick="openApprovalModal('${e.id}')" class="btn btn-primary btn-sm" style="grid-column:1/-1">Review (L1 — Admin)</button>` : ''}
-        ${showHRBtn ? `<button onclick="openApprovalModal('${e.id}')" class="btn btn-primary btn-sm" style="grid-column:1/-1;background:#059669">${e.status === 'audit_review' ? '🔁 HR Re-review (Audit Flagged)' : 'HR Approve'}</button>` : ''}
+        ${showL1Btn ? `<button onclick="openApprovalModal('${e.id}')" class="btn btn-primary btn-sm" style="grid-column:1/-1;background:#2563eb;border-color:#2563eb;font-size:.82rem;padding:.35rem" title="Approve this expense as Manager">✅ Manager — Approve</button>` : ''}
+        ${showHRBtn ? `<button onclick="openApprovalModal('${e.id}')" class="btn btn-primary btn-sm" style="grid-column:1/-1;background:#059669;border-color:#059669;font-size:.82rem;padding:.35rem" title="Approve this expense as HR">✅ HR — ${e.status === 'audit_review' ? 'Re-review (Flagged)' : 'Approve'}</button>` : ''}
         ${showAuditBtns ? `
-          <button onclick="auditClearExpense('${e.id}')" class="btn btn-primary btn-sm" style="background:#14532d">✓ Audit Clear</button>
-          <button onclick="openAuditFlagModal('${e.id}')" class="btn btn-secondary btn-sm" style="color:#92400e;border-color:#f59e0b">⚑ Flag Review</button>
+          <button onclick="auditClearExpense('${e.id}')" class="btn btn-primary btn-sm" style="background:#14532d;border-color:#14532d;font-size:.82rem;padding:.35rem" title="Clear this expense as Audit">✅ Audit — Clear</button>
+          <button onclick="openAuditFlagModal('${e.id}')" class="btn btn-secondary btn-sm" style="color:#92400e;border-color:#d97706;background:#fffbeb;font-size:.82rem;padding:.35rem" title="Flag this expense for HR re-review">⚑ Flag for Review</button>
         ` : ''}
-        ${showL2Btn ? `<button onclick="openApprovalModal('${e.id}')" class="btn btn-primary btn-sm" style="grid-column:1/-1;background:#7c3aed">⚡ Override (Super Admin)</button>` : ''}
-        <button onclick="openCommentModal('${e.id}')" class="btn btn-secondary btn-sm">💬 Comment</button>
-        <button onclick="deleteExpense('${e.id}')" class="btn btn-secondary btn-sm" style="color:var(--red)">Delete</button>
+        ${showL2Btn ? `<button onclick="openApprovalModal('${e.id}')" class="btn btn-primary btn-sm" style="grid-column:1/-1;background:#7c3aed;border-color:#7c3aed;font-size:.82rem;padding:.35rem" title="Approve this expense as Super Admin">✅ Super Admin — Approve</button>` : ''}
+        <button onclick="openCommentModal('${e.id}')" class="btn btn-secondary btn-sm" title="Add a comment">💬 Comment</button>
+        <button onclick="deleteExpense('${e.id}')" class="btn btn-secondary btn-sm" style="color:#dc2626;border-color:#fecaca" title="Permanently delete this expense">🗑️ Delete</button>
       </div>
     </div>`;
     }
@@ -4145,13 +4233,17 @@
                         ${currentProfile.role==='super_admin'?`<button data-sa-edit="${e.id}" onclick="saEditReceipt('${e.id}')" style="display:block;margin-top:.2rem;background:none;border:1px solid var(--border);border-radius:5px;padding:1px 7px;font-size:.65rem;cursor:pointer;color:var(--text-muted)">📎 ${parseReceiptUrls(e.receipt_url).length?'Edit':'Add'} Receipt</button>`:''}
                       </td>
                       <td style="padding:.5rem .75rem;text-align:right">
-                        <div style="display:flex;gap:.2rem;justify-content:flex-end;flex-wrap:wrap">
-                          <button class="btn btn-secondary btn-sm" style="padding:.18rem .4rem;font-size:.7rem" onclick="openCommentModal('${e.id}')">💬</button>
-                          ${showL1?`<button class="btn btn-primary btn-sm" style="padding:.18rem .4rem;font-size:.7rem" onclick="openApprovalModal('${e.id}')">L1</button>`:''}
-                          ${showHR?`<button class="btn btn-primary btn-sm" style="padding:.18rem .4rem;font-size:.7rem;background:#059669" onclick="openApprovalModal('${e.id}')">${e.status==='audit_review'?'🔁':'✓'} HR</button>`:''}
-                          ${showAud?`<button class="btn btn-primary btn-sm" style="padding:.18rem .4rem;font-size:.7rem;background:#14532d" onclick="auditClearExpense('${e.id}')">✓</button><button class="btn btn-secondary btn-sm" style="padding:.18rem .4rem;font-size:.7rem;color:#92400e" onclick="openAuditFlagModal('${e.id}')">⚑</button>`:''}
-                          ${showL2?`<button class="btn btn-primary btn-sm" style="padding:.18rem .4rem;font-size:.7rem;background:#7c3aed" onclick="openApprovalModal('${e.id}')">⚡</button>`:''}
-                          <button class="btn btn-secondary btn-sm" style="padding:.18rem .4rem;font-size:.7rem;color:#dc2626" onclick="deleteExpense('${e.id}')">🗑️</button>
+                        <div style="display:inline-flex;gap:.25rem;align-items:center;background:var(--bg-page,#f9fafb);border:1px solid var(--border);border-radius:10px;padding:.3rem .4rem">
+                          <button onclick="openCommentModal('${e.id}')" title="Comment" style="background:none;border:none;border-radius:6px;padding:.3rem .45rem;cursor:pointer;font-size:.8rem;color:var(--text-2);transition:background .15s" onmouseover="this.style.background='var(--bg-2)'" onmouseout="this.style.background='none'">💬</button>
+                          ${showL1?`<button onclick="openApprovalModal('${e.id}')" title="Approve as Manager" style="background:#2563eb;color:#fff;border:none;border-radius:6px;padding:.3rem .6rem;cursor:pointer;font-size:.78rem;font-weight:700;white-space:nowrap;transition:all .15s" onmouseover="this.style.background='#1d4ed8'" onmouseout="this.style.background='#2563eb'">✅ Approve</button>
+                          <button onclick="promptRejectExpense('${e.id}')" title="Reject" style="background:none;border:1px solid #fecaca;border-radius:6px;padding:.3rem .45rem;cursor:pointer;font-size:.8rem;color:#dc2626;transition:background .15s" onmouseover="this.style.background='#fef2f2'" onmouseout="this.style.background='none'">✕</button>`:''}
+                          ${showHR?`<button onclick="openApprovalModal('${e.id}')" title="Approve as HR" style="background:#059669;color:#fff;border:none;border-radius:6px;padding:.3rem .6rem;cursor:pointer;font-size:.78rem;font-weight:700;white-space:nowrap;transition:all .15s" onmouseover="this.style.background='#047857'" onmouseout="this.style.background='#059669'">🛡️ Approve</button>
+                          <button onclick="promptRejectExpense('${e.id}')" title="Reject" style="background:none;border:1px solid #fecaca;border-radius:6px;padding:.3rem .45rem;cursor:pointer;font-size:.8rem;color:#dc2626;transition:background .15s" onmouseover="this.style.background='#fef2f2'" onmouseout="this.style.background='none'">✕</button>`:''}
+                          ${showAud?`<button onclick="auditClearExpense('${e.id}')" title="Audit Clear" style="background:#14532d;color:#fff;border:none;border-radius:6px;padding:.3rem .6rem;cursor:pointer;font-size:.78rem;font-weight:700;white-space:nowrap;transition:all .15s" onmouseover="this.style.background='#0f4423'" onmouseout="this.style.background='#14532d'">🔍 Clear</button>
+                          <button onclick="openAuditFlagModal('${e.id}')" title="Flag for Review" style="background:#fffbeb;color:#92400e;border:1px solid #f59e0b;border-radius:6px;padding:.3rem .5rem;cursor:pointer;font-size:.75rem;font-weight:600;transition:all .15s" onmouseover="this.style.background='#fef3c7'" onmouseout="this.style.background='#fffbeb'">⚑ Flag</button>`:''}
+                          ${showL2?`<button onclick="openApprovalModal('${e.id}')" title="Approve as Super Admin" style="background:#7c3aed;color:#fff;border:none;border-radius:6px;padding:.3rem .6rem;cursor:pointer;font-size:.78rem;font-weight:700;white-space:nowrap;transition:all .15s" onmouseover="this.style.background='#6d28d9'" onmouseout="this.style.background='#7c3aed'">⚡ Approve</button>
+                          <button onclick="promptRejectExpense('${e.id}')" title="Reject" style="background:none;border:1px solid #fecaca;border-radius:6px;padding:.3rem .45rem;cursor:pointer;font-size:.8rem;color:#dc2626;transition:background .15s" onmouseover="this.style.background='#fef2f2'" onmouseout="this.style.background='none'">✕</button>`:''}
+                          <button onclick="deleteExpense('${e.id}')" title="Delete" style="background:none;border:none;border-radius:6px;padding:.3rem .45rem;cursor:pointer;font-size:.8rem;color:#dc2626;transition:background .15s" onmouseover="this.style.background='#fef2f2'" onmouseout="this.style.background='none'">🗑️</button>
                         </div>
                       </td>
                     </tr>`;
