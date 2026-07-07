@@ -43,7 +43,8 @@ export default async function handler(req, res) {
   // ── GET ─────────────────────────────────────────────────────────
   if (req.method === 'GET') {
     const { data: profile } = await supabaseAdmin.from('users').select('role').eq('id', user.id).single();
-    if (!profile || (profile.role !== 'admin' && profile.role !== 'super_admin')) {
+    const ALLOWED_VIEW_ROLES = ['admin', 'super_admin', 'hr', 'audit'];
+    if (!profile || !ALLOWED_VIEW_ROLES.includes(profile.role)) {
       return res.status(403).json({ error: 'Not authorised' });
     }
 
