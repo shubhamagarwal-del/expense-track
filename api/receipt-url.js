@@ -92,6 +92,18 @@ export default async function handler(req, res) {
       return await syncAccounts2026(res, supabaseAdmin);
     }
 
+    // ── POST { expense_id, receipt_url } → attach/replace a receipt (super_admin, hr) ──
+    if (req.body?.expense_id && req.body?.receipt_url) {
+      const { data: profile } = await supabaseAdmin.from('users').select('role').eq('id', user.id).single();
+      if (!profile || !['super_admin', 'hr'].includes(profile.role)) {
+        return res.status(403).json({ error: 'Not authorised to edit receipts' });
+      }
+      const { error } = await supabaseAdmin
+        .from('expenses').update({ receipt_url: req.body.receipt_url }).eq('id', req.body.expense_id);
+      if (error) return res.status(500).json({ error: error.message });
+      return res.status(200).json({ message: 'Receipt updated' });
+    }
+
     // ── POST { expense_id } → record a receipt view (admin only) ──
     if (req.body?.expense_id) {
       const { data: profile } = await supabaseAdmin.from('users').select('role').eq('id', user.id).single();

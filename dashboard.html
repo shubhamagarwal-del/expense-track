@@ -2113,7 +2113,7 @@
 
     function receiptCell(e) {
       const urls = parseReceiptUrls(e.receipt_url);
-      const isSA = currentProfile?.role === 'super_admin';
+      const isSA = ['super_admin', 'hr'].includes(currentProfile?.role);
       const editBtn = isSA
         ? `<button data-sa-edit="${e.id}" onclick="saEditReceipt('${e.id}')" title="${urls.length ? 'Replace Receipt' : 'Add Receipt'}"
              style="margin-left:.35rem;background:none;border:1px solid var(--border);border-radius:5px;padding:1px 6px;font-size:.7rem;cursor:pointer;color:var(--text-muted)">📎 ${urls.length ? 'Edit' : 'Add'}</button>`
@@ -2125,7 +2125,7 @@
 
     function receiptCardFooter(e, label = 'View Receipt') {
       const urls = parseReceiptUrls(e.receipt_url);
-      const isSA = currentProfile?.role === 'super_admin';
+      const isSA = ['super_admin', 'hr'].includes(currentProfile?.role);
       const editBtn = isSA
         ? `<button data-sa-edit="${e.id}" onclick="saEditReceipt('${e.id}')" style="background:none;border:1px solid var(--border);border-radius:6px;padding:2px 8px;font-size:.72rem;cursor:pointer;color:var(--text-muted);font-weight:600">📎 ${urls.length ? 'Edit Receipt' : 'Add Receipt'}</button>`
         : '';
@@ -2504,8 +2504,14 @@
       try {
         const url = await uploadReceipt(file, currentProfile.id);
         if (!url) throw new Error('Upload failed');
-        const { error } = await db.from('expenses').update({ receipt_url: url }).eq('id', expenseId);
-        if (error) throw error;
+        const token = (await db.auth.getSession()).data.session?.access_token;
+        const res = await fetch('/api/receipt-url', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+          body: JSON.stringify({ expense_id: expenseId, receipt_url: url }),
+        });
+        const body = await res.json();
+        if (!res.ok) throw new Error(body.error || 'Update failed');
         const local = allExpensesFetched.find(e => e.id === expenseId);
         if (local) local.receipt_url = url;
         showMessage('Receipt saved!', 'success');
@@ -4256,7 +4262,7 @@
                         ${e.l1_by_name?`<div style="font-size:.62rem;color:var(--text-muted);margin-top:.2rem">L1: ${escHtml(e.l1_by_name)}</div>`:''}
                         ${e.l2_by_name?`<div style="font-size:.62rem;color:var(--text-muted)">L2: ${escHtml(e.l2_by_name)}</div>`:''}
                         ${parseReceiptUrls(e.receipt_url).length?`<a href="javascript:void(0)" data-rcpt-eid="${e.id}" onclick="viewExpenseReceipts('${escHtml(e.receipt_url)}','${e.id}')" style="font-size:.68rem;color:var(--primary);font-weight:600">📎 ${parseReceiptUrls(e.receipt_url).length>1?parseReceiptUrls(e.receipt_url).length+' Receipts':'Receipt'}</a>${receiptSeenBadge(e.id)}`:''}
-                        ${currentProfile.role==='super_admin'?`<button data-sa-edit="${e.id}" onclick="saEditReceipt('${e.id}')" style="display:block;margin-top:.2rem;background:none;border:1px solid var(--border);border-radius:5px;padding:1px 7px;font-size:.65rem;cursor:pointer;color:var(--text-muted)">📎 ${parseReceiptUrls(e.receipt_url).length?'Edit':'Add'} Receipt</button>`:''}
+                        ${['super_admin','hr'].includes(currentProfile.role)?`<button data-sa-edit="${e.id}" onclick="saEditReceipt('${e.id}')" style="display:block;margin-top:.2rem;background:none;border:1px solid var(--border);border-radius:5px;padding:1px 7px;font-size:.65rem;cursor:pointer;color:var(--text-muted)">📎 ${parseReceiptUrls(e.receipt_url).length?'Edit':'Add'} Receipt</button>`:''}
                       </td>
                       <td style="padding:.5rem .75rem;text-align:right">
                         <div style="display:inline-flex;gap:.25rem;align-items:center;background:var(--bg-page,#f9fafb);border:1px solid var(--border);border-radius:10px;padding:.3rem .4rem">

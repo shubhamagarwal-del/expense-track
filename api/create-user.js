@@ -42,7 +42,7 @@ export default async function handler(req, res) {
     .eq('id', user.id)
     .single();
 
-  if (profileError || !profile || (profile.role !== 'admin' && profile.role !== 'super_admin')) {
+  if (profileError || !profile || !['admin', 'hr', 'super_admin'].includes(profile.role)) {
     return res.status(403).json({ error: 'Forbidden: Only administrators can create users' });
   }
 

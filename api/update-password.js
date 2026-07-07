@@ -18,7 +18,7 @@ export default async function handler(req, res) {
   const { data: profile } = await supabaseAdmin
     .from('users').select('role').eq('id', user.id).single();
 
-  if (!profile || (profile.role !== 'admin' && profile.role !== 'super_admin')) {
+  if (!profile || !['admin', 'hr', 'super_admin'].includes(profile.role)) {
     return res.status(403).json({ error: 'Forbidden' });
   }
 
