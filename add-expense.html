@@ -993,7 +993,8 @@
         <div class="site-ac-wrap" style="position:relative">
           <input type="text" class="form-input row-site" placeholder="Search site name, district or code…"
                  value="${escHtml(data.site || (() => { const v = siteWithCode(currentUser.site_name || ''); return isValidSiteValue(v) ? v : ''; })())}"
-                 autocomplete="off" required>
+                 autocomplete="off" required style="padding-right:2rem">
+          <button type="button" class="row-site-clear" title="Clear site" style="position:absolute;right:.5rem;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;color:var(--text-muted,#71717a);font-size:1rem;line-height:1;padding:2px">✕</button>
           <div class="site-ac-list"></div>
         </div>
         <div class="site-ac-error" style="display:none"></div>
@@ -1588,6 +1589,16 @@
         const inp = wrap.querySelector('.row-site');
         inp.value = item.dataset.val;
         wrap.querySelector('.site-ac-list').style.display = 'none';
+        return;
+      }
+      const clearBtn = e.target.closest('.row-site-clear');
+      if (clearBtn) {
+        const wrap = clearBtn.closest('.site-ac-wrap');
+        const inp = wrap.querySelector('.row-site');
+        inp.value = '';
+        markSiteValidity(inp);
+        wrap.querySelector('.site-ac-list').style.display = 'none';
+        inp.focus();
         return;
       }
       document.querySelectorAll('.site-ac-list').forEach(l => l.style.display = 'none');

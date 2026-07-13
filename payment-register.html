@@ -239,9 +239,31 @@
       return `<span style="background:#fee2e2;color:#991b1b;border-radius:6px;padding:2px 9px;font-size:.72rem;font-weight:700">○ Unpaid</span>`;
     }
 
+    const PR_BATCH_SIZE = 30;
+    let prFiltered = [];
+    let prRendered = 0;
+    let prObserver = null;
+
+    function paymentRowHtml(r) {
+      return `
+        <tr style="border-top:1px solid var(--border)">
+          <td style="padding:.6rem .9rem">
+            <div style="font-weight:700">${escHtml(r.name)}</div>
+            <div style="font-size:.72rem;color:var(--text-muted)">${escHtml(r.empNo)}</div>
+          </td>
+          <td style="padding:.6rem .9rem;color:var(--text-muted)">${escHtml(r.department)}</td>
+          <td style="padding:.6rem .9rem;white-space:nowrap">${escHtml(r.monthYear)} <span style="background:var(--primary);color:white;border-radius:5px;padding:0 6px;font-size:.65rem;font-weight:700">${escHtml(r.cycleText)}</span></td>
+          <td style="padding:.6rem .9rem;text-align:right;font-weight:600">${formatCurrency(r.total)}</td>
+          <td style="padding:.6rem .9rem;text-align:right;color:#166534;font-weight:600">${formatCurrency(r.paid)}</td>
+          <td style="padding:.6rem .9rem;text-align:right;color:#92400e;font-weight:600">${r.pending > 0.005 ? formatCurrency(r.pending) : '—'}</td>
+          <td style="padding:.6rem .9rem">${statusBadge(r.status)}</td>
+        </tr>`;
+    }
+
     function renderPaymentRegister() {
       const rows = getFilteredPaymentRows();
       const wrap = document.getElementById('pr-table-wrap');
+      prObserver?.disconnect();
       if (!rows.length) {
         wrap.innerHTML = `<div style="padding:2.5rem;text-align:center;color:var(--text-muted)">No records match this filter.</div>`;
         return;
@@ -260,23 +282,28 @@
                 <th style="padding:.65rem .9rem;text-align:left;font-size:.68rem;text-transform:uppercase;color:var(--text-muted);font-weight:700">Status</th>
               </tr>
             </thead>
-            <tbody>
-              ${rows.map(r => `
-                <tr style="border-top:1px solid var(--border)">
-                  <td style="padding:.6rem .9rem">
-                    <div style="font-weight:700">${escHtml(r.name)}</div>
-                    <div style="font-size:.72rem;color:var(--text-muted)">${escHtml(r.empNo)}</div>
-                  </td>
-                  <td style="padding:.6rem .9rem;color:var(--text-muted)">${escHtml(r.department)}</td>
-                  <td style="padding:.6rem .9rem;white-space:nowrap">${escHtml(r.monthYear)} <span style="background:var(--primary);color:white;border-radius:5px;padding:0 6px;font-size:.65rem;font-weight:700">${escHtml(r.cycleText)}</span></td>
-                  <td style="padding:.6rem .9rem;text-align:right;font-weight:600">${formatCurrency(r.total)}</td>
-                  <td style="padding:.6rem .9rem;text-align:right;color:#166534;font-weight:600">${formatCurrency(r.paid)}</td>
-                  <td style="padding:.6rem .9rem;text-align:right;color:#92400e;font-weight:600">${r.pending > 0.005 ? formatCurrency(r.pending) : '—'}</td>
-                  <td style="padding:.6rem .9rem">${statusBadge(r.status)}</td>
-                </tr>`).join('')}
+            <tbody id="pr-tbody">
+              <tr id="pr-sentinel"><td colspan="7" style="height:1px;padding:0;border:none"></td></tr>
             </tbody>
           </table>
         </div>`;
+
+      prFiltered = rows;
+      prRendered = 0;
+      loadMorePaymentRows();
+
+      prObserver = new IntersectionObserver(entries => {
+        if (entries[0].isIntersecting) loadMorePaymentRows();
+      });
+      prObserver.observe(document.getElementById('pr-sentinel'));
+    }
+
+    function loadMorePaymentRows() {
+      if (prRendered >= prFiltered.length) return;
+      const next = prFiltered.slice(prRendered, prRendered + PR_BATCH_SIZE);
+      const html = next.map(paymentRowHtml).join('');
+      document.getElementById('pr-sentinel')?.insertAdjacentHTML('beforebegin', html);
+      prRendered += next.length;
     }
 
     function exportPaymentRegister() {

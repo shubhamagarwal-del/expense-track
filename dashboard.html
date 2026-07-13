@@ -488,6 +488,10 @@
           _rtDebounce = setTimeout(async () => {
             const isAdmin = ['admin', 'super_admin', 'hr', 'audit'].includes(currentProfile.role);
             try {
+              // A change came from someone else's action, not our own mutating
+              // fetch() call — the cache-invalidation interceptor never fired
+              // for it, so drop the cache ourselves before refetching.
+              invalidateExpensesCache();
               if (isAdmin) {
                 const companyId = !['super_admin', 'hr', 'audit'].includes(currentProfile.role) ? (currentProfile.company_id || undefined) : undefined;
                 const limit = undefined; // no cap for any role
@@ -881,6 +885,7 @@
         allExpensesFetched = expenses;
         updateEmpStats(expenses);
         refreshListView();
+        loadCyclePayments().then(() => renderCycleBreakdown(expenses));
       } catch (err) {
         showMessage('Failed to load expenses: ' + err.message, 'error');
       }
@@ -901,7 +906,11 @@
 
     function _doRefreshListView(skipCharts = false) {
       const search = document.getElementById('f-user-search')?.value.toLowerCase().trim() || '';
-      let filtered = allExpensesFetched;
+      // Respect an active Month/Cycle filter (set by applyCycleFilter) instead of
+      // always starting from the full unfiltered set — otherwise changing any
+      // other dropdown (Department, Employee, Manager, Status, Payment) silently
+      // drops the Month/Cycle selection.
+      let filtered = activeFilteredExpenses !== null ? activeFilteredExpenses : allExpensesFetched;
 
       // Filter by status tab
       const empRole = !['admin','super_admin','hr','audit'].includes(currentProfile.role);
@@ -994,7 +1003,33 @@
       const sorted = Object.values(groups).sort((a, b) => b.sortKey - a.sortKey);
       const effectiveAmt = e => e.approved_amount != null ? +e.approved_amount : +e.amount;
 
+      const overallApproved = expenses
+        .filter(e => e.status !== 'rejected' && e.status !== 'l1_rejected')
+        .reduce((s, e) => s + effectiveAmt(e), 0);
+      const overallPaid = paidForExpenses(expenses);
+      const overallDue = overallApproved - overallPaid;
+
+      const summaryHtml = `
+        <div style="font-size:.78rem;font-weight:700;color:#6b7280;text-transform:uppercase;letter-spacing:.05em;margin-bottom:.75rem">
+          💰 Payment Status (Overall Summary)
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:.75rem;margin-bottom:1.5rem">
+          <div style="background:#fff;border-radius:14px;padding:1.1rem 1.25rem;border:1.5px solid #e5e7eb">
+            <div style="font-size:.72rem;color:#9ca3af;font-weight:700;text-transform:uppercase">Total Approved</div>
+            <div style="font-size:1.35rem;font-weight:800;color:#111827;margin-top:.3rem">${formatCurrency(overallApproved)}</div>
+          </div>
+          <div style="background:#fff;border-radius:14px;padding:1.1rem 1.25rem;border:1.5px solid #bbf7d0">
+            <div style="font-size:.72rem;color:#166534;font-weight:700;text-transform:uppercase">💰 Paid</div>
+            <div style="font-size:1.35rem;font-weight:800;color:#166534;margin-top:.3rem">${formatCurrency(overallPaid)}</div>
+          </div>
+          <div style="background:#fff;border-radius:14px;padding:1.1rem 1.25rem;border:1.5px solid #fde68a">
+            <div style="font-size:.72rem;color:#92400e;font-weight:700;text-transform:uppercase">⏳ Payment Due</div>
+            <div style="font-size:1.35rem;font-weight:800;color:#92400e;margin-top:.3rem">${formatCurrency(overallDue > 0.005 ? overallDue : 0)}</div>
+          </div>
+        </div>`;
+
       el.innerHTML = `
+        ${summaryHtml}
         <div style="font-size:.78rem;font-weight:700;color:#6b7280;text-transform:uppercase;letter-spacing:.05em;margin-bottom:.75rem">
           📅 Month & Cycle Breakdown
         </div>
@@ -1011,6 +1046,8 @@
             const col = g.cNum === 1 ? '#6366f1' : '#7c3aed';
             const tagBg  = g.cNum === 1 ? '#ede9fe' : '#f3e8ff';
             const tagCol = g.cNum === 1 ? '#6366f1' : '#7c3aed';
+            const cyclePaid = paidForExpenses(g.expenses);
+            const cycleDue  = totalAmt - cyclePaid;
             return `
               <div onclick="filterByCycle('${g.month}','${g.cycle}')"
                    style="background:white;border-radius:14px;padding:1.1rem 1.25rem;border:1.5px solid #e5e7eb;cursor:pointer;transition:all .15s"
@@ -1022,7 +1059,7 @@
                 </div>
                 <div style="font-size:1.45rem;font-weight:800;color:#111827;margin-bottom:.4rem">${formatCurrency(totalAmt)}</div>
                 <div style="font-size:.72rem;color:#9ca3af;margin-bottom:.6rem">${g.expenses.length} record${g.expenses.length !== 1 ? 's' : ''}</div>
-                <div style="display:flex;flex-wrap:wrap;gap:.3rem">
+                <div style="display:flex;flex-wrap:wrap;gap:.3rem;margin-bottom:.55rem">
                   ${pending   ? `<span style="background:#fef3c7;color:#92400e;border-radius:5px;padding:1px 6px;font-size:.68rem;font-weight:700">⏳ Pending ${pending}</span>` : ''}
                   ${inReview  ? `<span style="background:#ede9fe;color:#5b21b6;border-radius:5px;padding:1px 6px;font-size:.68rem;font-weight:700">🔍 HR Pending ${inReview}</span>` : ''}
                   ${hrPending ? `<span style="background:#d1fae5;color:#065f46;border-radius:5px;padding:1px 6px;font-size:.68rem;font-weight:700">✓ HR Approved ${hrPending}</span>` : ''}
@@ -1030,6 +1067,10 @@
                   ${cleared   ? `<span style="background:#bbf7d0;color:#14532d;border-radius:5px;padding:1px 6px;font-size:.68rem;font-weight:700">✓ Cleared ${cleared}</span>` : ''}
                   ${approved  ? `<span style="background:#dcfce7;color:#166534;border-radius:5px;padding:1px 6px;font-size:.68rem;font-weight:700">✅ Approved ${approved}</span>` : ''}
                   ${rejected  ? `<span style="background:#fee2e2;color:#991b1b;border-radius:5px;padding:1px 6px;font-size:.68rem;font-weight:700">❌ ${rejected}</span>` : ''}
+                </div>
+                <div style="display:flex;flex-wrap:wrap;gap:.3rem;padding-top:.5rem;border-top:1px dashed #e5e7eb">
+                  <span style="background:#dcfce7;color:#166534;border-radius:5px;padding:1px 6px;font-size:.68rem;font-weight:700">💰 Paid ${formatCurrency(cyclePaid)}</span>
+                  ${cycleDue > 0.005 ? `<span style="background:#fef3c7;color:#92400e;border-radius:5px;padding:1px 6px;font-size:.68rem;font-weight:700">⏳ Due ${formatCurrency(cycleDue)}</span>` : `<span style="background:#dcfce7;color:#166534;border-radius:5px;padding:1px 6px;font-size:.68rem;font-weight:700">✓ Fully paid</span>`}
                 </div>
               </div>`;
           }).join('')}
@@ -1255,7 +1296,7 @@
             <button id="btn-view-hier" onclick="setViewMode('hierarchy')" style="display:inline-flex;align-items:center;gap:.35rem;height:32px;padding:0 .8rem;border-radius:7px;border:none;background:var(--bg-2,#eef2ff);color:var(--primary,#6366f1);font-size:.8rem;font-weight:700;cursor:pointer">Hierarchy</button>
             <button id="btn-view-list" onclick="setViewMode('list')" style="display:inline-flex;align-items:center;gap:.35rem;height:32px;padding:0 .8rem;border-radius:7px;border:none;background:transparent;color:var(--text-2,#71717a);font-size:.8rem;font-weight:600;cursor:pointer">List</button>
             <button id="btn-view-action" onclick="setViewMode('action')" style="display:inline-flex;align-items:center;gap:.35rem;height:32px;padding:0 .8rem;border-radius:7px;border:none;background:transparent;color:#92400e;font-size:.8rem;font-weight:700;cursor:pointer">
-              ⚡ Needs Action <span id="action-queue-count" style="background:#f59e0b;color:#fff;border-radius:10px;padding:0 6px;font-size:.72rem">0</span>
+              ⚡ Pending Approvals <span id="action-queue-count" style="background:#f59e0b;color:#fff;border-radius:10px;padding:0 6px;font-size:.72rem">0</span>
             </button>
           </div>
 
@@ -1889,8 +1930,13 @@
       if (isAdmin) filtered = applyPaymentStatusFilter(filtered);
 
       if (isAdmin) {
-        renderAdminTable(filtered);
-        renderAdminCards(filtered);
+        if (hierarchyMode) {
+          renderHierarchyView(filtered);
+        } else {
+          renderAdminTable(filtered);
+          renderAdminCards(filtered);
+        }
+        renderActionQueue();
       } else {
         renderEmpTable(filtered);
         renderEmpCards(filtered);
@@ -3694,7 +3740,6 @@
               let desc = (e.description||'').replace(/^[A-Z_]+\|/,'').replace(/\|/g,' ').trim();
               const _siteCode = (siteWithCode(extractSite(e) || '').match(/LOC\d{3,}/i) || [])[0];
               if (_siteCode && !desc.includes(_siteCode)) desc += ` [${_siteCode}]`;
-              desc = desc.substring(0,68);
 
               // Single compact text line: Date | Category | Description ........... Rs. X.XX [STATUS]
               doc.setTextColor(0,0,0); doc.setFontSize(8.5);
@@ -3702,6 +3747,15 @@
               doc.text(formatDate(e.created_at), margin, y+4);
               doc.text(e.category||'—', margin+25, y+4);
               doc.setFont(undefined,'normal');
+              // Truncate by actual rendered width (not char count) so long
+              // descriptions never run into the amount column on the right.
+              const descMaxWidth = (pageW - margin - 26) - (margin + 55);
+              if (doc.getTextWidth(desc) > descMaxWidth) {
+                while (doc.getTextWidth(desc + '...') > descMaxWidth && desc.length > 1) {
+                  desc = desc.slice(0, -1);
+                }
+                desc += '...';
+              }
               doc.text(desc, margin+55, y+4);
               doc.setFont(undefined,'bold');
               const amtStr = `Rs. ${Number(amt).toLocaleString('en-IN',{minimumFractionDigits:2})}`;
@@ -4044,7 +4098,7 @@
                     ${mL1 ? `<span title="Approved by Manager, awaiting HR" style="background:#ede9fe;color:#5b21b6;border-radius:6px;padding:1px 7px;font-size:.7rem;font-weight:700">🔍${mL1} In Review (HR)</span>` : ''}
                     <span style="background:#f0fdf4;color:#065f46;border-radius:6px;padding:1px 7px;font-size:.7rem;font-weight:700" title="Sum of approved expenses">✅ Approved: ${formatCurrency(mAppr)}</span>
                     <span style="background:#f3f4f6;color:#374151;border-radius:6px;padding:1px 7px;font-size:.7rem;font-weight:700" title="Sum of pending + in-review + approved (excludes rejected)">Overall: ${formatCurrency(mOverall)}</span>
-                    <span style="background:#dcfce7;color:#166534;border-radius:6px;padding:1px 7px;font-size:.7rem;font-weight:700" title="Paid via bank">💰 Paid: ${formatCurrency(mPaid)}</span>${(mOverall - mPaid) > 0.005 ? `<span style="background:#fef3c7;color:#92400e;border-radius:6px;padding:1px 7px;font-size:.7rem;font-weight:700" title="Still pending">⏳ Pending: ${formatCurrency(mOverall - mPaid)}</span>` : `<span style="background:#dcfce7;color:#166534;border-radius:6px;padding:1px 7px;font-size:.7rem;font-weight:700">✓ Fully paid</span>`}
+                    <span style="background:#dcfce7;color:#166534;border-radius:6px;padding:1px 7px;font-size:.7rem;font-weight:700" title="Paid via bank">💰 Paid: ${formatCurrency(mPaid)}</span>${(mOverall - mPaid) > 0.005 ? `<span style="background:#fef3c7;color:#92400e;border-radius:6px;padding:1px 7px;font-size:.7rem;font-weight:700" title="Still pending">⏳ Due: ${formatCurrency(mOverall - mPaid)}</span>` : `<span style="background:#dcfce7;color:#166534;border-radius:6px;padding:1px 7px;font-size:.7rem;font-weight:700">✓ Fully paid</span>`}
                     <svg id="chev-${mId}" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"
                          style="width:16px;height:16px;color:var(--text-muted);transition:transform .2s;flex-shrink:0;transform:${mOpen?'rotate(180deg)':''}">
                       <path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/>
@@ -4085,7 +4139,7 @@
                           ${eAppr?`<span title="Approved" style="background:#d1fae5;color:#065f46;border-radius:5px;padding:0 6px;font-size:.68rem;font-weight:700">✓${eAppr}</span>`:''}
                           ${eRej?`<span style="background:#fee2e2;color:#991b1b;border-radius:5px;padding:0 6px;font-size:.68rem;font-weight:700">✗${eRej}</span>`:''}
                           <span style="font-size:.78rem;font-weight:700;color:var(--primary)" title="Sum of pending + in-review + approved (excludes rejected)">Overall: ${formatCurrency(eAmt)}</span>
-                          ${(() => { const paid = paidForExpenses(exps); const pend = eAmt - paid; return `<span style="background:#dcfce7;color:#166534;border-radius:5px;padding:0 6px;font-size:.68rem;font-weight:700" title="Paid via bank">💰 Paid: ${formatCurrency(paid)}</span>${pend > 0.005 ? `<span style="background:#fef3c7;color:#92400e;border-radius:5px;padding:0 6px;font-size:.68rem;font-weight:700" title="Still pending">⏳ Pending: ${formatCurrency(pend)}</span>` : `<span style="background:#dcfce7;color:#166534;border-radius:5px;padding:0 6px;font-size:.68rem;font-weight:700">✓ Fully paid</span>`}`; })()}
+                          ${(() => { const paid = paidForExpenses(exps); const pend = eAmt - paid; return `<span style="background:#dcfce7;color:#166534;border-radius:5px;padding:0 6px;font-size:.68rem;font-weight:700" title="Paid via bank">💰 Paid: ${formatCurrency(paid)}</span>${pend > 0.005 ? `<span style="background:#fef3c7;color:#92400e;border-radius:5px;padding:0 6px;font-size:.68rem;font-weight:700" title="Still pending">⏳ Due: ${formatCurrency(pend)}</span>` : `<span style="background:#dcfce7;color:#166534;border-radius:5px;padding:0 6px;font-size:.68rem;font-weight:700">✓ Fully paid</span>`}`; })()}
                           <svg id="chev-${eId}" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"
                                style="width:14px;height:14px;color:var(--text-muted);transition:transform .2s;flex-shrink:0;transform:${eOpen?'rotate(180deg)':''}"
                             <path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/>
@@ -4115,7 +4169,7 @@
               ${dL1 ? `<span title="Approved by Manager, awaiting HR" style="background:#ede9fe;color:#5b21b6;border-radius:6px;padding:1px 7px;font-size:.72rem;font-weight:700">🔍 ${dL1} In Review (HR)</span>` : ''}
               <span style="background:#dcfce7;color:#166534;border-radius:6px;padding:1px 7px;font-size:.72rem;font-weight:700" title="Sum of approved expenses">✅ Approved: ${formatCurrency(dAppr)}</span>
               <span style="background:var(--bg-2);color:var(--text-muted);border-radius:6px;padding:1px 7px;font-size:.72rem;font-weight:700" title="Sum of pending + in-review + approved (excludes rejected)">Overall: ${formatCurrency(dOverall)}</span>
-              <span style="background:#dcfce7;color:#166534;border-radius:6px;padding:1px 7px;font-size:.72rem;font-weight:700" title="Paid via bank">💰 Paid: ${formatCurrency(dPaid)}</span>${(dOverall - dPaid) > 0.005 ? `<span style="background:#fef3c7;color:#92400e;border-radius:6px;padding:1px 7px;font-size:.72rem;font-weight:700" title="Still pending">⏳ Pending: ${formatCurrency(dOverall - dPaid)}</span>` : `<span style="background:#dcfce7;color:#166534;border-radius:6px;padding:1px 7px;font-size:.72rem;font-weight:700">✓ Fully paid</span>`}
+              <span style="background:#dcfce7;color:#166534;border-radius:6px;padding:1px 7px;font-size:.72rem;font-weight:700" title="Paid via bank">💰 Paid: ${formatCurrency(dPaid)}</span>${(dOverall - dPaid) > 0.005 ? `<span style="background:#fef3c7;color:#92400e;border-radius:6px;padding:1px 7px;font-size:.72rem;font-weight:700" title="Still pending">⏳ Due: ${formatCurrency(dOverall - dPaid)}</span>` : `<span style="background:#dcfce7;color:#166534;border-radius:6px;padding:1px 7px;font-size:.72rem;font-weight:700">✓ Fully paid</span>`}
             </div>
             <svg id="chev-${dId}" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"
                  style="width:20px;height:20px;flex-shrink:0;transition:transform .2s;transform:${dOpen?'rotate(180deg)':'rotate(0deg)'};color:var(--text-muted)">
@@ -4211,7 +4265,7 @@
                 <span style="font-weight:700;font-size:.85rem">${escHtml(g.mY)}</span>
                 <span style="background:var(--primary);color:white;border-radius:5px;padding:0 7px;font-size:.68rem;font-weight:700">${escHtml(g.cT)}</span>
                 <span style="font-size:.72rem;color:var(--text-muted)">${g.entries.length} entries · ${formatCurrency(gTotal)}</span>
-                <span style="background:#dcfce7;color:#166534;border-radius:5px;padding:0 7px;font-size:.68rem;font-weight:700" title="Paid via bank">💰 Paid: ${formatCurrency(gPaid)}</span>${gPend > 0.005 ? `<span style="background:#fef3c7;color:#92400e;border-radius:5px;padding:0 7px;font-size:.68rem;font-weight:700" title="Still pending">⏳ Pending: ${formatCurrency(gPend)}</span>` : `<span style="background:#dcfce7;color:#166534;border-radius:5px;padding:0 7px;font-size:.68rem;font-weight:700">✓ Fully paid</span>`}
+                <span style="background:#dcfce7;color:#166534;border-radius:5px;padding:0 7px;font-size:.68rem;font-weight:700" title="Paid via bank">💰 Paid: ${formatCurrency(gPaid)}</span>${gPend > 0.005 ? `<span style="background:#fef3c7;color:#92400e;border-radius:5px;padding:0 7px;font-size:.68rem;font-weight:700" title="Still pending">⏳ Due: ${formatCurrency(gPend)}</span>` : `<span style="background:#dcfce7;color:#166534;border-radius:5px;padding:0 7px;font-size:.68rem;font-weight:700">✓ Fully paid</span>`}
               </div>
               <div style="display:flex;gap:.3rem;flex-wrap:wrap">
                 <button class="btn btn-primary btn-sm" style="font-size:.7rem;padding:.2rem .55rem;border-radius:7px;display:none" onclick="approveEntireCycle('${safeKey}',this)">✓ Approve Cycle</button>

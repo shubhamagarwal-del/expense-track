@@ -43,18 +43,24 @@ export default async function handler(req, res) {
   // ── GET ─────────────────────────────────────────────────────────
   if (req.method === 'GET') {
     const { data: profile } = await supabaseAdmin.from('users').select('role').eq('id', user.id).single();
-    const ALLOWED_VIEW_ROLES = ['admin', 'super_admin', 'hr', 'audit'];
-    if (!profile || !ALLOWED_VIEW_ROLES.includes(profile.role)) {
-      return res.status(403).json({ error: 'Not authorised' });
-    }
+    if (!profile) return res.status(403).json({ error: 'Not authorised' });
 
-    // ?payments=1 → all recorded cycle payments (for Paid/Pending display)
+    // ?payments=1 → recorded cycle payments (for Paid/Pending display).
+    // Admin-side roles get everyone's; an employee only ever gets their own.
     if (req.query?.payments) {
-      const { data, error } = await supabaseAdmin
+      const ALLOWED_VIEW_ROLES = ['admin', 'super_admin', 'hr', 'audit'];
+      let q = supabaseAdmin
         .from('cycle_payments')
         .select('user_id, month_year, cycle_num, amount_paid, utr_number, bene_name, payment_date');
+      if (!ALLOWED_VIEW_ROLES.includes(profile.role)) q = q.eq('user_id', user.id);
+      const { data, error } = await q;
       if (error) return res.status(500).json({ error: error.message });
       return res.status(200).json({ payments: data || [] });
+    }
+
+    const ALLOWED_VIEW_ROLES = ['admin', 'super_admin', 'hr', 'audit'];
+    if (!ALLOWED_VIEW_ROLES.includes(profile.role)) {
+      return res.status(403).json({ error: 'Not authorised' });
     }
 
     // ?ids=… → receipt-view audit lookup

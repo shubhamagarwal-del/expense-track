@@ -745,30 +745,54 @@
     renderGrid(filtered);
   }
 
+  const GRID_BATCH_SIZE = 30;
+  let gridFiltered = [];
+  let gridRendered = 0;
+  let gridObserver = null;
+
+  function userCardHtml(u) {
+    const color = ROLE_COLOR[u.role] || '#6366f1';
+    const initial = (u.name?.[0] || u.email?.[0] || '?').toUpperCase();
+    return `
+      <div class="user-card" onclick="openModal('${u.id}')">
+        <div class="user-card-avatar" style="background:${color}18;color:${color}">${initial}</div>
+        <div class="user-card-info">
+          <div class="user-card-name">${escHtml(u.name || '—')}</div>
+          <div class="user-card-sub">📧 ${escHtml(u.email)}</div>
+          <div class="user-card-sub">
+            ${u.emp_no ? `🆔 ${escHtml(u.emp_no)}` : ''}
+            ${u.phone ? ` &nbsp;📱 ${escHtml(u.phone)}` : ''}
+          </div>
+          ${u.site_name || u.department ? `<div class="user-card-sub">📍 ${escHtml(u.site_name || '')}${u.site_name && u.department ? ' · ' : ''}${escHtml(u.department || '')}</div>` : ''}
+        </div>
+        <span class="user-card-badge" style="background:${color}18;color:${color}">${ROLE_LABEL[u.role] || u.role}</span>
+      </div>`;
+  }
+
   function renderGrid(users) {
     const grid = document.getElementById('user-grid');
+    gridObserver?.disconnect();
     if (!users.length) {
       grid.innerHTML = `<div style="grid-column:1/-1;text-align:center;padding:3rem;color:var(--text-muted)">No users found.</div>`;
       return;
     }
-    grid.innerHTML = users.map(u => {
-      const color = ROLE_COLOR[u.role] || '#6366f1';
-      const initial = (u.name?.[0] || u.email?.[0] || '?').toUpperCase();
-      return `
-        <div class="user-card" onclick="openModal('${u.id}')">
-          <div class="user-card-avatar" style="background:${color}18;color:${color}">${initial}</div>
-          <div class="user-card-info">
-            <div class="user-card-name">${escHtml(u.name || '—')}</div>
-            <div class="user-card-sub">📧 ${escHtml(u.email)}</div>
-            <div class="user-card-sub">
-              ${u.emp_no ? `🆔 ${escHtml(u.emp_no)}` : ''}
-              ${u.phone ? ` &nbsp;📱 ${escHtml(u.phone)}` : ''}
-            </div>
-            ${u.site_name || u.department ? `<div class="user-card-sub">📍 ${escHtml(u.site_name || '')}${u.site_name && u.department ? ' · ' : ''}${escHtml(u.department || '')}</div>` : ''}
-          </div>
-          <span class="user-card-badge" style="background:${color}18;color:${color}">${ROLE_LABEL[u.role] || u.role}</span>
-        </div>`;
-    }).join('');
+    gridFiltered = users;
+    gridRendered = 0;
+    grid.innerHTML = '<div id="grid-sentinel" style="grid-column:1/-1;height:1px"></div>';
+    loadMoreUsers();
+
+    gridObserver = new IntersectionObserver(entries => {
+      if (entries[0].isIntersecting) loadMoreUsers();
+    });
+    gridObserver.observe(document.getElementById('grid-sentinel'));
+  }
+
+  function loadMoreUsers() {
+    if (gridRendered >= gridFiltered.length) return;
+    const next = gridFiltered.slice(gridRendered, gridRendered + GRID_BATCH_SIZE);
+    const html = next.map(userCardHtml).join('');
+    document.getElementById('grid-sentinel')?.insertAdjacentHTML('beforebegin', html);
+    gridRendered += next.length;
   }
 
   // ── Search ────────────────────────────────────────────────
