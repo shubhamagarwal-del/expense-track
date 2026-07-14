@@ -489,8 +489,8 @@
     .preview-thumb:hover img { transform: scale(1.04); }
     /* Lightbox fade */
     #_rcpt-lightbox { animation: fadeIn .18s ease both; }
-    .site-ac-list { display:none; position:absolute; z-index:999; top:100%; left:0; right:0;
-      background:#fff; border:1px solid var(--border); border-radius:10px;
+    .site-ac-list { display:none; position:absolute; z-index:2000; top:100%; left:0; right:0;
+      background:#fff; opacity:1; border:1px solid var(--border); border-radius:10px;
       max-height:230px; overflow-y:auto; box-shadow:0 4px 18px rgba(0,0,0,.13); margin-top:2px; }
     .site-ac-item { padding:.55rem .8rem; cursor:pointer; font-size:.83rem;
       border-bottom:1px solid #f0f0f0; transition:background .1s; }
@@ -683,7 +683,7 @@
   <script>
     let currentUser = null;
     let expensesForMonth = [];
-    let currentDayPendingIds = [];  // IDs of all pending entries loaded when panel was opened
+    let currentDayPendingIds = [];  // IDs of all pending/rejected entries loaded when panel was opened (being replaced on save)
     const _rowNewFiles = {};        // rowId → File[] for new files picked per row
 
     // Configurable per-category expense limits (null = no limit)
@@ -709,9 +709,18 @@
       currentUser = profile;
       populateSidebar(profile);
 
-      const now = new Date();
-      document.getElementById('sheet-month').value = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+      // Deep link from Expense History's "Fix and resubmit" link — jump
+      // straight to that date's entry panel instead of the current month.
+      const editDateParam = new URLSearchParams(window.location.search).get('editDate');
+      const editDate = editDateParam ? new Date(editDateParam) : null;
+      const sheetDate = editDate && !isNaN(editDate) ? editDate : new Date();
+
+      document.getElementById('sheet-month').value = `${sheetDate.getFullYear()}-${String(sheetDate.getMonth() + 1).padStart(2, '0')}`;
+      if (editDate && !isNaN(editDate)) {
+        document.getElementById('sheet-cycle').value = editDate.getDate() <= 15 ? '1' : '2';
+      }
       await renderSheet();
+      if (editDate && !isNaN(editDate)) openEntryPanel(editDate.toISOString());
 
       // Real-time: refresh sheet when manager approves/rejects any of this user's expenses
       db.channel(`rt-expenses-${currentUser.id}`)
@@ -755,6 +764,7 @@
 
       let cycleTotal = 0;
       expensesForMonth.forEach(e => {
+        if (e.status === 'deleted') return;
         const d = new Date(e.created_at);
         if (d.getDate() >= startDay && d.getDate() <= endDay) {
           filledDays.add(d.toDateString());
@@ -829,7 +839,9 @@
       for (let i = startDay; i <= endDay; i++) {
         const dayDate = new Date(year, month - 1, i);
         const dayStr = dayDate.toDateString();
-        const dayExpenses = expensesForMonth.filter(e => new Date(e.created_at).toDateString() === dayStr);
+        // Deleted entries don't count toward a day's fill status, approval
+        // status, or total — they're gone, only visible in Expense History.
+        const dayExpenses = expensesForMonth.filter(e => new Date(e.created_at).toDateString() === dayStr && e.status !== 'deleted');
         const isFilled = dayExpenses.length > 0;
 
         const card = document.createElement('div');
@@ -1044,15 +1056,24 @@
         card.querySelectorAll('input, select, textarea').forEach(el => el.disabled = true);
         const delBtn = card.querySelector(`button[onclick="removeRow('${rowId}')"]`);
         if (delBtn) delBtn.style.display = 'none';
+        const clearBtn = card.querySelector('.row-site-clear');
+        if (clearBtn) clearBtn.style.display = 'none';
         const st = data.status || '';
         const badge = document.createElement('span');
         const styles = st === 'approved'    ? ['#d1fae5','#065f46','✓ Approved']
                      : st === 'l1_approved' ? ['#dbeafe','#1e3a8a','● In Review']
                      : st === 'rejected' || st === 'l1_rejected' ? ['#fee2e2','#991b1b','✕ Rejected']
+                     : st === 'deleted' ? ['#fee2e2','#991b1b','🗑️ Deleted']
                      : ['#f3f4f6','#6b7280','○ Locked'];
         badge.style.cssText = `display:inline-block;font-size:.65rem;font-weight:700;padding:.2rem .65rem;border-radius:20px;background:${styles[0]};color:${styles[1]}`;
         badge.textContent = styles[2];
         card.querySelector('.flex.justify-between.items-center.mb-3')?.append(badge);
+        if (st === 'deleted' && data.deleted_reason) {
+          const reasonEl = document.createElement('div');
+          reasonEl.style.cssText = 'background:#fee2e2;color:#991b1b;font-size:.75rem;border-radius:6px;padding:.4rem .6rem;margin-top:.5rem';
+          reasonEl.innerHTML = `<strong>Deleted${data.deleted_by_name ? ' by ' + data.deleted_by_name : ''}:</strong> ${data.deleted_reason}`;
+          card.appendChild(reasonEl);
+        }
       }
       calcPanelTotal();
     }
@@ -1299,7 +1320,7 @@
     function parseExpenseToRowData(exp) {
       const parts = (exp.description || '').split('|');
       const type = parts[0];
-      const row = { id: exp.id, amount: exp.amount, category: exp.category, receipt_url: exp.receipt_url, status: exp.status };
+      const row = { id: exp.id, amount: exp.amount, category: exp.category, receipt_url: exp.receipt_url, status: exp.status, deleted_reason: exp.deleted_reason, deleted_by_name: exp.deleted_by_name };
 
       if (type === 'TRAVEL_BUS' || type === 'TRAVEL_TAXI' || type === 'TRAVEL_TRAIN' || type === 'TRAVEL_FLIGHT') {
         row.category  = 'Travel';
@@ -1351,15 +1372,21 @@
       container.innerHTML = '';
 
       const dayStr = date.toDateString();
-      const dayExpenses = expensesForMonth.filter(e => new Date(e.created_at).toDateString() === dayStr);
-      const lockedExp  = dayExpenses.filter(e => e.status !== 'pending');
-      const editableExp = dayExpenses.filter(e => e.status === 'pending');
+      // Deleted entries aren't shown here at all — nothing to edit, and locking
+      // them would just be confusing. They're only visible in the Expense
+      // History "Deleted" tab.
+      const dayExpenses = expensesForMonth.filter(e => new Date(e.created_at).toDateString() === dayStr && e.status !== 'deleted');
+      // Rejected entries can be edited and resubmitted (fixing and re-saving
+      // replaces the rejected row with a fresh pending one) — only entries
+      // actively in the approval pipeline stay locked.
+      const lockedExp  = dayExpenses.filter(e => !['pending', 'rejected', 'l1_rejected'].includes(e.status));
+      const editableExp = dayExpenses.filter(e => ['pending', 'rejected', 'l1_rejected'].includes(e.status));
 
-      // Locked entries (approved / in-review / rejected) — shown read-only at top
+      // Locked entries (approved / in-review / audit stages) — shown read-only at top
       if (lockedExp.length > 0) {
         const notice = document.createElement('div');
         notice.style.cssText = 'background:#eff6ff;border:1px solid #bfdbfe;border-radius:12px;padding:.75rem 1rem;margin-bottom:1rem;font-size:.82rem;color:#1e40af;font-weight:600';
-        notice.innerHTML = `🔒 ${lockedExp.length} entr${lockedExp.length > 1 ? 'ies' : 'y'} locked — reviewed by manager and cannot be edited.`;
+        notice.innerHTML = `🔒 ${lockedExp.length} entr${lockedExp.length > 1 ? 'ies' : 'y'} locked — already processed and cannot be edited here.`;
         container.appendChild(notice);
         lockedExp.forEach(exp => addRow(parseExpenseToRowData(exp), true));
       }
@@ -1524,7 +1551,7 @@
     function siteAcShow(inp) {
       markSiteValidity(inp);
       const q = inp.value.trim().toLowerCase();
-      const list = inp.nextElementSibling;
+      const list = inp.closest('.site-ac-wrap').querySelector('.site-ac-list');
       if (!q) { list.style.display = 'none'; return; }
       const hits = SITE_DATA.filter(s =>
         s.name.toLowerCase().includes(q) ||
@@ -1566,7 +1593,7 @@
 
     document.addEventListener('keydown', function(e) {
       if (!e.target.classList.contains('row-site')) return;
-      const list = e.target.nextElementSibling;
+      const list = e.target.closest('.site-ac-wrap').querySelector('.site-ac-list');
       if (list.style.display === 'none') return;
       const items = list.querySelectorAll('.site-ac-item');
       const focused = list.querySelector('.ac-focus');

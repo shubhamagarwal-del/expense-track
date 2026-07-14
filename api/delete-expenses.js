@@ -48,20 +48,24 @@ export default async function handler(req, res) {
   }
 
   const { ids, date_start, date_end } = req.body;
+  // Pending entries are being replaced by their edited version; rejected
+  // entries are being resubmitted (fixed and re-saved as a fresh pending row) —
+  // both are the user's own, not-yet-approved work, safe to self-clean.
+  const SELF_CLEANABLE_STATUSES = ['pending', 'rejected', 'l1_rejected'];
 
-  // Pass 1 — delete by specific UUIDs (user's own pending only)
+  // Pass 1 — delete by specific UUIDs (user's own pending/rejected only)
   if (Array.isArray(ids) && ids.length > 0) {
     await supabaseAdmin.from('expenses').delete()
       .in('id', ids)
       .eq('user_id', user.id)
-      .eq('status', 'pending');
+      .in('status', SELF_CLEANABLE_STATUSES);
   }
 
-  // Pass 2 — date-range sweep for any orphan pending rows that day
+  // Pass 2 — date-range sweep for any orphan pending/rejected rows that day
   if (date_start && date_end) {
     await supabaseAdmin.from('expenses').delete()
       .eq('user_id', user.id)
-      .eq('status', 'pending')
+      .in('status', SELF_CLEANABLE_STATUSES)
       .gte('created_at', date_start)
       .lte('created_at', date_end);
   }

@@ -589,6 +589,7 @@
             <button class="filter-tab" id="btn-f-approved" onclick="setListFilter('approved')" style="padding:.5rem 1rem;border-radius:8px;font-weight:700;flex:1;min-width:80px">Approved</button>
             <button class="filter-tab" id="btn-f-pending" onclick="setListFilter('pending')" style="padding:.5rem 1rem;border-radius:8px;font-weight:700;flex:1;min-width:80px">Pending</button>
             <button class="filter-tab" id="btn-f-rejected" onclick="setListFilter('rejected')" style="padding:.5rem 1rem;border-radius:8px;font-weight:700;flex:1;min-width:80px">Rejected</button>
+            <button class="filter-tab" id="btn-f-deleted" onclick="setListFilter('deleted')" style="padding:.5rem 1rem;border-radius:8px;font-weight:700;flex:1;min-width:80px">Deleted</button>
           </div>
           <button id="btn-clear-cycle" onclick="clearCycleFilter()" style="display:none;background:#6366f1;color:white;border:none;border-radius:10px;padding:.5rem .875rem;font-size:.78rem;font-weight:700;cursor:pointer;white-space:nowrap">✕ Clear Filter</button>
         </div>
@@ -975,7 +976,7 @@
       // Filter by status tab
       const empRole = !['admin','super_admin','hr','audit'].includes(currentProfile.role);
       if (currentListFilter === 'rejected') {
-        filtered = filtered.filter(e => e.status === 'rejected' || e.status === 'l1_rejected' || e.status === 'deleted');
+        filtered = filtered.filter(e => e.status === 'rejected' || e.status === 'l1_rejected');
       } else if (currentListFilter === 'approved') {
         // "Approved" = any stage of approval (employee & admin both)
         filtered = filtered.filter(e => ['approved','hr_approved','audit_cleared','audit_review'].includes(e.status));
@@ -1436,6 +1437,7 @@
         <button class="filter-tab" id="btn-f-l1_approved"       onclick="setListFilter('l1_approved')">In Review</button>
         <button class="filter-tab" id="btn-f-approved"          onclick="setListFilter('approved')">Approved</button>
         <button class="filter-tab" id="btn-f-rejected"          onclick="setListFilter('rejected')">Rejected</button>
+        <button class="filter-tab" id="btn-f-deleted"           onclick="setListFilter('deleted')">Deleted</button>
       </div>
 
       <!-- Desktop table -->
@@ -1800,7 +1802,7 @@
                                     ${(currentProfile.role==='audit' && e.status==='hr_approved') ? `
                                       <button onclick="auditClearExpense('${e.id}')" title="Audit Clear" style="background:#14532d;color:#fff;border:none;border-radius:10px;padding:.45rem 1rem;cursor:pointer;font-size:.82rem;font-weight:700;white-space:nowrap;box-shadow:0 2px 8px rgba(20,83,45,0.3);transition:all .15s" onmouseover="this.style.background='#0f4423';this.style.transform='translateY(-1px)'" onmouseout="this.style.background='#14532d';this.style.transform=''">🔍 Clear</button>
                                     ` : ''}
-                                    <button onclick="deleteExpense('${e.id}')" title="Delete" style="background:none;border:1px solid #fecaca;border-radius:8px;padding:.4rem .6rem;cursor:pointer;font-size:.85rem;color:#dc2626;transition:background .15s" onmouseover="this.style.background='#fef2f2'" onmouseout="this.style.background='none'">🗑️</button>
+                                    ${e.status !== 'deleted' ? `<button onclick="deleteExpense('${e.id}')" title="Delete" style="background:none;border:1px solid #fecaca;border-radius:8px;padding:.4rem .6rem;cursor:pointer;font-size:.85rem;color:#dc2626;transition:background .15s" onmouseover="this.style.background='#fef2f2'" onmouseout="this.style.background='none'">🗑️</button>` : ''}
                                   </div>
                                 </td>
                               </tr>`;
@@ -1976,7 +1978,7 @@
 
       if (currentListFilter !== 'all') {
         if (currentListFilter === 'rejected') {
-          filtered = filtered.filter(e => e.status === 'rejected' || e.status === 'l1_rejected' || e.status === 'deleted');
+          filtered = filtered.filter(e => e.status === 'rejected' || e.status === 'l1_rejected');
         } else if (currentListFilter === 'approved') {
           filtered = filtered.filter(e => ['approved','hr_approved','audit_cleared','audit_review'].includes(e.status));
         } else {
@@ -2349,6 +2351,7 @@
         ${parseDescForDisplay(e.description)}
         ${e.rejection_reason ? `<div style="color: var(--primary); font-size: 0.75rem; margin-top: 0.4rem; background: var(--bg-2); padding: 0.4rem; border-radius: 4px;"><strong>Admin Comment:</strong> ${escHtml(e.rejection_reason)}</div>` : ''}
         ${e.status === 'deleted' ? `<div style="color: #991b1b; font-size: 0.75rem; margin-top: 0.4rem; background: #fee2e2; padding: 0.4rem; border-radius: 4px;"><strong>🗑️ Deleted${e.deleted_by_name ? ' by ' + escHtml(e.deleted_by_name) : ''}:</strong> ${escHtml(e.deleted_reason || 'No reason given')}</div>` : ''}
+        ${(e.status === 'rejected' || e.status === 'l1_rejected') ? `<a href="add-expense.html?editDate=${encodeURIComponent(e.created_at)}" style="display:inline-block;margin-top:.4rem;font-size:.75rem;font-weight:700;color:var(--primary)">✎ Fix and resubmit →</a>` : ''}
       </td>
       <td class="td-amount">
         ${amtChanged ? `<div style="text-decoration:line-through;color:var(--text-muted);font-size:.78rem">${formatCurrency(e.amount)}</div>` : ''}
@@ -2394,7 +2397,7 @@
           <button onclick="deleteExpense('${e.id}')" class="btn btn-secondary btn-sm" style="padding: 0.2rem 0.5rem; font-size: 0.75rem; display:block; width: 100%; color:#dc2626;border-color:#fecaca">🗑️ Delete</button>
         ` : `
           <button onclick="promptAddComment('${e.id}')" class="btn btn-secondary btn-sm" style="padding: 0.2rem 0.5rem; font-size: 0.75rem; margin-bottom: 0.2rem; display:block; width: 100%;">💬 Edit Comment</button>
-          <button onclick="deleteExpense('${e.id}')" class="btn btn-secondary btn-sm" style="padding: 0.2rem 0.5rem; font-size: 0.75rem; display:block; width: 100%; color:#dc2626;border-color:#fecaca">🗑️ Delete</button>
+          ${e.status !== 'deleted' ? `<button onclick="deleteExpense('${e.id}')" class="btn btn-secondary btn-sm" style="padding: 0.2rem 0.5rem; font-size: 0.75rem; display:block; width: 100%; color:#dc2626;border-color:#fecaca">🗑️ Delete</button>` : ''}
         `}
       </td>
     </tr>`;
@@ -2424,6 +2427,7 @@
       <div class="expense-card-desc">${parseDescForDisplay(e.description)}</div>
       ${e.rejection_reason ? `<div class="expense-card-desc" style="color: #dc2626; background: #fee2e2; padding: 0.5rem; border-radius: 4px; margin-top: 0.5rem;"><strong>Rejected:</strong> ${escHtml(e.rejection_reason)}</div>` : ''}
       ${e.status === 'deleted' ? `<div class="expense-card-desc" style="color: #991b1b; background: #fee2e2; padding: 0.5rem; border-radius: 4px; margin-top: 0.5rem;"><strong>🗑️ Deleted${e.deleted_by_name ? ' by ' + escHtml(e.deleted_by_name) : ''}:</strong> ${escHtml(e.deleted_reason || 'No reason given')}</div>` : ''}
+      ${(e.status === 'rejected' || e.status === 'l1_rejected') ? `<a href="add-expense.html?editDate=${encodeURIComponent(e.created_at)}" style="display:inline-block;margin-top:.5rem;font-size:.78rem;font-weight:700;color:var(--primary)">✎ Fix and resubmit →</a>` : ''}
       ${receiptCardFooter(e)}
     </div>`;
     }
@@ -2443,7 +2447,7 @@
       const showL1Btn     = currentProfile.role === 'admin' && e.status === 'pending';
       const showHRBtn     = currentProfile.role === 'hr' && (e.status === 'l1_approved' || e.status === 'audit_review');
       const showAuditBtns = currentProfile.role === 'audit' && e.status === 'hr_approved';
-      const showL2Btn     = currentProfile.role === 'super_admin' && ['pending','l1_approved','hr_approved','audit_review','l1_rejected','rejected'].includes(e.status);
+      const showL2Btn     = currentProfile.role === 'super_admin' && ['pending','l1_approved','hr_approved','audit_review'].includes(e.status);
 
       const needsAction = showL1Btn || showHRBtn || showAuditBtns || showL2Btn;
       const actionBanner = needsAction ? (() => {
@@ -2503,7 +2507,7 @@
         ` : ''}
         ${showL2Btn ? `<button onclick="openApprovalModal('${e.id}')" class="btn btn-primary btn-sm" style="grid-column:1/-1;background:#7c3aed;border-color:#7c3aed;font-size:.82rem;padding:.35rem" title="Approve this expense as Super Admin">✅ Super Admin — Approve</button>` : ''}
         <button onclick="openCommentModal('${e.id}')" class="btn btn-secondary btn-sm" title="Add a comment">💬 Comment</button>
-        <button onclick="deleteExpense('${e.id}')" class="btn btn-secondary btn-sm" style="color:#dc2626;border-color:#fecaca" title="Permanently delete this expense">🗑️ Delete</button>
+        ${e.status !== 'deleted' ? `<button onclick="deleteExpense('${e.id}')" class="btn btn-secondary btn-sm" style="color:#dc2626;border-color:#fecaca" title="Permanently delete this expense">🗑️ Delete</button>` : ''}
       </div>
     </div>`;
     }
@@ -2841,27 +2845,38 @@
       await updateExpenseStatus(id, 'rejected', reason.trim());
     }
 
+    // Every caller goes through the server API (service-role key) instead of a
+    // direct client update — a direct update is silently blocked by RLS
+    // whenever an admin acts on someone else's expense (the "own pending only"
+    // policy lets the write appear to succeed while nothing actually changes).
+    // - status 'approved'/'rejected' → real state transition, via approve-expense
+    // - status === expense's current status → comment-only edit, via receipt-url
     async function updateExpenseStatus(id, status, reason = null) {
       try {
-        const updateData = { status };
-        if (reason) updateData.rejection_reason = reason;
-
-        const { error } = await db
-          .from('expenses')
-          .update(updateData)
-          .eq('id', id);
-
-        if (error) throw error;
-
-        // Send notification
         const expense = allExpensesFetched.find(e => e.id === id);
+        const token = (await db.auth.getSession()).data.session?.access_token;
+        const headers = { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` };
+        let res;
+        if (status === 'approved' || status === 'rejected') {
+          res = await fetch('/api/approve-expense', {
+            method: 'POST', headers,
+            body: JSON.stringify({ expense_id: id, action: status, remark: reason || undefined }),
+          });
+        } else {
+          res = await fetch('/api/receipt-url', {
+            method: 'POST', headers,
+            body: JSON.stringify({ expense_id: id, admin_comment: reason || '' }),
+          });
+        }
+        const body = await res.json();
+        if (!res.ok) throw new Error(body.error || 'Failed to update status');
+
         if (expense && expense.users?.email) {
           notifyUser(expense.users.email, status, reason);
         }
 
         showMessage(`Expense ${status} successfully.`, 'success');
 
-        // Reload admin expenses to update the view
         const from = document.getElementById('f-from')?.value || undefined;
         const to = document.getElementById('f-to')?.value || undefined;
         await loadAdminExpenses(from, to);
@@ -3969,24 +3984,48 @@
     async function bulkStatusUpdate(status) {
       const checked = document.querySelectorAll('.row-checkbox:checked');
       const ids = Array.from(checked).map(cb => cb.value);
+      if (!ids.length) return;
 
       let reason = null;
       if (status === 'rejected') {
         reason = prompt("Please enter a reason for rejection (applied to all selected):");
         if (reason === null) return;
+        if (!reason.trim()) { showMessage('A rejection reason is required.', 'error'); return; }
       }
 
       if (!confirm(`Are you sure you want to ${status} ${ids.length} expenses?`)) return;
 
       try {
-        const { error } = await db
-          .from('expenses')
-          .update({ status, rejection_reason: reason })
-          .in('id', ids);
+        const token = (await db.auth.getSession()).data.session?.access_token;
+        const headers = { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` };
+        let succeeded = ids.length, failed = 0;
 
-        if (error) throw error;
+        if (status === 'approved') {
+          // Server-side bulk mode — one call, role-aware eligibility.
+          const res = await fetch('/api/approve-expense', {
+            method: 'POST', headers, body: JSON.stringify({ expense_ids: ids }),
+          });
+          const body = await res.json();
+          if (!res.ok) throw new Error(body.error || 'Bulk approve failed');
+          succeeded = body.approved ?? ids.length;
+          failed = ids.length - succeeded;
+        } else {
+          // No bulk-reject endpoint — reject each individually via the
+          // already-reliable single-expense API, in parallel.
+          const results = await Promise.allSettled(ids.map(id =>
+            fetch('/api/approve-expense', {
+              method: 'POST', headers,
+              body: JSON.stringify({ expense_id: id, action: 'rejected', remark: reason.trim() }),
+            }).then(async r => {
+              const b = await r.json();
+              if (!r.ok) throw new Error(b.error || 'Failed');
+            })
+          ));
+          succeeded = results.filter(r => r.status === 'fulfilled').length;
+          failed = results.length - succeeded;
+        }
 
-        showMessage(`Successfully ${status} ${ids.length} items.`, 'success');
+        showMessage(failed ? `${succeeded} ${status}, ${failed} failed.` : `Successfully ${status} ${succeeded} items.`, failed ? 'error' : 'success');
         document.getElementById('select-all').checked = false;
         updateBulkBar();
         loadAdminExpenses();
@@ -4392,7 +4431,7 @@
                     const showL1  = currentProfile.role==='admin' && e.status==='pending';
                     const showHR  = currentProfile.role==='hr' && (e.status==='l1_approved'||e.status==='audit_review');
                     const showAud = currentProfile.role==='audit' && e.status==='hr_approved';
-                    const showL2  = currentProfile.role==='super_admin' && ['pending','l1_approved','hr_approved','audit_review','l1_rejected','rejected'].includes(e.status);
+                    const showL2  = currentProfile.role==='super_admin' && ['pending','l1_approved','hr_approved','audit_review'].includes(e.status);
                     return `
                     <tr style="border-top:1px solid var(--border)">
                       <td style="padding:.5rem .75rem;white-space:nowrap;color:var(--text-muted)">${new Date(e.created_at).toLocaleDateString('en-IN',{day:'2-digit',month:'short'})}</td>
@@ -4426,7 +4465,7 @@
                           <button onclick="openAuditFlagModal('${e.id}')" title="Send back to HR for re-review, with a reason" style="background:#fffbeb;color:#92400e;border:1px solid #f59e0b;border-radius:6px;padding:.3rem .5rem;cursor:pointer;font-size:.75rem;font-weight:600;transition:all .15s" onmouseover="this.style.background='#fef3c7'" onmouseout="this.style.background='#fffbeb'">⚑ Flag Review</button>`:''}
                           ${showL2?`<button onclick="openApprovalModal('${e.id}')" title="Super Admin override — approve straight through, skipping any remaining stages" style="background:#7c3aed;color:#fff;border:none;border-radius:6px;padding:.3rem .6rem;cursor:pointer;font-size:.78rem;font-weight:700;white-space:nowrap;transition:all .15s" onmouseover="this.style.background='#6d28d9'" onmouseout="this.style.background='#7c3aed'">⚡ Override Approve</button>
                           <button onclick="promptRejectExpense('${e.id}')" title="Reject this expense" style="background:none;border:1px solid #fecaca;border-radius:6px;padding:.3rem .5rem;cursor:pointer;font-size:.72rem;font-weight:600;color:#dc2626;transition:background .15s" onmouseover="this.style.background='#fef2f2'" onmouseout="this.style.background='none'">✕ Reject</button>`:''}
-                          <button onclick="deleteExpense('${e.id}')" title="Permanently delete this expense" style="background:none;border:none;border-radius:6px;padding:.3rem .5rem;cursor:pointer;font-size:.72rem;font-weight:600;color:#dc2626;transition:background .15s" onmouseover="this.style.background='#fef2f2'" onmouseout="this.style.background='none'">🗑️ Delete</button>
+                          ${e.status !== 'deleted' ? `<button onclick="deleteExpense('${e.id}')" title="Permanently delete this expense" style="background:none;border:none;border-radius:6px;padding:.3rem .5rem;cursor:pointer;font-size:.72rem;font-weight:600;color:#dc2626;transition:background .15s" onmouseover="this.style.background='#fef2f2'" onmouseout="this.style.background='none'">🗑️ Delete</button>` : ''}
                         </div>
                       </td>
                     </tr>`;

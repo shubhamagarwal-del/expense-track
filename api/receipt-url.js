@@ -140,6 +140,19 @@ export default async function handler(req, res) {
       return res.status(200).json({ message: 'OK', count: ids.length });
     }
 
+    // ── POST { expense_id, admin_comment } → add/edit an admin comment without
+    // changing status (admin, super_admin, hr, audit) ──
+    if (req.body?.expense_id && req.body?.admin_comment !== undefined) {
+      const { data: profile } = await supabaseAdmin.from('users').select('role').eq('id', user.id).single();
+      if (!profile || !['admin', 'super_admin', 'hr', 'audit'].includes(profile.role)) {
+        return res.status(403).json({ error: 'Not authorised' });
+      }
+      const { error } = await supabaseAdmin
+        .from('expenses').update({ rejection_reason: req.body.admin_comment }).eq('id', req.body.expense_id);
+      if (error) return res.status(500).json({ error: error.message });
+      return res.status(200).json({ message: 'Comment saved' });
+    }
+
     // ── POST { expense_id, receipt_url } → attach/replace a receipt (super_admin, hr) ──
     if (req.body?.expense_id && req.body?.receipt_url) {
       const { data: profile } = await supabaseAdmin.from('users').select('role').eq('id', user.id).single();
