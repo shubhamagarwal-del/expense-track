@@ -45,6 +45,18 @@ export default async function handler(req, res) {
     const { data: profile } = await supabaseAdmin.from('users').select('role').eq('id', user.id).single();
     if (!profile) return res.status(403).json({ error: 'Not authorised' });
 
+    // ?audit_checks=1 → all recorded audit-check rows (Audit / Super Admin manual "checked for payment" marker)
+    if (req.query?.audit_checks) {
+      if (!['audit', 'super_admin'].includes(profile.role)) {
+        return res.status(403).json({ error: 'Not authorised' });
+      }
+      const { data, error } = await supabaseAdmin
+        .from('expense_audit_checks')
+        .select('expense_id, checked_by_name, checked_at');
+      if (error) return res.status(500).json({ error: error.message });
+      return res.status(200).json({ checks: data || [] });
+    }
+
     // ?payments=1 → recorded cycle payments (for Paid/Pending display).
     // Admin-side roles get everyone's; an employee only ever gets their own.
     if (req.query?.payments) {
@@ -96,6 +108,36 @@ export default async function handler(req, res) {
         return res.status(403).json({ error: 'Only a Super Admin or Audit can sync from accounts-2026' });
       }
       return await syncAccounts2026(res, supabaseAdmin);
+    }
+
+    // ── POST { audit_check_ids: [...], checked: true|false } → Audit's manual "checked for payment" marker ──
+    if (Array.isArray(req.body?.audit_check_ids)) {
+      const { data: profile } = await supabaseAdmin.from('users').select('role, name').eq('id', user.id).single();
+      if (!profile || !['audit', 'super_admin'].includes(profile.role)) {
+        return res.status(403).json({ error: 'Not authorised' });
+      }
+      const { audit_check_ids: ids, checked } = req.body;
+      if (!ids.length) return res.status(400).json({ error: 'audit_check_ids array is required' });
+
+      if (checked) {
+        const rows = ids.map(id => ({
+          expense_id: id,
+          checked_by: user.id,
+          checked_by_name: profile.name,
+          checked_at: new Date().toISOString(),
+        }));
+        const { error } = await supabaseAdmin
+          .from('expense_audit_checks')
+          .upsert(rows, { onConflict: 'expense_id' });
+        if (error) return res.status(500).json({ error: error.message });
+      } else {
+        const { error } = await supabaseAdmin
+          .from('expense_audit_checks')
+          .delete()
+          .in('expense_id', ids);
+        if (error) return res.status(500).json({ error: error.message });
+      }
+      return res.status(200).json({ message: 'OK', count: ids.length });
     }
 
     // ── POST { expense_id, receipt_url } → attach/replace a receipt (super_admin, hr) ──

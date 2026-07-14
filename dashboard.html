@@ -629,7 +629,7 @@
       try {
         const token = (await db.auth.getSession()).data.session?.access_token;
         if (!token) return;
-        const res = await fetch('/api/audit-check', { headers: { 'Authorization': `Bearer ${token}` } });
+        const res = await fetch('/api/receipt-url?audit_checks=1', { headers: { 'Authorization': `Bearer ${token}` } });
         if (!res.ok) return;
         const { checks } = await res.json();
         const map = {};
@@ -652,10 +652,10 @@
       if (btn) btn.disabled = true;
       try {
         const token = (await db.auth.getSession()).data.session?.access_token;
-        const res = await fetch('/api/audit-check', {
+        const res = await fetch('/api/receipt-url', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-          body: JSON.stringify({ expense_ids: expenseIds, checked: nextChecked }),
+          body: JSON.stringify({ audit_check_ids: expenseIds, checked: nextChecked }),
         });
         if (!res.ok) throw new Error((await res.json()).error || 'Failed to update');
         expenseIds.forEach(id => {
