@@ -165,10 +165,10 @@ export default async function handler(req, res) {
       return res.status(200).json({ message: 'Receipt updated' });
     }
 
-    // ── POST { expense_id } → record a receipt view (admin only) ──
+    // ── POST { expense_id } → record a receipt view (admin-side roles) ──
     if (req.body?.expense_id) {
       const { data: profile } = await supabaseAdmin.from('users').select('role').eq('id', user.id).single();
-      if (!profile || (profile.role !== 'admin' && profile.role !== 'super_admin')) {
+      if (!profile || !['admin', 'super_admin', 'hr', 'audit'].includes(profile.role)) {
         return res.status(403).json({ error: 'Not authorised' });
       }
       const now = new Date().toISOString();
