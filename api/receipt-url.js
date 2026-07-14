@@ -9,7 +9,7 @@ import { createClient } from '@supabase/supabase-js';
  *   POST { payment_pdf_base64 }   → super_admin: import a bank NEFT/DCR report,
  *                                   match by account no, FIFO-allocate to pending
  *                                   cycles, return a summary (writes cycle_payments)
- *   POST { sync_accounts: true }  → super_admin: pull reimbursed claims from the
+ *   POST { sync_accounts: true }  → super_admin/audit: pull reimbursed claims from the
  *                                   accounts-2026 project's read-only API (writes
  *                                   cycle_payments using their exact month + cycle)
  *   GET  ?ids=id1,id2,…           → receipt-view audit lookup for current admin
@@ -92,8 +92,8 @@ export default async function handler(req, res) {
     // ── POST { sync_accounts: true } → pull reimbursed claims from accounts-2026 ──
     if (req.body?.sync_accounts) {
       const { data: profile } = await supabaseAdmin.from('users').select('role').eq('id', user.id).single();
-      if (!profile || profile.role !== 'super_admin') {
-        return res.status(403).json({ error: 'Only a Super Admin can sync from accounts-2026' });
+      if (!profile || !['super_admin', 'audit'].includes(profile.role)) {
+        return res.status(403).json({ error: 'Only a Super Admin or Audit can sync from accounts-2026' });
       }
       return await syncAccounts2026(res, supabaseAdmin);
     }

@@ -688,10 +688,9 @@
 
     // Configurable per-category expense limits (null = no limit)
     const CATEGORY_LIMITS = {
-      'Regular':              null,
       'Travel':               null,
       'Food':                 null,
-      'Room Rent':            700,
+      'Hotel Room Rent':      700,
       'Printing & Stationery': null,
       'Petrol / Diesel':       null,
       'Courier / Parcel':      null
@@ -893,7 +892,7 @@
       const container = document.getElementById('rows-container');
       const rowId = 'row-' + Date.now() + Math.random().toString(36).substr(2, 5);
       // Normalize legacy standalone categories → Travel
-      const rawCat = data.category || 'Regular';
+      const rawCat = data.category || '';
       const normalCat  = (rawCat === 'Bus' || rawCat === 'Taxi' || rawCat === 'Bike') ? 'Travel' : rawCat;
       const travelType = data.travelType || (rawCat === 'Bus' ? 'Bus' : rawCat === 'Taxi' ? 'Taxi' : rawCat === 'Bike' ? 'Bike' : 'Bus');
       const isTravel = normalCat === 'Travel';
@@ -924,10 +923,10 @@
         <div class="form-group mb-0">
           <label class="form-label">Category</label>
           <select class="form-select row-cat" required onchange="handleCategoryChange('${rowId}')">
-            <option value="Regular"   ${normalCat === 'Regular'   ? 'selected' : ''}>Regular</option>
+            <option value="" disabled ${!normalCat ? 'selected' : ''}>Select category</option>
             <option value="Travel"    ${normalCat === 'Travel'    ? 'selected' : ''}>Travel</option>
             <option value="Food"      ${normalCat === 'Food'      ? 'selected' : ''}>Food</option>
-            <option value="Room Rent" ${normalCat === 'Room Rent' ? 'selected' : ''}>Room Rent</option>
+            <option value="Hotel Room Rent" ${normalCat === 'Hotel Room Rent' ? 'selected' : ''}>Hotel Room Rent</option>
             <option value="Printing & Stationery" ${normalCat === 'Printing & Stationery' ? 'selected' : ''}>Printing & Stationery</option>
             <option value="Petrol / Diesel"       ${normalCat === 'Petrol / Diesel'       ? 'selected' : ''}>Petrol / Diesel</option>
             <option value="Courier / Parcel"      ${normalCat === 'Courier / Parcel'      ? 'selected' : ''}>Courier / Parcel</option>
@@ -952,11 +951,11 @@
         ⚠️ Amount exceeds the <span class="warning-limit-val"></span> limit for this category
       </div>
 
-      <!-- Room Rent approval block -->
+      <!-- Hotel Room Rent approval block -->
       <div class="row-approval-block" style="display:none; background:#fef2f2; border:1.5px solid #fca5a5; border-radius:12px; padding:1rem; margin-bottom:0.75rem;">
         <div style="color:#dc2626; font-weight:700; font-size:0.9rem; margin-bottom:0.4rem;">🔴 Approval Required</div>
         <p style="color:#991b1b; font-size:0.82rem; line-height:1.5; margin:0;">
-          Room Rent above ₹700 requires manager approval. Please upload a proof document (bill / photo) below before submitting.
+          Hotel Room Rent above ₹700 requires manager approval. Please upload a proof document (bill / photo) below before submitting.
         </p>
       </div>
 
@@ -1136,7 +1135,7 @@
       receiptBox.style.borderColor = '';
 
       if (limit !== null && amount > 0 && amount > limit) {
-        if (cat === 'Room Rent') {
+        if (cat === 'Hotel Room Rent') {
           approvalBlock.style.display  = 'block';
           receiptLabel.textContent     = 'Proof / Document (Required for Approval) *';
           receiptLabel.style.color     = '#dc2626';
@@ -1425,12 +1424,12 @@
         const newFiles = _rowNewFiles[rowId] || [];
         const existingUrlsForRow = parseReceiptUrls(oldUrl);
 
-        // Room Rent above limit requires proof
-        if (category === 'Room Rent') {
-          const roomLimit = CATEGORY_LIMITS['Room Rent'];
+        // Hotel Room Rent above limit requires proof
+        if (category === 'Hotel Room Rent') {
+          const roomLimit = CATEGORY_LIMITS['Hotel Room Rent'];
           if (amount > roomLimit && newFiles.length === 0 && existingUrlsForRow.length === 0) {
             setLoading(btn, false);
-            showMessage('Room Rent above ₹700 requires proof. Please upload a document before saving.', 'error');
+            showMessage('Hotel Room Rent above ₹700 requires proof. Please upload a document before saving.', 'error');
             return;
           }
         }
@@ -1461,7 +1460,7 @@
         } else if (category === 'Other') {
           const name = row.querySelector('.row-name').value.trim();
           finalDescription = `OTHER|${name}|${site}|${desc}`;
-        } else if (category === 'Room Rent') {
+        } else if (category === 'Hotel Room Rent') {
           finalDescription = `ROOM_RENT|${site}|${desc}`;
         } else if (category === 'Printing & Stationery') {
           finalDescription = `PRINTING_STATIONERY|${site}|${desc}`;

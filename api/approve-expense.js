@@ -36,7 +36,7 @@ export default async function handler(req, res) {
     // Fetch only the rows we need
     const { data: expenses, error: fetchErr } = await supabaseAdmin
       .from('expenses')
-      .select('id, status, user_id, users(department)')
+      .select('id, status, user_id, users!expenses_user_id_fkey(department)')
       .in('id', expense_ids);
     if (fetchErr) return res.status(500).json({ error: fetchErr.message });
 
@@ -155,7 +155,7 @@ export default async function handler(req, res) {
     return res.status(400).json({ error: 'A reason is required when flagging for review' });
 
   const { data: expense, error: expErr } = await supabaseAdmin
-    .from('expenses').select('*, users(department)').eq('id', expense_id).single();
+    .from('expenses').select('*, users!expenses_user_id_fkey(department)').eq('id', expense_id).single();
   if (expErr || !expense) return res.status(404).json({ error: 'Expense not found' });
 
   // Department guard: Line Manager can only act on their own department

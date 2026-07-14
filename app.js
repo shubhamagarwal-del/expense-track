@@ -222,6 +222,7 @@ function statusBadge(status) {
   if (status === 'l1_rejected')   return flow(done('You'), rej('Manager'), wait('HR'), wait('Audit'));
   if (status === 'rejected')      return flow(done('You'), rej('Rejected'), wait('HR'), wait('Audit'));
   if (status === 'approved')      return approvedTag;
+  if (status === 'deleted')       return `<span class="status-badge" style="background:#fee2e2;color:#991b1b;white-space:nowrap">🗑️ Deleted</span>`;
   return `<span class="status-badge badge-pending">${status}</span>`;
 }
 
@@ -498,7 +499,7 @@ async function fetchExpenses({ from, to, userId, companyId, limit } = {}) {
   await initSupabase();
   let q = db
     .from('expenses')
-    .select('*, users(id,email,name,role,department,site_name,emp_no,phone,bank_holder,bank_name,bank_ifsc,bank_account)')
+    .select('*, users!expenses_user_id_fkey(id,email,name,role,department,site_name,emp_no,phone,bank_holder,bank_name,bank_ifsc,bank_account)')
     .order('created_at', { ascending: false });
 
   // Only apply a row cap when explicitly requested.

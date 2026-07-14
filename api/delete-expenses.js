@@ -24,6 +24,29 @@ export default async function handler(req, res) {
   if (authError || !user)
     return res.status(401).json({ error: 'Invalid token' });
 
+  // ── Admin-side soft delete: { expense_id, reason } ─────────────
+  // Marks the row as deleted (with who/when/why) instead of removing it,
+  // so the employee still sees it happened and why.
+  if (req.body.expense_id) {
+    const { data: profile } = await supabaseAdmin
+      .from('users').select('role, name').eq('id', user.id).single();
+    if (!profile || !['admin', 'super_admin', 'hr', 'audit'].includes(profile.role)) {
+      return res.status(403).json({ error: 'Not authorised to delete expenses' });
+    }
+    const reason = (req.body.reason || '').trim();
+    if (!reason) return res.status(400).json({ error: 'A reason is required to delete an expense' });
+
+    const { error } = await supabaseAdmin.from('expenses').update({
+      status: 'deleted',
+      deleted_at: new Date().toISOString(),
+      deleted_by: user.id,
+      deleted_by_name: profile.name,
+      deleted_reason: reason,
+    }).eq('id', req.body.expense_id);
+    if (error) return res.status(500).json({ error: error.message });
+    return res.status(200).json({ success: true });
+  }
+
   const { ids, date_start, date_end } = req.body;
 
   // Pass 1 — delete by specific UUIDs (user's own pending only)

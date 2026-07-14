@@ -519,7 +519,7 @@
       if (!stepper) return;
       const id = stepper.dataset.id;
       const status = stepper.dataset.status;
-      if (['approved','audit_cleared','rejected','l1_rejected'].includes(status)) return;
+      if (['approved','audit_cleared','rejected','l1_rejected','deleted'].includes(status)) return;
       if (typeof openApprovalModal === 'function') {
         openApprovalModal(id);
       }
@@ -621,6 +621,58 @@
     let cyclePaidMap = {};
     let cyclePaymentsList = [];
 
+    // expense_id -> { checked_by_name, checked_at } — Audit's manual "checked for payment" marker
+    let auditCheckedMap = {};
+
+    /** Fetch all recorded audit-check rows (Audit / Super Admin only — 403s silently for others). */
+    async function loadAuditChecks() {
+      try {
+        const token = (await db.auth.getSession()).data.session?.access_token;
+        if (!token) return;
+        const res = await fetch('/api/audit-check', { headers: { 'Authorization': `Bearer ${token}` } });
+        if (!res.ok) return;
+        const { checks } = await res.json();
+        const map = {};
+        (checks || []).forEach(c => { map[c.expense_id] = c; });
+        auditCheckedMap = map;
+      } catch {}
+    }
+
+    // key (employee row id in Hierarchy view, or user|month|cycle group key in List view)
+    // -> array of expense ids currently shown for that row
+    let auditRowExpenseIds = {};
+
+    /** Toggle the audit-checked state for every expense in the given row (Hierarchy employee row or List cycle group). */
+    async function toggleAuditCheck(rowKey) {
+      const expenseIds = auditRowExpenseIds[rowKey] || [];
+      if (!expenseIds.length) return;
+      const allChecked = expenseIds.every(id => auditCheckedMap[id]);
+      const nextChecked = !allChecked;
+      const btn = document.getElementById('audchk-' + rowKey);
+      if (btn) btn.disabled = true;
+      try {
+        const token = (await db.auth.getSession()).data.session?.access_token;
+        const res = await fetch('/api/audit-check', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+          body: JSON.stringify({ expense_ids: expenseIds, checked: nextChecked }),
+        });
+        if (!res.ok) throw new Error((await res.json()).error || 'Failed to update');
+        expenseIds.forEach(id => {
+          if (nextChecked) auditCheckedMap[id] = { checked_by_name: currentProfile.name, checked_at: new Date().toISOString() };
+          else delete auditCheckedMap[id];
+        });
+        if (hierarchyMode) {
+          renderHierarchyView(activeFilteredExpenses !== null ? activeFilteredExpenses : allExpensesFetched);
+        } else {
+          refreshListView(true);
+        }
+      } catch (err) {
+        showMessage('Could not update audit-check: ' + err.message, 'error');
+        if (btn) btn.disabled = false;
+      }
+    }
+
     /** Fetch all recorded cycle payments and index them by user+month+cycle. */
     async function loadCyclePayments() {
       try {
@@ -677,7 +729,7 @@
     function buildCycleTotalsMap(expenses) {
       const map = {};
       for (const e of expenses) {
-        if (e.status === 'rejected' || e.status === 'l1_rejected') continue;
+        if (e.status === 'rejected' || e.status === 'l1_rejected' || e.status === 'deleted') continue;
         const d = new Date(e.created_at);
         const mY = d.toLocaleString('en-US', { month: 'long', year: 'numeric' });
         const cNum = d.getDate() <= 15 ? 1 : 2;
@@ -701,6 +753,14 @@
       return 'paid';
     }
 
+    /** Apply the #f-status dropdown filter to a list of expenses. */
+    function applyStatusSelectFilter(expenses) {
+      const sel = (document.getElementById('f-status')?.value || 'all');
+      if (sel === 'all') return expenses;
+      if (sel === 'rejected') return expenses.filter(e => e.status === 'rejected' || e.status === 'l1_rejected' || e.status === 'deleted');
+      return expenses.filter(e => e.status === sel);
+    }
+
     /** Apply the #f-payment-status dropdown filter to a list of expenses. */
     function applyPaymentStatusFilter(expenses) {
       const sel = (document.getElementById('f-payment-status')?.value || 'all');
@@ -720,7 +780,7 @@
       const seen = new Set();
       let paid = 0;
       for (const e of expenses) {
-        if (e.status === 'rejected' || e.status === 'l1_rejected') continue;
+        if (e.status === 'rejected' || e.status === 'l1_rejected' || e.status === 'deleted') continue;
         const d = new Date(e.created_at);
         const mY = d.toLocaleString('en-US', { month: 'long', year: 'numeric' });
         const cNum = d.getDate() <= 15 ? 1 : 2;
@@ -851,7 +911,7 @@
       const effectiveStatus = statusDropdown !== 'all' ? statusDropdown : currentListFilter;
 
       if (effectiveStatus === 'rejected') {
-        base = base.filter(e => e.status === 'rejected' || e.status === 'l1_rejected');
+        base = base.filter(e => e.status === 'rejected' || e.status === 'l1_rejected' || e.status === 'deleted');
       } else if (effectiveStatus !== 'all') {
         base = base.filter(e => e.status === effectiveStatus);
       }
@@ -915,7 +975,7 @@
       // Filter by status tab
       const empRole = !['admin','super_admin','hr','audit'].includes(currentProfile.role);
       if (currentListFilter === 'rejected') {
-        filtered = filtered.filter(e => e.status === 'rejected' || e.status === 'l1_rejected');
+        filtered = filtered.filter(e => e.status === 'rejected' || e.status === 'l1_rejected' || e.status === 'deleted');
       } else if (currentListFilter === 'approved') {
         // "Approved" = any stage of approval (employee & admin both)
         filtered = filtered.filter(e => ['approved','hr_approved','audit_cleared','audit_review'].includes(e.status));
@@ -948,6 +1008,7 @@
       // Filter by department (super_admin UI)
       if (isAdmin) filtered = applyDeptSelectFilter(filtered);
       if (isAdmin) filtered = applyEmployeeSelectFilter(filtered);
+      if (isAdmin) filtered = applyStatusSelectFilter(filtered);
       if (isAdmin) filtered = applyPaymentStatusFilter(filtered);
 
       if (isAdmin) {
@@ -967,7 +1028,7 @@
 
     function updateEmpStats(expenses) {
       const now = new Date();
-      const approvedAndPending = expenses.filter(e => e.status !== 'rejected' && e.status !== 'l1_rejected');
+      const approvedAndPending = expenses.filter(e => e.status !== 'rejected' && e.status !== 'l1_rejected' && e.status !== 'deleted');
       const effectiveAmt = e => e.approved_amount != null ? +e.approved_amount : +e.amount;
       const total = approvedAndPending.reduce((s, e) => s + effectiveAmt(e), 0);
       const month = approvedAndPending
@@ -1004,7 +1065,7 @@
       const effectiveAmt = e => e.approved_amount != null ? +e.approved_amount : +e.amount;
 
       const overallApproved = expenses
-        .filter(e => e.status !== 'rejected' && e.status !== 'l1_rejected')
+        .filter(e => e.status !== 'rejected' && e.status !== 'l1_rejected' && e.status !== 'deleted')
         .reduce((s, e) => s + effectiveAmt(e), 0);
       const overallPaid = paidForExpenses(expenses);
       const overallDue = overallApproved - overallPaid;
@@ -1041,7 +1102,7 @@
             const auditFlag  = g.expenses.filter(e => e.status === 'audit_review').length;
             const cleared    = g.expenses.filter(e => e.status === 'audit_cleared').length;
             const approved   = g.expenses.filter(e => e.status === 'approved').length;
-            const rejected   = g.expenses.filter(e => e.status === 'rejected' || e.status === 'l1_rejected').length;
+            const rejected   = g.expenses.filter(e => e.status === 'rejected' || e.status === 'l1_rejected' || e.status === 'deleted').length;
             const totalAmt = g.expenses.reduce((s, e) => s + effectiveAmt(e), 0);
             const col = g.cNum === 1 ? '#6366f1' : '#7c3aed';
             const tagBg  = g.cNum === 1 ? '#ede9fe' : '#f3e8ff';
@@ -1270,9 +1331,9 @@
           </select>
           <select class="form-select" id="f-status" onchange="refreshListView(true)" title="Status" style="width:100px;height:36px;font-size:.78rem;border-radius:8px;padding:0 .4rem">
             <option value="all">Status</option>
-            <option value="pending">Pending</option>
-            <option value="l1_approved">Mgr Approved · HR Pending</option>
-            <option value="hr_approved">HR Approved · Audit Pending</option>
+            <option value="pending">Pending — Manager Review</option>
+            <option value="l1_approved">Manager Approved — HR Review</option>
+            <option value="hr_approved">HR Approved — Audit Review</option>
             <option value="audit_review">Audit Flagged</option>
             <option value="audit_cleared">Audit Cleared</option>
             <option value="approved">Approved (Legacy)</option>
@@ -1392,10 +1453,13 @@
       </div>
     `;
 
-      // Payment import is a Super-Admin-only action
+      // Payment PDF import is a Super-Admin-only action
       if (currentProfile.role === 'super_admin') {
         const ib = document.getElementById('btn-import-pmt');
         if (ib) ib.style.display = 'inline-flex';
+      }
+      // Sync from accounts-2026 is available to Super Admin and Audit
+      if (['super_admin', 'audit'].includes(currentProfile.role)) {
         const sb = document.getElementById('btn-sync-accounts');
         if (sb) sb.style.display = 'inline-flex';
       }
@@ -1437,6 +1501,13 @@
         loadExpenseViews(idsWithReceipts).then(() => refreshListView(true));
         // Load recorded cycle payments (Paid/Pending display)
         loadCyclePayments().then(() => refreshListView(true));
+        // Load Audit's manual "checked for payment" markers (Audit / Super Admin only)
+        if (['audit', 'super_admin'].includes(currentProfile.role)) {
+          loadAuditChecks().then(() => {
+            if (hierarchyMode) renderHierarchyView(allExpensesFetched);
+            else refreshListView(true);
+          });
+        }
         refreshListView();
         renderAdminCharts(expenses);
         renderActionQueue(); // keep the "Needs Action" badge/list fresh regardless of active view
@@ -1450,7 +1521,7 @@
       const today = now.toISOString().split('T')[0];
       const effAmt = e => e.approved_amount != null ? +e.approved_amount : +e.amount;
 
-      const active = expenses.filter(e => e.status !== 'rejected' && e.status !== 'l1_rejected');
+      const active = expenses.filter(e => e.status !== 'rejected' && e.status !== 'l1_rejected' && e.status !== 'deleted');
       const todayTotal = active
         .filter(e => e.created_at.startsWith(today))
         .reduce((s, e) => s + effAmt(e), 0);
@@ -1540,7 +1611,7 @@
         }
         // Use approved_amount for total, exclude rejected
         g.totalAmount = g.entries.reduce((sum, e) => {
-          if (e.status === 'rejected' || e.status === 'l1_rejected') return sum;
+          if (e.status === 'rejected' || e.status === 'l1_rejected' || e.status === 'deleted') return sum;
           return sum + (e.approved_amount != null ? +e.approved_amount : +e.amount);
         }, 0);
       });
@@ -1555,7 +1626,7 @@
       sortedGroups.forEach(g => g.entries.sort((a, b) => new Date(b.created_at) - new Date(a.created_at)));
 
       const total = expenses.reduce((s, e) => {
-        if (e.status === 'rejected' || e.status === 'l1_rejected') return s;
+        if (e.status === 'rejected' || e.status === 'l1_rejected' || e.status === 'deleted') return s;
         return s + (e.approved_amount != null ? +e.approved_amount : +e.amount);
       }, 0);
       el.innerHTML = `
@@ -1591,6 +1662,8 @@
         const pendingCount = totalDaysInCycle - filledCount;
         const safeKey = `${g.user.id}|${g.monthYear}|${g.cycleText}`;
         const lms = getLM(g.user.department);
+        auditRowExpenseIds[safeKey] = g.entries.map(e => e.id);
+        const gAllChecked = g.entries.length > 0 && g.entries.every(e => auditCheckedMap[e.id]);
 
         return `
                 <tr class="summary-row">
@@ -1609,7 +1682,10 @@
                   </td>
                   <td>${statusBadge(g.status)}</td>
                   <td>
-                    <button class="btn btn-primary btn-sm" onclick="toggleDetails('${safeKey}')">View Details</button>
+                    <div style="display:flex;align-items:center;gap:.4rem;flex-wrap:wrap">
+                      <button class="btn btn-primary btn-sm" onclick="toggleDetails('${safeKey}')">View Details</button>
+                      ${currentProfile.role === 'audit' ? `<button id="audchk-${safeKey}" onclick="toggleAuditCheck('${safeKey}')" title="${gAllChecked ? 'Marked as checked — click to unmark' : 'Mark all shown expenses for this cycle as checked'}" style="display:flex;align-items:center;gap:.3rem;background:${gAllChecked ? '#0f4423' : '#fff'};color:${gAllChecked ? '#fff' : 'var(--text-muted)'};border:1px solid ${gAllChecked ? '#0f4423' : 'var(--border)'};border-radius:5px;padding:.3rem .6rem;font-size:.75rem;font-weight:700;cursor:pointer">${gAllChecked ? '✓ Checked' : '☐ Checked'}</button>` : ''}
+                    </div>
                   </td>
                 </tr>
                 <tr id="details-${safeKey}" style="display:none; background: var(--bg-1)">
@@ -1900,7 +1976,7 @@
 
       if (currentListFilter !== 'all') {
         if (currentListFilter === 'rejected') {
-          filtered = filtered.filter(e => e.status === 'rejected' || e.status === 'l1_rejected');
+          filtered = filtered.filter(e => e.status === 'rejected' || e.status === 'l1_rejected' || e.status === 'deleted');
         } else if (currentListFilter === 'approved') {
           filtered = filtered.filter(e => ['approved','hr_approved','audit_cleared','audit_review'].includes(e.status));
         } else {
@@ -1927,6 +2003,7 @@
 
       if (isAdmin) filtered = applyDeptSelectFilter(filtered);
       if (isAdmin) filtered = applyEmployeeSelectFilter(filtered);
+      if (isAdmin) filtered = applyStatusSelectFilter(filtered);
       if (isAdmin) filtered = applyPaymentStatusFilter(filtered);
 
       if (isAdmin) {
@@ -2251,7 +2328,7 @@
       if (type === 'ROOM_RENT') {
         const site = escHtml(p[1]||''), desc = escHtml(p[2]||'');
         return [
-          `<span style="font-size:.7rem;font-weight:700;color:#7c3aed;text-transform:uppercase">🏠 Room Rent</span>`,
+          `<span style="font-size:.7rem;font-weight:700;color:#7c3aed;text-transform:uppercase">🏠 Hotel Room Rent</span>`,
           site ? `📍 ${site}` : '', desc,
         ].filter(Boolean).join(' &nbsp;·&nbsp; ');
       }
@@ -2271,6 +2348,7 @@
       <td class="td-desc">
         ${parseDescForDisplay(e.description)}
         ${e.rejection_reason ? `<div style="color: var(--primary); font-size: 0.75rem; margin-top: 0.4rem; background: var(--bg-2); padding: 0.4rem; border-radius: 4px;"><strong>Admin Comment:</strong> ${escHtml(e.rejection_reason)}</div>` : ''}
+        ${e.status === 'deleted' ? `<div style="color: #991b1b; font-size: 0.75rem; margin-top: 0.4rem; background: #fee2e2; padding: 0.4rem; border-radius: 4px;"><strong>🗑️ Deleted${e.deleted_by_name ? ' by ' + escHtml(e.deleted_by_name) : ''}:</strong> ${escHtml(e.deleted_reason || 'No reason given')}</div>` : ''}
       </td>
       <td class="td-amount">
         ${amtChanged ? `<div style="text-decoration:line-through;color:var(--text-muted);font-size:.78rem">${formatCurrency(e.amount)}</div>` : ''}
@@ -2345,6 +2423,7 @@
       </div>
       <div class="expense-card-desc">${parseDescForDisplay(e.description)}</div>
       ${e.rejection_reason ? `<div class="expense-card-desc" style="color: #dc2626; background: #fee2e2; padding: 0.5rem; border-radius: 4px; margin-top: 0.5rem;"><strong>Rejected:</strong> ${escHtml(e.rejection_reason)}</div>` : ''}
+      ${e.status === 'deleted' ? `<div class="expense-card-desc" style="color: #991b1b; background: #fee2e2; padding: 0.5rem; border-radius: 4px; margin-top: 0.5rem;"><strong>🗑️ Deleted${e.deleted_by_name ? ' by ' + escHtml(e.deleted_by_name) : ''}:</strong> ${escHtml(e.deleted_reason || 'No reason given')}</div>` : ''}
       ${receiptCardFooter(e)}
     </div>`;
     }
@@ -2729,11 +2808,22 @@
     }
 
     async function deleteExpense(id) {
-      if (!confirm("Are you sure you want to delete this expense?")) return;
+      const reason = prompt("Please enter a reason for deleting this expense (the employee will see this):");
+      if (reason === null) return; // cancelled
+      if (!reason.trim()) {
+        showMessage('A reason is required to delete an expense.', 'error');
+        return;
+      }
       try {
-        const { error } = await db.from('expenses').delete().eq('id', id);
-        if (error) throw error;
-        invalidateExpensesCache(); // direct Supabase delete — clear cached lists
+        const token = (await db.auth.getSession()).data.session?.access_token;
+        const res = await fetch('/api/delete-expenses', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+          body: JSON.stringify({ expense_id: id, reason: reason.trim() }),
+        });
+        const body = await res.json();
+        if (!res.ok) throw new Error(body.error || 'Delete failed');
+        invalidateExpensesCache();
         showMessage('Expense deleted!', 'success');
         await loadAdminExpenses();
       } catch (err) {
@@ -2981,7 +3071,7 @@
       // ── Sheet 2: Site Summary ──────────────────────────────
       const siteMap = {};
       sorted.forEach(e => {
-        if (e.status === 'rejected' || e.status === 'l1_rejected') return;
+        if (e.status === 'rejected' || e.status === 'l1_rejected' || e.status === 'deleted') return;
         const u = e.users || {};
         const empKey = (u.name || u.email || e.user_id);
         const site   = siteWithCode(extractSite(e) || u.site_name || '') || 'Unassigned';
@@ -3013,7 +3103,7 @@
       // Group by employee → cycle → total + approval info
       const empMap = {};
       sorted.forEach(e => {
-        if (e.status === 'rejected' || e.status === 'l1_rejected') return;
+        if (e.status === 'rejected' || e.status === 'l1_rejected' || e.status === 'deleted') return;
         const u = e.users || {};
         const empKey = u.emp_no || u.name || e.user_id;
         const date = new Date(e.created_at);
@@ -3120,7 +3210,7 @@
       // Group by user + month + cycle (track cycle's calendar year/month for end-date calc)
       const groups = new Map();
       for (const e of expenses) {
-        if (e.status === 'rejected' || e.status === 'l1_rejected') continue;
+        if (e.status === 'rejected' || e.status === 'l1_rejected' || e.status === 'deleted') continue;
         const date = new Date(e.created_at);
         const mY = date.toLocaleString('default', { month: 'long', year: 'numeric' });
         const cNum = date.getDate() <= 15 ? 1 : 2;
@@ -3961,11 +4051,15 @@
         return lms && lms.some(m => m.name === mgrFilter);
       });
       filtered = applyDeptSelectFilter(filtered);
+      filtered = applyEmployeeSelectFilter(filtered);
+      filtered = applyStatusSelectFilter(filtered);
+      filtered = applyPaymentStatusFilter(filtered);
       const countsBase = filtered; // pre-status-filter set — chip counts always show true totals
       filtered = filtered.filter(e => hierChipMatches(e, hierStatusFilter));
 
       hierDetailMap = {}; // reset lazy builders each render
       hierDeptBodyMap = {};
+      auditRowExpenseIds = {};
       const tree = buildHierarchyTree(filtered);
       const depts = Object.keys(tree).sort((a, b) =>
         a === 'Unassigned' ? 1 : b === 'Unassigned' ? -1 : a.localeCompare(b)
@@ -4048,7 +4142,7 @@
               if (e.status === 'pending') dPend++;
               if (e.status === 'l1_approved') dL1++;
               if (['approved','hr_approved','audit_cleared'].includes(e.status)) dAppr += (e.approved_amount != null ? +e.approved_amount : +e.amount);
-              if (e.status !== 'rejected' && e.status !== 'l1_rejected') dOverall += (e.approved_amount != null ? +e.approved_amount : +e.amount);
+              if (e.status !== 'rejected' && e.status !== 'l1_rejected' && e.status !== 'deleted') dOverall += (e.approved_amount != null ? +e.approved_amount : +e.amount);
             });
           });
         });
@@ -4072,7 +4166,7 @@
                 if (e.status==='pending') mPend++;
                 if (e.status==='l1_approved') mL1++;
                 if (['approved','hr_approved','audit_cleared'].includes(e.status)) mAppr += (e.approved_amount!=null?+e.approved_amount:+e.amount);
-                if (e.status!=='rejected' && e.status!=='l1_rejected') mOverall += (e.approved_amount!=null?+e.approved_amount:+e.amount);
+                if (e.status!=='rejected' && e.status!=='l1_rejected' && e.status!=='deleted') mOverall += (e.approved_amount!=null?+e.approved_amount:+e.amount);
               }));
               const mPaid = paidForExpenses(mAllExps);
               const mId = 'mgr__' + (mgrKey).replace(/[^a-z0-9]/gi,'_') + '__' + dept.replace(/[^a-z0-9]/gi,'_');
@@ -4112,9 +4206,9 @@
                     const ePend = exps.filter(e=>e.status==='pending').length;
                     const eL1   = exps.filter(e=>e.status==='l1_approved').length;
                     const eAppr = exps.filter(e=>e.status==='approved').length;
-                    const eRej  = exps.filter(e=>e.status==='rejected'||e.status==='l1_rejected').length;
+                    const eRej  = exps.filter(e=>e.status==='rejected'||e.status==='l1_rejected'||e.status==='deleted').length;
                     const eAmt  = exps.reduce((s,e)=>{
-                      if(e.status==='rejected'||e.status==='l1_rejected') return s;
+                      if(e.status==='rejected'||e.status==='l1_rejected'||e.status==='deleted') return s;
                       return s+(e.approved_amount!=null?+e.approved_amount:+e.amount);
                     },0);
                     const eId = 'emp__' + (user.id||'x').replace(/[^a-z0-9]/gi,'_');
@@ -4122,6 +4216,8 @@
                     const ei = (user.name?.[0]||user.email?.[0]||'?').toUpperCase();
                     const lmsE = getLM(user.department);
                     hierDetailMap[eId] = () => renderHierEmpDetail(user, exps, lmsE);
+                    auditRowExpenseIds[eId] = exps.map(e => e.id);
+                    const eAllChecked = exps.length > 0 && exps.every(e => auditCheckedMap[e.id]);
 
                     return `
                     <div style="border-top:1px solid var(--border)">
@@ -4140,6 +4236,7 @@
                           ${eRej?`<span style="background:#fee2e2;color:#991b1b;border-radius:5px;padding:0 6px;font-size:.68rem;font-weight:700">✗${eRej}</span>`:''}
                           <span style="font-size:.78rem;font-weight:700;color:var(--primary)" title="Sum of pending + in-review + approved (excludes rejected)">Overall: ${formatCurrency(eAmt)}</span>
                           ${(() => { const paid = paidForExpenses(exps); const pend = eAmt - paid; return `<span style="background:#dcfce7;color:#166534;border-radius:5px;padding:0 6px;font-size:.68rem;font-weight:700" title="Paid via bank">💰 Paid: ${formatCurrency(paid)}</span>${pend > 0.005 ? `<span style="background:#fef3c7;color:#92400e;border-radius:5px;padding:0 6px;font-size:.68rem;font-weight:700" title="Still pending">⏳ Due: ${formatCurrency(pend)}</span>` : `<span style="background:#dcfce7;color:#166534;border-radius:5px;padding:0 6px;font-size:.68rem;font-weight:700">✓ Fully paid</span>`}`; })()}
+                          ${currentProfile.role === 'audit' ? `<button id="audchk-${eId}" onclick="event.stopPropagation();toggleAuditCheck('${eId}')" title="${eAllChecked ? 'Marked as checked — click to unmark' : 'Mark all shown expenses for this employee as checked'}" style="display:flex;align-items:center;gap:.3rem;background:${eAllChecked ? '#0f4423' : '#fff'};color:${eAllChecked ? '#fff' : 'var(--text-muted)'};border:1px solid ${eAllChecked ? '#0f4423' : 'var(--border)'};border-radius:5px;padding:0 7px;font-size:.68rem;font-weight:700;cursor:pointer;height:20px">${eAllChecked ? '✓ Checked' : '☐ Checked'}</button>` : ''}
                           <svg id="chev-${eId}" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"
                                style="width:14px;height:14px;color:var(--text-muted);transition:transform .2s;flex-shrink:0;transform:${eOpen?'rotate(180deg)':''}"
                             <path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/>
@@ -4216,7 +4313,7 @@
         ${(()=>{
           const siteData = {};
           expenses.forEach(e => {
-            if (e.status === 'rejected' || e.status === 'l1_rejected') return;
+            if (e.status === 'rejected' || e.status === 'l1_rejected' || e.status === 'deleted') return;
             const site = extractSite(e) || user.site_name || 'Unassigned';
             const amt  = e.approved_amount != null ? +e.approved_amount : +e.amount;
             if (!siteData[site]) siteData[site] = { total: 0, days: new Set(), count: 0 };
@@ -4249,7 +4346,7 @@
           const cycId = safeKey.replace(/[^a-zA-Z0-9]/g, '_');
           const cycOpen = hierExpanded.cycles.has(cycId);
           const gTotal = g.entries.reduce((s,e)=>{
-            if(e.status==='rejected'||e.status==='l1_rejected') return s;
+            if(e.status==='rejected'||e.status==='l1_rejected'||e.status==='deleted') return s;
             return s+(e.approved_amount!=null?+e.approved_amount:+e.amount);
           },0);
           const gPaid = cyclePaidFor(user.id, g.mY, g.cT);
