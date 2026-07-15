@@ -2124,23 +2124,26 @@
             return dCmp !== 0 ? dCmp : (a.user?.name || '').localeCompare(b.user?.name || '');
           });
 
-          // Build one employee row (collapsed by default, cards built lazily on expand).
+          // Build one employee row. Stays expanded across re-renders (e.g. after
+          // approving one item in a multi-item group) via actionQueueExpanded —
+          // otherwise every approve/reject collapses the whole queue back shut.
           const empRow = (g, isLast) => {
             g.exps.sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
             const gId = 'aq__' + stage + '__' + (g.user?.id || 'x').replace(/[^a-z0-9]/gi, '_');
             const total = g.exps.reduce((s, e) => s + (e.approved_amount != null ? +e.approved_amount : +e.amount), 0);
+            const gOpen = actionQueueExpanded.has(gId);
             actionQueueDetailMap[gId] = () =>
               `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:1rem">${g.exps.map(adminCard).join('')}</div>`;
             return `
               <div style="${isLast ? '' : 'border-bottom:1px solid var(--border);'}">
                 <div onclick="toggleActionEmpGroup('${gId}')" style="display:flex;align-items:center;gap:.5rem;padding:.65rem .9rem;cursor:pointer" onmouseover="this.style.background='var(--bg-2)'" onmouseout="this.style.background='none'">
-                  <svg id="chev-${gId}" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5" style="width:13px;height:13px;flex-shrink:0;color:var(--text-muted);transition:transform .15s"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7"/></svg>
+                  <svg id="chev-${gId}" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5" style="width:13px;height:13px;flex-shrink:0;color:var(--text-muted);transition:transform .15s;transform:${gOpen ? 'rotate(90deg)' : ''}"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7"/></svg>
                   <span style="font-weight:600;font-size:.82rem;color:var(--text-1)">${escHtml(g.user?.name || 'Unknown')}</span>
                   <span style="font-size:.72rem;color:var(--text-muted)">(${escHtml(g.user?.emp_no || '—')})</span>
                   <span style="background:${info.color};color:#fff;border-radius:10px;padding:0 7px;font-size:.68rem;font-weight:700">${g.exps.length}</span>
                   <span style="margin-left:auto;font-weight:700;font-size:.85rem;color:var(--primary)">${formatCurrency(total)}</span>
                 </div>
-                <div id="body-${gId}" style="display:none;padding:.875rem;background:var(--bg-2)"></div>
+                <div id="body-${gId}" style="display:${gOpen ? 'block' : 'none'};padding:.875rem;background:var(--bg-2)"${gOpen ? ' data-built="1"' : ''}>${gOpen ? actionQueueDetailMap[gId]() : ''}</div>
               </div>`;
           };
 
@@ -2179,6 +2182,7 @@
     }
 
     let actionQueueDetailMap = {};
+    let actionQueueExpanded = new Set(); // gIds that should stay open across renderActionQueue() rebuilds
     function toggleActionEmpGroup(gId) {
       const body = document.getElementById('body-' + gId);
       const chev = document.getElementById('chev-' + gId);
@@ -2190,6 +2194,8 @@
       }
       body.style.display = opening ? 'block' : 'none';
       if (chev) chev.style.transform = opening ? 'rotate(90deg)' : '';
+      if (opening) actionQueueExpanded.add(gId);
+      else actionQueueExpanded.delete(gId);
     }
 
     /** Toggle the "Export" dropdown menu open/closed; closes on outside click. */
