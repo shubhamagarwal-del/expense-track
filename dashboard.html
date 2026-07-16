@@ -497,9 +497,10 @@
                 const limit = undefined; // no cap for any role
                 const expenses = deptFilter(await fetchExpenses({ companyId, limit }));
                 allExpensesFetched = expenses;
+                recomputeActiveFilteredExpenses(); // keep an active Month/Cycle filter in sync
                 updateAdminStats(expenses);
                 refreshListView();
-                if (hierarchyMode) renderHierarchyView(expenses);
+                if (hierarchyMode) renderHierarchyView(activeFilteredExpenses !== null ? activeFilteredExpenses : expenses);
                 renderAdminCharts(expenses);
               } else {
                 const expenses = await fetchExpenses({ userId: currentProfile.id });
@@ -1495,6 +1496,7 @@
         const raw = await fetchExpenses({ from, to, companyId, limit });
         const expenses = deptFilter(raw);
         allExpensesFetched = expenses;
+        recomputeActiveFilteredExpenses(); // keep an active Month/Cycle filter in sync with fresh data
         populateManagerFilter(expenses);
         populateEmployeeFilter();
         updateAdminStats(expenses);
@@ -1506,7 +1508,7 @@
         // Load Audit's manual "checked for payment" markers (Audit / Super Admin only)
         if (['audit', 'super_admin'].includes(currentProfile.role)) {
           loadAuditChecks().then(() => {
-            if (hierarchyMode) renderHierarchyView(allExpensesFetched);
+            if (hierarchyMode) renderHierarchyView(activeFilteredExpenses !== null ? activeFilteredExpenses : allExpensesFetched);
             else refreshListView(true);
           });
         }
@@ -1862,6 +1864,34 @@
       ${expenses.map(adminCard).join('')}`;
     }
 
+    /** Recompute activeFilteredExpenses from the current f-month/f-cycle values
+     *  against the current allExpensesFetched. Must be re-run after any data
+     *  reload (loadAdminExpenses) — otherwise a stale snapshot from before the
+     *  reload keeps showing while a Month/Cycle filter is active, hiding just-
+     *  made status changes until the filter is cleared or reapplied. */
+    function recomputeActiveFilteredExpenses() {
+      const monthVal  = document.getElementById('f-month')?.value;
+      const cyclePart = document.getElementById('f-cycle')?.value || 'all';
+      if (!monthVal && cyclePart === 'all') { activeFilteredExpenses = null; return; }
+      let filtered = allExpensesFetched;
+      if (monthVal) {
+        const [yr, mo] = monthVal.split('-').map(Number);
+        filtered = filtered.filter(e => {
+          const d = new Date(e.created_at);
+          return d.getFullYear() === yr && (d.getMonth() + 1) === mo;
+        });
+      }
+      if (cyclePart !== 'all') {
+        filtered = filtered.filter(e => {
+          const day = new Date(e.created_at).getDate();
+          if (cyclePart === '1st - 15th') return day >= 1 && day <= 15;
+          if (cyclePart === '16th - End') return day >= 16;
+          return true;
+        });
+      }
+      activeFilteredExpenses = filtered;
+    }
+
     async function applyCycleFilter() {
       // ── Button feedback ────────────────────────────────────
       const applyBtn = document.querySelector('[onclick="applyCycleFilter()"]');
@@ -1876,27 +1906,10 @@
       const cyclePart = document.getElementById('f-cycle').value;
       const search    = document.getElementById('f-user-search')?.value.toLowerCase().trim() || '';
 
-      let filtered = allExpensesFetched;
-
-      if (monthVal) {
-        const [yr, mo] = monthVal.split('-').map(Number);
-        filtered = filtered.filter(e => {
-          const d = new Date(e.created_at);
-          return d.getFullYear() === yr && (d.getMonth() + 1) === mo;
-        });
-      }
-
-      if (cyclePart !== 'all') {
-        filtered = filtered.filter(e => {
-          const day = new Date(e.created_at).getDate();
-          if (cyclePart === '1st - 15th') return day >= 1 && day <= 15;
-          if (cyclePart === '16th - End') return day >= 16;
-          return true;
-        });
-      }
-
-      // Save month+cycle filtered base so exports pick it up
-      activeFilteredExpenses = (monthVal || cyclePart !== 'all') ? filtered : null;
+      // Recomputes and saves activeFilteredExpenses so exports (and any later
+      // data reload) pick it up.
+      recomputeActiveFilteredExpenses();
+      let filtered = activeFilteredExpenses !== null ? activeFilteredExpenses : allExpensesFetched;
 
       if (search) {
         filtered = filtered.filter(e =>
@@ -2249,7 +2262,7 @@
       if (actionQueueMode) {
         renderActionQueue();
       } else if (hierarchyMode) {
-        renderHierarchyView(allExpensesFetched);
+        renderHierarchyView(activeFilteredExpenses !== null ? activeFilteredExpenses : allExpensesFetched);
       } else {
         refreshListView();
         renderAdminCharts(allExpensesFetched);
@@ -4088,7 +4101,7 @@
     }
     function setHierStatusFilter(status) {
       hierStatusFilter = (hierStatusFilter === status) ? 'all' : status; // click again to clear
-      renderHierarchyView(allExpensesFetched);
+      renderHierarchyView(activeFilteredExpenses !== null ? activeFilteredExpenses : allExpensesFetched);
     }
     // Back-compat alias — older markup calls filterByStatusChip(...)
     function filterByStatusChip(status) { setHierStatusFilter(status); }
