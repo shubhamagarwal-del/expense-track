@@ -1563,6 +1563,7 @@
     }
 
     let cycleDetailMap = {};
+    let cycleDetailExpanded = new Set(); // safeKeys that should stay open across renderAdminTable() rebuilds
     function renderAdminTable(expenses) {
       const el = document.getElementById('admin-table');
       if (!el) return; // Safety check
@@ -1812,20 +1813,35 @@
                       </div>
                     </div>`;
       });
+
+      // Re-open any rows that were expanded before this rebuild (e.g. approving
+      // one item in a cycle would otherwise re-render the table and silently
+      // collapse the panel the admin was looking at).
+      cycleDetailExpanded.forEach(safeKey => {
+        const el = document.getElementById(`details-${safeKey}`);
+        const cell = el?.querySelector('td');
+        if (!el || !cell || !cycleDetailMap[safeKey]) return;
+        cell.innerHTML = cycleDetailMap[safeKey]();
+        cell.dataset.built = '1';
+        el.style.display = 'table-row';
+      });
     }
 
     function toggleDetails(safeKey) {
       const el = document.getElementById(`details-${safeKey}`);
       if (!el) return;
       const cell = el.querySelector('td');
-      if (el.style.display === 'none') {
+      const opening = el.style.display === 'none';
+      if (opening) {
         if (cell && !cell.dataset.built && cycleDetailMap[safeKey]) {
           cell.innerHTML = cycleDetailMap[safeKey]();
           cell.dataset.built = '1';
         }
         el.style.display = 'table-row';
+        cycleDetailExpanded.add(safeKey);
       } else {
         el.style.display = 'none';
+        cycleDetailExpanded.delete(safeKey);
       }
     }
 
