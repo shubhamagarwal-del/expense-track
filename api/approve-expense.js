@@ -60,7 +60,7 @@ export default async function handler(req, res) {
         .map(e => e.id);
     } else if (profile.role === 'audit') {
       eligibleIds = expenses
-        .filter(e => e.status === 'hr_approved')
+        .filter(e => e.status === 'hr_approved' || e.status === 'approved')
         .map(e => e.id);
     } else {
       // super_admin: can bulk-approve pending, l1_approved, or hr_approved
@@ -146,12 +146,12 @@ export default async function handler(req, res) {
 
   // ── SINGLE mode: { expense_id, action, remark, audit_note } ──
   const { expense_id, action, approved_amount, remark, audit_note } = req.body;
-  const validActions = ['approved', 'rejected', 'hr_approved', 'audit_cleared', 'audit_review'];
+  const validActions = ['approved', 'rejected', 'hr_approved', 'audit_cleared', 'audit_review', 'audit_query'];
   if (!expense_id || !validActions.includes(action))
     return res.status(400).json({ error: 'Invalid request body' });
   if (action === 'rejected' && !remark?.trim())
     return res.status(400).json({ error: 'A reason is required for rejection' });
-  if (action === 'audit_review' && !audit_note?.trim())
+  if ((action === 'audit_review' || action === 'audit_query') && !audit_note?.trim())
     return res.status(400).json({ error: 'A reason is required when flagging for review' });
 
   const { data: expense, error: expErr } = await supabaseAdmin
@@ -203,21 +203,23 @@ export default async function handler(req, res) {
     if (action === 'rejected') update.rejection_reason = remark.trim();
 
   } else if (profile.role === 'audit') {
-    // ── Audit: hr_approved → audit_cleared or audit_review ─────
-    if (expense.status !== 'hr_approved')
+    // ── Audit: hr_approved / approved (legacy bulk-approved, never went through
+    // the hr_approved stage) → audit_cleared, audit_review (flag back to HR),
+    // or audit_query (flag back to the Employee to fix and resubmit) ─────
+    if (!['hr_approved', 'approved'].includes(expense.status))
       return res.status(400).json({ error: 'Expense is not ready for audit review' });
 
     update = {
       audit_by:      user.id,
       audit_by_name: profile.name,
       audit_at:      now,
-      status:        action === 'audit_cleared' ? 'audit_cleared' : 'audit_review',
-      audit_note:    action === 'audit_review' ? audit_note.trim() : null,
+      status:        action,
+      audit_note:    (action === 'audit_review' || action === 'audit_query') ? audit_note.trim() : null,
     };
 
   } else {
     // ── Super Admin: override at any stage ─────────────────────
-    const okStatuses = ['pending', 'l1_approved', 'hr_approved', 'audit_review', 'l1_rejected', 'rejected'];
+    const okStatuses = ['pending', 'l1_approved', 'hr_approved', 'audit_review', 'audit_query', 'l1_rejected', 'rejected'];
     if (!okStatuses.includes(expense.status))
       return res.status(400).json({ error: 'Cannot override this expense status' });
 

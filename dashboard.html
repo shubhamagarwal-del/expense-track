@@ -157,6 +157,12 @@
           </svg>
           Payment Register
         </a>
+        <a href="advances.html" class="sidebar-link" id="sb-advances-link" style="display:none">
+          <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4" />
+          </svg>
+          Advances
+        </a>
 
         <a href="help.html" class="sidebar-link" id="sb-help-link">
           <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
@@ -515,12 +521,16 @@
     }
 
     // ─── CLICKABLE STATUS STEPPER ─────────────────────────
+    // Only opens the approval modal if the CURRENT USER's role actually has an
+    // action to take on THIS expense at its current stage (isActionableForRole) —
+    // a plain employee viewing their own submitted expense must never be able to
+    // open the admin "Review" modal just by tapping their own status stepper.
     document.addEventListener('click', (ev) => {
       const stepper = ev.target.closest('.approval-stepper[data-id]');
       if (!stepper) return;
       const id = stepper.dataset.id;
-      const status = stepper.dataset.status;
-      if (['approved','audit_cleared','rejected','l1_rejected','deleted'].includes(status)) return;
+      const e = (typeof allExpensesFetched !== 'undefined' ? allExpensesFetched : []).find(x => x.id === id);
+      if (!e || typeof isActionableForRole !== 'function' || !isActionableForRole(e)) return;
       if (typeof openApprovalModal === 'function') {
         openApprovalModal(id);
       }
@@ -622,6 +632,56 @@
     // "userId|Month Year|cycleNum" -> total amount paid (from imported bank reports)
     let cyclePaidMap = {};
     let cyclePaymentsList = [];
+
+    // user_id -> total outstanding advance amount (Audit / Super Admin see everyone's; an employee sees only their own)
+    let advanceOutstandingMap = {};
+    let advancesList = [];
+
+    /** Fetch the advance ledger and index outstanding totals per user. */
+    async function loadAdvances() {
+      try {
+        const token = (await db.auth.getSession()).data.session?.access_token;
+        if (!token) return;
+        const res = await fetch('/api/receipt-url?advances=1', { headers: { 'Authorization': `Bearer ${token}` } });
+        if (!res.ok) return;
+        const { advances } = await res.json();
+        advancesList = advances || [];
+        const map = {};
+        advancesList.forEach(a => {
+          const rem = a.remaining != null ? Number(a.remaining) : (a.status === 'outstanding' ? Number(a.amount || 0) : 0);
+          if (rem > 0.005) map[a.user_id] = (map[a.user_id] || 0) + rem;
+        });
+        advanceOutstandingMap = map;
+      } catch {}
+    }
+
+    /** Outstanding advance total for one user (0 if none). */
+    function advanceFor(userId) {
+      return advanceOutstandingMap[userId] || 0;
+    }
+
+    /** Undo a logged advance recovery (e.g. a payment sheet was exported/netted but the bank transfer never went through). */
+    async function undoAdvanceRecovery(recoveryId, userId, userName) {
+      if (!confirm('Undo this recovery? The advance amount will go back to outstanding.')) return;
+      try {
+        const token = (await db.auth.getSession()).data.session?.access_token;
+        const res = await fetch('/api/receipt-url', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+          body: JSON.stringify({ undo_advance_recovery: recoveryId }),
+        });
+        const body = await res.json();
+        if (!res.ok) throw new Error(body.error || 'Failed to undo');
+        await loadAdvances();
+        if (hierarchyMode) renderHierarchyView(activeFilteredExpenses !== null ? activeFilteredExpenses : allExpensesFetched);
+        else refreshListView(true);
+        document.querySelector('[data-advance-history-modal]')?.remove();
+        showAdvanceHistory(userId, userName);
+        showMessage('Recovery undone.', 'success');
+      } catch (err) {
+        showMessage(err.message, 'error');
+      }
+    }
 
     // expense_id -> { checked_by_name, checked_at } — Audit's manual "checked for payment" marker
     let auditCheckedMap = {};
@@ -727,11 +787,68 @@
       document.body.appendChild(overlay);
     }
 
+    /** Show every advance transaction (outstanding + recovered) for one employee. */
+    function showAdvanceHistory(userId, userName) {
+      const rows = advancesList.filter(a => a.user_id === userId).sort((a, b) => new Date(b.given_at) - new Date(a.given_at));
+      const outstanding = rows.reduce((s, a) => s + (a.remaining != null ? Number(a.remaining) : (a.status === 'outstanding' ? Number(a.amount || 0) : 0)), 0);
+      const canUndo = ['audit', 'super_admin'].includes(currentProfile?.role);
+
+      const overlay = document.createElement('div');
+      overlay.setAttribute('data-advance-history-modal', '1');
+      overlay.style.cssText = 'position:fixed;inset:0;z-index:10000;background:rgba(15,23,42,.55);display:flex;align-items:center;justify-content:center;padding:1.25rem';
+      overlay.onclick = e => { if (e.target === overlay) overlay.remove(); };
+      overlay.innerHTML = `
+        <div style="background:#fff;border-radius:16px;max-width:560px;width:100%;max-height:80vh;overflow:auto;padding:1.5rem;box-shadow:0 12px 48px rgba(0,0,0,.3)">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem">
+            <h3 style="margin:0;font-size:1.05rem;font-weight:800">💵 Advance History — ${escHtml(userName || '')}</h3>
+            <button onclick="this.closest('div[style*=fixed]').remove()" style="background:none;border:none;font-size:1.3rem;cursor:pointer;color:#64748b">✕</button>
+          </div>
+          ${rows.length ? `
+          <table style="width:100%;border-collapse:collapse;font-size:.82rem;border:1px solid var(--border);border-radius:8px;overflow:hidden">
+            <thead><tr style="background:var(--bg-2)">
+              <th style="padding:.4rem .5rem;text-align:left;font-size:.7rem;color:var(--text-muted)">DATE</th>
+              <th style="padding:.4rem .5rem;text-align:right;font-size:.7rem;color:var(--text-muted)">AMOUNT</th>
+              <th style="padding:.4rem .5rem;text-align:left;font-size:.7rem;color:var(--text-muted)">GIVEN BY</th>
+              <th style="padding:.4rem .5rem;text-align:left;font-size:.7rem;color:var(--text-muted)">NOTE</th>
+              <th style="padding:.4rem .5rem;text-align:left;font-size:.7rem;color:var(--text-muted)">STATUS</th>
+            </tr></thead>
+            <tbody>${rows.map(a => {
+              const rem = a.remaining != null ? Number(a.remaining) : (a.status === 'outstanding' ? Number(a.amount || 0) : 0);
+              const statusHtml = rem <= 0.005
+                ? '<span style="color:#166534;font-weight:700">✓ Recovered</span>'
+                : (a.recovered_amount > 0.005
+                  ? `<span style="color:#92400e;font-weight:700">◐ Partial — ${formatCurrency(rem)} left</span>`
+                  : '<span style="color:#92400e;font-weight:700">⏳ Outstanding</span>');
+              const recoveries = a.recoveries || [];
+              const recoveryLogHtml = recoveries.length ? `
+                <tr><td colspan="5" style="padding:.3rem .5rem .6rem 1.5rem;background:#fafafa">
+                  <div style="font-size:.7rem;color:var(--text-muted);font-weight:700;margin-bottom:.25rem">RECOVERY LOG</div>
+                  ${recoveries.map(r => `
+                    <div style="display:flex;justify-content:space-between;align-items:center;padding:.2rem 0;font-size:.76rem">
+                      <span>${new Date(r.recovered_at).toLocaleDateString('en-IN')} — ${formatCurrency(r.amount)} <span style="color:var(--text-muted)">by ${escHtml(r.recovered_by_name || '—')}</span></span>
+                      ${canUndo ? `<button onclick="undoAdvanceRecovery('${r.id}','${userId}','${escHtml(userName || '').replace(/'/g, "\\'")}')" style="background:none;border:none;color:#dc2626;font-size:.72rem;font-weight:700;cursor:pointer;padding:2px 6px">↩ Undo</button>` : ''}
+                    </div>`).join('')}
+                </td></tr>` : '';
+              return `<tr>
+              <td style="padding:.4rem .5rem">${new Date(a.given_at).toLocaleDateString('en-IN')}</td>
+              <td style="padding:.4rem .5rem;text-align:right;font-weight:700">${formatCurrency(a.amount)}</td>
+              <td style="padding:.4rem .5rem;font-size:.75rem;color:var(--text-muted)">${escHtml(a.given_by_name || '—')}</td>
+              <td style="padding:.4rem .5rem;font-size:.75rem;color:var(--text-muted)">${escHtml(a.note || '—')}</td>
+              <td style="padding:.4rem .5rem">${statusHtml}</td>
+            </tr>${recoveryLogHtml}`;
+            }).join('')}</tbody>
+          </table>
+          <div style="margin-top:.75rem;text-align:right;font-weight:700;font-size:.88rem">Total Outstanding: ${formatCurrency(outstanding)}</div>
+          ` : `<p style="color:var(--text-muted);font-size:.88rem;margin:1rem 0 0">No advances recorded for this employee.</p>`}
+        </div>`;
+      document.body.appendChild(overlay);
+    }
+
     /** Build a one-pass map of total cycle amount (excl. rejected) per user+month+cycle, for the Payment-status filter. */
     function buildCycleTotalsMap(expenses) {
       const map = {};
       for (const e of expenses) {
-        if (e.status === 'rejected' || e.status === 'l1_rejected' || e.status === 'deleted') continue;
+        if (['rejected', 'l1_rejected', 'deleted', 'audit_review', 'audit_query'].includes(e.status)) continue;
         const d = new Date(e.created_at);
         const mY = d.toLocaleString('en-US', { month: 'long', year: 'numeric' });
         const cNum = d.getDate() <= 15 ? 1 : 2;
@@ -904,6 +1021,22 @@
       return e.users?.site_name || '';
     }
 
+    // Extract the clean free-text description (+ travel From/To, if any) from a pipe-encoded description field.
+    // Shared by the Excel, CSV and PDF exports so all three show the same text (see downloadDeptPDF).
+    function parseExpenseDescription(e) {
+      const parts = (e.description || '').split('|');
+      const type = parts[0];
+      let d = e.description || '', f = '', t = '';
+      if (type === 'TRAVEL') { f = parts[1] || ''; t = parts[2] || ''; d = parts[4] || ''; }
+      else if (['TRAVEL_BUS', 'TRAVEL_TAXI', 'TRAVEL_TRAIN', 'TRAVEL_FLIGHT'].includes(type)) { f = parts[1] || ''; t = parts[2] || ''; d = parts[4] || ''; }
+      else if (type === 'TRAVEL_BIKE') { d = parts[5] || ''; }
+      else if (type === 'OTHER') { d = `(${parts[1] || ''}) ${parts[3] || ''}`; }
+      else if (type === 'REGULAR') { d = parts[2] || ''; }
+      else if (type === 'FOOD') { d = parts[2] || ''; }
+      else if (type === 'ROOM_RENT') { d = parts[2] || ''; }
+      return { from: f, to: t, desc: (d || '').trim() };
+    }
+
     // Returns the currently visible/filtered expenses — respects ALL active filters
     function getExportData() {
       let base = activeFilteredExpenses !== null ? [...activeFilteredExpenses] : [...allExpensesFetched];
@@ -913,7 +1046,7 @@
       const effectiveStatus = statusDropdown !== 'all' ? statusDropdown : currentListFilter;
 
       if (effectiveStatus === 'rejected') {
-        base = base.filter(e => e.status === 'rejected' || e.status === 'l1_rejected' || e.status === 'deleted');
+        base = base.filter(e => e.status === 'rejected' || e.status === 'l1_rejected' || e.status === 'deleted' || e.status === 'audit_query');
       } else if (effectiveStatus !== 'all') {
         base = base.filter(e => e.status === effectiveStatus);
       }
@@ -948,6 +1081,7 @@
         updateEmpStats(expenses);
         refreshListView();
         loadCyclePayments().then(() => renderCycleBreakdown(expenses));
+        loadAdvances().then(() => renderCycleBreakdown(expenses));
       } catch (err) {
         showMessage('Failed to load expenses: ' + err.message, 'error');
       }
@@ -977,7 +1111,7 @@
       // Filter by status tab
       const empRole = !['admin','super_admin','hr','audit'].includes(currentProfile.role);
       if (currentListFilter === 'rejected') {
-        filtered = filtered.filter(e => e.status === 'rejected' || e.status === 'l1_rejected');
+        filtered = filtered.filter(e => e.status === 'rejected' || e.status === 'l1_rejected' || e.status === 'audit_query');
       } else if (currentListFilter === 'approved') {
         // "Approved" = any stage of approval (employee & admin both)
         filtered = filtered.filter(e => ['approved','hr_approved','audit_cleared','audit_review'].includes(e.status));
@@ -1067,10 +1201,11 @@
       const effectiveAmt = e => e.approved_amount != null ? +e.approved_amount : +e.amount;
 
       const overallApproved = expenses
-        .filter(e => e.status !== 'rejected' && e.status !== 'l1_rejected' && e.status !== 'deleted')
+        .filter(e => !['rejected', 'l1_rejected', 'deleted', 'audit_review', 'audit_query'].includes(e.status))
         .reduce((s, e) => s + effectiveAmt(e), 0);
       const overallPaid = paidForExpenses(expenses);
-      const overallDue = overallApproved - overallPaid;
+      const overallAdvance = advanceFor(currentProfile.id);
+      const overallDue = overallApproved - overallPaid - overallAdvance;
 
       const summaryHtml = `
         <div style="font-size:.78rem;font-weight:700;color:#6b7280;text-transform:uppercase;letter-spacing:.05em;margin-bottom:.75rem">
@@ -1085,6 +1220,11 @@
             <div style="font-size:.72rem;color:#166534;font-weight:700;text-transform:uppercase">💰 Paid</div>
             <div style="font-size:1.35rem;font-weight:800;color:#166534;margin-top:.3rem">${formatCurrency(overallPaid)}</div>
           </div>
+          ${overallAdvance > 0.005 ? `
+          <div style="background:#fff;border-radius:14px;padding:1.1rem 1.25rem;border:1.5px solid #ddd6fe">
+            <div style="font-size:.72rem;color:#5b21b6;font-weight:700;text-transform:uppercase">💵 Advance Outstanding</div>
+            <div style="font-size:1.35rem;font-weight:800;color:#5b21b6;margin-top:.3rem">${formatCurrency(overallAdvance)}</div>
+          </div>` : ''}
           <div style="background:#fff;border-radius:14px;padding:1.1rem 1.25rem;border:1.5px solid #fde68a">
             <div style="font-size:.72rem;color:#92400e;font-weight:700;text-transform:uppercase">⏳ Payment Due</div>
             <div style="font-size:1.35rem;font-weight:800;color:#92400e;margin-top:.3rem">${formatCurrency(overallDue > 0.005 ? overallDue : 0)}</div>
@@ -1171,7 +1311,7 @@
         el.innerHTML = emptyState('No expenses found', 'Try selecting a different filter.');
         return;
       }
-      const total = expenses.reduce((s, e) => s + +e.amount, 0);
+      const total = expenses.reduce((s, e) => s + (e.approved_amount != null ? +e.approved_amount : +e.amount), 0);
       el.innerHTML = `
       <div class="table-card-header">
         <div>
@@ -1201,7 +1341,7 @@
         el.innerHTML = emptyState('No expenses found', 'Try selecting a different filter.');
         return;
       }
-      const total = expenses.reduce((s, e) => s + +e.amount, 0);
+      const total = expenses.reduce((s, e) => s + (e.approved_amount != null ? +e.approved_amount : +e.amount), 0);
       el.innerHTML = `
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.875rem">
         <span style="font-weight:700;font-size:.9375rem">Expense History</span>
@@ -1336,7 +1476,8 @@
             <option value="pending">Pending — Manager Review</option>
             <option value="l1_approved">Manager Approved — HR Review</option>
             <option value="hr_approved">HR Approved — Audit Review</option>
-            <option value="audit_review">Audit Flagged</option>
+            <option value="audit_review">Audit Flagged — HR</option>
+            <option value="audit_query">Audit Query — Employee</option>
             <option value="audit_cleared">Audit Cleared</option>
             <option value="approved">Approved (Legacy)</option>
             <option value="l1_rejected">Rejected by Manager</option>
@@ -1511,6 +1652,10 @@
             if (hierarchyMode) renderHierarchyView(activeFilteredExpenses !== null ? activeFilteredExpenses : allExpensesFetched);
             else refreshListView(true);
           });
+          loadAdvances().then(() => {
+            if (hierarchyMode) renderHierarchyView(activeFilteredExpenses !== null ? activeFilteredExpenses : allExpensesFetched);
+            else refreshListView(true);
+          });
         }
         refreshListView();
         renderAdminCharts(expenses);
@@ -1616,7 +1761,7 @@
         }
         // Use approved_amount for total, exclude rejected
         g.totalAmount = g.entries.reduce((sum, e) => {
-          if (e.status === 'rejected' || e.status === 'l1_rejected' || e.status === 'deleted') return sum;
+          if (['rejected', 'l1_rejected', 'deleted', 'audit_review', 'audit_query'].includes(e.status)) return sum;
           return sum + (e.approved_amount != null ? +e.approved_amount : +e.amount);
         }, 0);
       });
@@ -1631,7 +1776,7 @@
       sortedGroups.forEach(g => g.entries.sort((a, b) => new Date(b.created_at) - new Date(a.created_at)));
 
       const total = expenses.reduce((s, e) => {
-        if (e.status === 'rejected' || e.status === 'l1_rejected' || e.status === 'deleted') return s;
+        if (['rejected', 'l1_rejected', 'deleted', 'audit_review', 'audit_query'].includes(e.status)) return s;
         return s + (e.approved_amount != null ? +e.approved_amount : +e.amount);
       }, 0);
       el.innerHTML = `
@@ -1855,7 +2000,7 @@
         el.innerHTML = emptyState('No expenses found', 'Try selecting a different filter.');
         return;
       }
-      const total = expenses.reduce((s, e) => s + +e.amount, 0);
+      const total = expenses.reduce((s, e) => s + (e.approved_amount != null ? +e.approved_amount : +e.amount), 0);
       el.innerHTML = `
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.875rem">
         <span style="font-weight:700;font-size:.9375rem">All Expenses</span>
@@ -2007,7 +2152,7 @@
 
       if (currentListFilter !== 'all') {
         if (currentListFilter === 'rejected') {
-          filtered = filtered.filter(e => e.status === 'rejected' || e.status === 'l1_rejected');
+          filtered = filtered.filter(e => e.status === 'rejected' || e.status === 'l1_rejected' || e.status === 'audit_query');
         } else if (currentListFilter === 'approved') {
           filtered = filtered.filter(e => ['approved','hr_approved','audit_cleared','audit_review'].includes(e.status));
         } else {
@@ -2386,7 +2531,8 @@
         ${parseDescForDisplay(e.description)}
         ${e.rejection_reason ? `<div style="color: var(--primary); font-size: 0.75rem; margin-top: 0.4rem; background: var(--bg-2); padding: 0.4rem; border-radius: 4px;"><strong>Admin Comment:</strong> ${escHtml(e.rejection_reason)}</div>` : ''}
         ${e.status === 'deleted' ? `<div style="color: #991b1b; font-size: 0.75rem; margin-top: 0.4rem; background: #fee2e2; padding: 0.4rem; border-radius: 4px;"><strong>🗑️ Deleted${e.deleted_by_name ? ' by ' + escHtml(e.deleted_by_name) : ''}:</strong> ${escHtml(e.deleted_reason || 'No reason given')}</div>` : ''}
-        ${(e.status === 'rejected' || e.status === 'l1_rejected') ? `<a href="add-expense.html?editDate=${encodeURIComponent(e.created_at)}" style="display:inline-block;margin-top:.4rem;font-size:.75rem;font-weight:700;color:var(--primary)">✎ Fix and resubmit →</a>` : ''}
+        ${e.status === 'audit_query' ? `<div style="color: #92400e; font-size: 0.75rem; margin-top: 0.4rem; background: #fef3c7; padding: 0.4rem; border-radius: 4px;"><strong>🔍 Audit Query${e.audit_by_name ? ' by ' + escHtml(e.audit_by_name) : ''}:</strong> ${escHtml(e.audit_note || 'Needs correction')}</div>` : ''}
+        ${(e.status === 'rejected' || e.status === 'l1_rejected' || e.status === 'audit_query') ? `<a href="add-expense.html?editDate=${encodeURIComponent(e.created_at)}" style="display:inline-block;margin-top:.4rem;font-size:.75rem;font-weight:700;color:var(--primary)">✎ Fix and resubmit →</a>` : ''}
       </td>
       <td class="td-amount">
         ${amtChanged ? `<div style="text-decoration:line-through;color:var(--text-muted);font-size:.78rem">${formatCurrency(e.amount)}</div>` : ''}
@@ -2462,7 +2608,8 @@
       <div class="expense-card-desc">${parseDescForDisplay(e.description)}</div>
       ${e.rejection_reason ? `<div class="expense-card-desc" style="color: #dc2626; background: #fee2e2; padding: 0.5rem; border-radius: 4px; margin-top: 0.5rem;"><strong>Rejected:</strong> ${escHtml(e.rejection_reason)}</div>` : ''}
       ${e.status === 'deleted' ? `<div class="expense-card-desc" style="color: #991b1b; background: #fee2e2; padding: 0.5rem; border-radius: 4px; margin-top: 0.5rem;"><strong>🗑️ Deleted${e.deleted_by_name ? ' by ' + escHtml(e.deleted_by_name) : ''}:</strong> ${escHtml(e.deleted_reason || 'No reason given')}</div>` : ''}
-      ${(e.status === 'rejected' || e.status === 'l1_rejected') ? `<a href="add-expense.html?editDate=${encodeURIComponent(e.created_at)}" style="display:inline-block;margin-top:.5rem;font-size:.78rem;font-weight:700;color:var(--primary)">✎ Fix and resubmit →</a>` : ''}
+      ${e.status === 'audit_query' ? `<div class="expense-card-desc" style="color: #92400e; background: #fef3c7; padding: 0.5rem; border-radius: 4px; margin-top: 0.5rem;"><strong>🔍 Audit Query${e.audit_by_name ? ' by ' + escHtml(e.audit_by_name) : ''}:</strong> ${escHtml(e.audit_note || 'Needs correction')}</div>` : ''}
+      ${(e.status === 'rejected' || e.status === 'l1_rejected' || e.status === 'audit_query') ? `<a href="add-expense.html?editDate=${encodeURIComponent(e.created_at)}" style="display:inline-block;margin-top:.5rem;font-size:.78rem;font-weight:700;color:var(--primary)">✎ Fix and resubmit →</a>` : ''}
       ${receiptCardFooter(e)}
     </div>`;
     }
@@ -2481,7 +2628,7 @@
       const amtChanged = e.approved_amount != null && +e.approved_amount !== +e.amount;
       const showL1Btn     = currentProfile.role === 'admin' && e.status === 'pending';
       const showHRBtn     = currentProfile.role === 'hr' && (e.status === 'l1_approved' || e.status === 'audit_review');
-      const showAuditBtns = currentProfile.role === 'audit' && e.status === 'hr_approved';
+      const showAuditBtns = currentProfile.role === 'audit' && (e.status === 'hr_approved' || e.status === 'approved');
       const showL2Btn     = currentProfile.role === 'super_admin' && ['pending','l1_approved','hr_approved','audit_review'].includes(e.status);
 
       const needsAction = showL1Btn || showHRBtn || showAuditBtns || showL2Btn;
@@ -2538,7 +2685,7 @@
         ${showHRBtn ? `<button onclick="openApprovalModal('${e.id}')" class="btn btn-primary btn-sm" style="grid-column:1/-1;background:#059669;border-color:#059669;font-size:.82rem;padding:.35rem" title="Approve this expense as HR">✅ HR — ${e.status === 'audit_review' ? 'Re-review (Flagged)' : 'Approve'}</button>` : ''}
         ${showAuditBtns ? `
           <button onclick="auditClearExpense('${e.id}')" class="btn btn-primary btn-sm" style="background:#14532d;border-color:#14532d;font-size:.82rem;padding:.35rem" title="Clear this expense as Audit">✅ Audit — Clear</button>
-          <button onclick="openAuditFlagModal('${e.id}')" class="btn btn-secondary btn-sm" style="color:#92400e;border-color:#d97706;background:#fffbeb;font-size:.82rem;padding:.35rem" title="Flag this expense for HR re-review">⚑ Flag for Review</button>
+          <button onclick="openAuditFlagModal('${e.id}')" class="btn btn-secondary btn-sm" style="color:#92400e;border-color:#d97706;background:#fffbeb;font-size:.82rem;padding:.35rem" title="Flag this expense back to HR or the Employee for re-check">⚑ Flag for Review</button>
         ` : ''}
         ${showL2Btn ? `<button onclick="openApprovalModal('${e.id}')" class="btn btn-primary btn-sm" style="grid-column:1/-1;background:#7c3aed;border-color:#7c3aed;font-size:.82rem;padding:.35rem" title="Approve this expense as Super Admin">✅ Super Admin — Approve</button>` : ''}
         <button onclick="openCommentModal('${e.id}')" class="btn btn-secondary btn-sm" title="Add a comment">💬 Comment</button>
@@ -2945,8 +3092,17 @@
         modal.style.cssText = 'position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.5);display:flex;align-items:center;justify-content:center;padding:1rem';
         modal.innerHTML = `
           <div style="background:#fff;border-radius:16px;padding:1.75rem;width:100%;max-width:420px;box-shadow:0 8px 32px rgba(0,0,0,.25)">
-            <h3 style="margin:0 0 .4rem;font-size:1rem;font-weight:700;color:#92400e">⚑ Flag for HR Review</h3>
-            <p style="margin:0 0 1rem;font-size:.82rem;color:#6b7280">Reason is mandatory — HR will see this when reviewing.</p>
+            <h3 style="margin:0 0 .4rem;font-size:1rem;font-weight:700;color:#92400e">⚑ Flag for Re-check</h3>
+            <p style="margin:0 0 .75rem;font-size:.82rem;color:#6b7280">Who should re-check this expense?</p>
+            <div style="display:flex;gap:.5rem;margin-bottom:1rem">
+              <label style="flex:1;display:flex;align-items:center;gap:.4rem;border:1.5px solid #f59e0b;background:#fffbeb;border-radius:10px;padding:.5rem .7rem;cursor:pointer;font-size:.82rem;font-weight:600;color:#92400e">
+                <input type="radio" name="_audit-flag-target" value="audit_review" checked style="accent-color:#f59e0b"> HR
+              </label>
+              <label style="flex:1;display:flex;align-items:center;gap:.4rem;border:1.5px solid #cbd5e1;border-radius:10px;padding:.5rem .7rem;cursor:pointer;font-size:.82rem;font-weight:600;color:#374151">
+                <input type="radio" name="_audit-flag-target" value="audit_query" style="accent-color:#f59e0b"> Employee
+              </label>
+            </div>
+            <p style="margin:0 0 .5rem;font-size:.78rem;color:#6b7280">Reason is mandatory — it'll be shown to whoever you pick above.</p>
             <textarea id="_audit-flag-reason" rows="3" class="form-input" style="width:100%;resize:vertical" placeholder="Describe the issue found…"></textarea>
             <div style="display:flex;gap:.5rem;margin-top:1rem;justify-content:flex-end">
               <button onclick="document.getElementById('_audit-flag-modal').remove()" class="btn btn-secondary btn-sm">Cancel</button>
@@ -2959,23 +3115,26 @@
       }
       document.getElementById('_audit-flag-expense-id').value = expenseId;
       document.getElementById('_audit-flag-reason').value = '';
+      const hrRadio = modal.querySelector('input[name="_audit-flag-target"][value="audit_review"]');
+      if (hrRadio) hrRadio.checked = true;
     }
 
     async function submitAuditFlag() {
       const expenseId = document.getElementById('_audit-flag-expense-id').value;
       const reason = document.getElementById('_audit-flag-reason').value.trim();
+      const target = document.querySelector('input[name="_audit-flag-target"]:checked')?.value || 'audit_review';
       if (!reason) { showMessage('Reason is required to flag for review.', 'error'); return; }
       try {
         const { data: { session } } = await db.auth.getSession();
         const res = await fetch('/api/approve-expense', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session?.access_token}` },
-          body: JSON.stringify({ expense_id: expenseId, action: 'audit_review', audit_note: reason })
+          body: JSON.stringify({ expense_id: expenseId, action: target, audit_note: reason })
         });
         const json = await res.json();
         if (!res.ok) throw new Error(json.error || 'Failed');
         document.getElementById('_audit-flag-modal')?.remove();
-        showMessage('Expense flagged for HR review', 'info');
+        showMessage(target === 'audit_query' ? 'Expense sent back to the employee for correction' : 'Expense flagged for HR review', 'info');
         await loadAdminExpenses();
       } catch (err) { showMessage(err.message, 'error'); }
     }
@@ -3086,16 +3245,7 @@
 
       const rows = sorted.map(e => {
         const u = e.users || {};
-        const parts = (e.description || '').split('|');
-        const type = parts[0];
-        let d = e.description, f = '', t = '';
-        if (type === 'TRAVEL') { f = parts[1]; t = parts[2]; d = parts[4]; }
-        else if (['TRAVEL_BUS','TRAVEL_TAXI','TRAVEL_TRAIN','TRAVEL_FLIGHT'].includes(type)) { f = parts[1]; t = parts[2]; d = parts[4]; }
-        else if (type === 'TRAVEL_BIKE') { d = parts[5]; }
-        else if (type === 'OTHER') { d = `(${parts[1]}) ${parts[3]}`; }
-        else if (type === 'REGULAR') { d = parts[2]; }
-        else if (type === 'FOOD') { d = parts[2]; }
-        else if (type === 'ROOM_RENT') { d = parts[2]; }
+        const { from: f, to: t, desc: d } = parseExpenseDescription(e);
         const s = siteWithCode(extractSite(e) || u.site_name || '');
         const date = new Date(e.created_at);
         const cycle = date.getDate() <= 15 ? "1st - 15th" : "16th - End";
@@ -3121,7 +3271,7 @@
       // ── Sheet 2: Site Summary ──────────────────────────────
       const siteMap = {};
       sorted.forEach(e => {
-        if (e.status === 'rejected' || e.status === 'l1_rejected' || e.status === 'deleted') return;
+        if (['rejected', 'l1_rejected', 'deleted', 'audit_review', 'audit_query'].includes(e.status)) return;
         const u = e.users || {};
         const empKey = (u.name || u.email || e.user_id);
         const site   = siteWithCode(extractSite(e) || u.site_name || '') || 'Unassigned';
@@ -3153,7 +3303,7 @@
       // Group by employee → cycle → total + approval info
       const empMap = {};
       sorted.forEach(e => {
-        if (e.status === 'rejected' || e.status === 'l1_rejected' || e.status === 'deleted') return;
+        if (['rejected', 'l1_rejected', 'deleted', 'audit_review', 'audit_query'].includes(e.status)) return;
         const u = e.users || {};
         const empKey = u.emp_no || u.name || e.user_id;
         const date = new Date(e.created_at);
@@ -3255,12 +3405,12 @@
     //   305957 | STOCKWELL SOLAR SERVICES PVT LTD | 38115536075 |
     //   <NEFT|DCR> | <Beneficiary> | <Acct No> | <IFSC> | <Amount> | <Description>
     // One row per (employee × month × cycle). Amount = sum of approved expenses
-    // for that cycle (rejected entries excluded). DCR if IFSC starts with "SBIN".
+    // for that cycle (rejected entries excluded), net of any outstanding advance. DCR if IFSC starts with "SBIN".
     function buildPaymentSheet(expenses) {
       // Group by user + month + cycle (track cycle's calendar year/month for end-date calc)
       const groups = new Map();
       for (const e of expenses) {
-        if (e.status === 'rejected' || e.status === 'l1_rejected' || e.status === 'deleted') continue;
+        if (['rejected', 'l1_rejected', 'deleted', 'audit_review', 'audit_query'].includes(e.status)) continue;
         const date = new Date(e.created_at);
         const mY = date.toLocaleString('default', { month: 'long', year: 'numeric' });
         const cNum = date.getDate() <= 15 ? 1 : 2;
@@ -3268,13 +3418,51 @@
         const key = `${e.user_id}|${mY}|${cT}`;
         if (!groups.has(key)) {
           groups.set(key, {
-            user: e.users || {}, monthYear: mY, cycleText: cT,
+            user: e.users || {}, userId: e.user_id, monthYear: mY, cycleText: cT,
             yr: date.getFullYear(), mo: date.getMonth(), cNum, total: 0
           });
         }
         const g = groups.get(key);
         const amt = e.approved_amount != null ? +e.approved_amount : +e.amount;
         if (!isNaN(amt)) g.total += amt;
+      }
+
+      // Net outstanding advances off the payment being generated (Audit/Super Admin only —
+      // only they manage advance recovery). Oldest advance record(s) first; if this batch's
+      // payable total doesn't cover a record in full, it's partially deducted — the rest
+      // stays outstanding for a future payment to net off (see employee_advance_recoveries).
+      const advanceDeductions = []; // { advance_id, amount }
+      if (['audit', 'super_admin'].includes(currentProfile?.role)) {
+        const byUser = new Map();
+        for (const g of groups.values()) {
+          if (!byUser.has(g.userId)) byUser.set(g.userId, []);
+          byUser.get(g.userId).push(g);
+        }
+        for (const [userId, userGroups] of byUser) {
+          const available = userGroups.reduce((s, g) => s + g.total, 0);
+          if (available <= 0.005) continue;
+          const records = (advancesList || [])
+            .filter(a => a.user_id === userId && (a.remaining != null ? a.remaining > 0.005 : a.status === 'outstanding'))
+            .sort((a, b) => new Date(a.given_at) - new Date(b.given_at));
+          let budget = available;
+          const userDeductions = [];
+          for (const r of records) {
+            if (budget <= 0.005) break;
+            const rem = r.remaining != null ? Number(r.remaining) : Number(r.amount || 0);
+            const take = Math.min(rem, budget);
+            if (take > 0.005) { userDeductions.push({ advance_id: r.id, amount: take }); budget -= take; }
+          }
+          if (!userDeductions.length) continue;
+          let remaining = available - budget;
+          userGroups.sort((a, b) => a.yr - b.yr || a.mo - b.mo || a.cNum - b.cNum);
+          for (const g of userGroups) {
+            if (remaining <= 0.005) break;
+            const deduct = Math.min(remaining, g.total);
+            g.total -= deduct;
+            remaining -= deduct;
+          }
+          advanceDeductions.push(...userDeductions);
+        }
       }
 
       const ordinal = n => {
@@ -3307,15 +3495,29 @@
           desc,
         ]);
       }
-      return rows;
+      return { rows, advanceDeductions };
     }
 
     function performPaymentSheetExport(expenses, filename = 'PaymentSheet.xlsx') {
       if (typeof XLSX === 'undefined') {
         return showMessage('Excel library not loaded. Please refresh and try again.', 'error');
       }
-      const rows = buildPaymentSheet(expenses);
-      if (!rows.length) return showMessage('No payable cycles in current filter', 'error');
+      // NOTE: advanceDeductions is informational only here — it tells the admin how much
+      // advance this sheet's (reduced) amounts already account for. It does NOT get marked
+      // as recovered automatically: exporting a sheet is not a confirmed payment. Actual
+      // confirmation only happens via the bank-PDF import / accounts-2026 sync (cycle_payments),
+      // after which Audit/Super Admin manually marks the matching advance recovered from the
+      // Advances page (supports partial recovery too).
+      const { rows, advanceDeductions } = buildPaymentSheet(expenses);
+      const advNote = advanceDeductions.length
+        ? ` — ₹${advanceDeductions.reduce((s, d) => s + d.amount, 0).toFixed(2)} advance already netted off these amounts; mark it Recovered on the Advances page once payment is confirmed`
+        : '';
+      if (!rows.length) {
+        if (advanceDeductions.length) {
+          return showMessage(`Outstanding advance fully covers this amount — no bank payment needed.${advNote}`, 'success');
+        }
+        return showMessage('No payable cycles in current filter', 'error');
+      }
 
       const safeFilename = filename.replace(/[^a-z0-9._\- ]/gi, '_');
       const finalFilename = safeFilename.endsWith('.xlsx') ? safeFilename : safeFilename + '.xlsx';
@@ -3328,7 +3530,7 @@
       const wb = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(wb, ws, 'Payment Sheet');
       XLSX.writeFile(wb, finalFilename);
-      showMessage(`Payment sheet downloaded — ${rows.length} payment${rows.length !== 1 ? 's' : ''}`, 'success');
+      showMessage(`Payment sheet downloaded — ${rows.length} payment${rows.length !== 1 ? 's' : ''}${advNote}`, 'success');
     }
 
     /** Top-bar button — exports payment sheet for current filtered month */
@@ -3542,16 +3744,7 @@
 
       const rows = sorted.map(e => {
         const u = e.users || {};
-        const parts = (e.description || '').split('|');
-        const type = parts[0];
-        let d = e.description, f = '', t = '';
-        if (type === 'TRAVEL') { f = parts[1]; t = parts[2]; d = parts[4]; }
-        else if (['TRAVEL_BUS','TRAVEL_TAXI','TRAVEL_TRAIN','TRAVEL_FLIGHT'].includes(type)) { f = parts[1]; t = parts[2]; d = parts[4]; }
-        else if (type === 'TRAVEL_BIKE') { d = parts[5]; }
-        else if (type === 'OTHER') { d = `(${parts[1]}) ${parts[3]}`; }
-        else if (type === 'REGULAR') { d = parts[2]; }
-        else if (type === 'FOOD') { d = parts[2]; }
-        else if (type === 'ROOM_RENT') { d = parts[2]; }
+        const { from: f, to: t, desc: d } = parseExpenseDescription(e);
         const s = siteWithCode(extractSite(e) || u.site_name || '');
         const date = new Date(e.created_at);
         const cycle = date.getDate() <= 15 ? "1st - 15th" : "16th - End";
@@ -3650,7 +3843,8 @@
 
       try {
         setProg('Loading expenses…', 2);
-        const expenses = opts.expenses || getExportData();
+        // Sort oldest → newest, same as the Excel/CSV exports, so all three show expenses in the same order.
+        const expenses = [...(opts.expenses || getExportData())].sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
         if (!expenses.length) { doneProg('No data to export', true); return; }
 
         const token = (await db.auth.getSession()).data.session?.access_token;
@@ -3877,7 +4071,9 @@
               const amt = e.approved_amount != null ? e.approved_amount : e.amount;
               deptTotal += Number(amt||0);
               const statusTxt = e.status.replace('_',' ').toUpperCase();
-              let desc = (e.description||'').replace(/^[A-Z_]+\|/,'').replace(/\|/g,' ').trim();
+              // Use the same per-type parsing as the Excel/CSV exports (not a naive prefix-strip) so
+              // From/To/Site fields don't leak into the description text shown here.
+              let desc = parseExpenseDescription(e).desc;
               const _siteCode = (siteWithCode(extractSite(e) || '').match(/LOC\d{3,}/i) || [])[0];
               if (_siteCode && !desc.includes(_siteCode)) desc += ` [${_siteCode}]`;
 
@@ -3886,10 +4082,12 @@
               doc.setFont(undefined,'bold');
               doc.text(formatDate(e.created_at), margin, y+4);
               doc.text(e.category||'—', margin+25, y+4);
+              const amtStr = `Rs. ${Number(amt).toLocaleString('en-IN',{minimumFractionDigits:2})}`;
+              const amtWidth = doc.getTextWidth(amtStr); // measured in the same bold 8.5pt font it's drawn in
               doc.setFont(undefined,'normal');
-              // Truncate by actual rendered width (not char count) so long
-              // descriptions never run into the amount column on the right.
-              const descMaxWidth = (pageW - margin - 26) - (margin + 55);
+              // Truncate by actual rendered width (not char count), reserving this row's real
+              // amount-column width (not a fixed guess) so long descriptions never run into it.
+              const descMaxWidth = (pageW - margin - 22 - amtWidth - 4) - (margin + 55);
               if (doc.getTextWidth(desc) > descMaxWidth) {
                 while (doc.getTextWidth(desc + '...') > descMaxWidth && desc.length > 1) {
                   desc = desc.slice(0, -1);
@@ -3898,7 +4096,6 @@
               }
               doc.text(desc, margin+55, y+4);
               doc.setFont(undefined,'bold');
-              const amtStr = `Rs. ${Number(amt).toLocaleString('en-IN',{minimumFractionDigits:2})}`;
               doc.text(amtStr, pageW-margin-22, y+4, {align:'right'});
               doc.setFont(undefined,'normal'); doc.setFontSize(7);
               doc.text(`[${statusTxt}]`, pageW-margin, y+4, {align:'right'});
@@ -4216,11 +4413,12 @@
               if (e.status === 'pending') dPend++;
               if (e.status === 'l1_approved') dL1++;
               if (['approved','hr_approved','audit_cleared'].includes(e.status)) dAppr += (e.approved_amount != null ? +e.approved_amount : +e.amount);
-              if (e.status !== 'rejected' && e.status !== 'l1_rejected' && e.status !== 'deleted') dOverall += (e.approved_amount != null ? +e.approved_amount : +e.amount);
+              if (!['rejected', 'l1_rejected', 'deleted', 'audit_review', 'audit_query'].includes(e.status)) dOverall += (e.approved_amount != null ? +e.approved_amount : +e.amount);
             });
           });
         });
         const dPaid = paidForExpenses(dAllExps);
+        const dAdvance = ['audit','super_admin'].includes(currentProfile.role) ? [...dEmps].reduce((s, uid) => s + advanceFor(uid), 0) : 0;
 
         const dOpen = hierExpanded.depts.has(dept);
         const mgrs = Object.entries(dData.managers).sort(([ka],[kb]) => ka === '__no_mgr__' ? 1 : kb === '__no_mgr__' ? -1 : (dData.managers[ka].mgr?.name||'').localeCompare(dData.managers[kb].mgr?.name||''));
@@ -4240,9 +4438,10 @@
                 if (e.status==='pending') mPend++;
                 if (e.status==='l1_approved') mL1++;
                 if (['approved','hr_approved','audit_cleared'].includes(e.status)) mAppr += (e.approved_amount!=null?+e.approved_amount:+e.amount);
-                if (e.status!=='rejected' && e.status!=='l1_rejected' && e.status!=='deleted') mOverall += (e.approved_amount!=null?+e.approved_amount:+e.amount);
+                if (!['rejected', 'l1_rejected', 'deleted', 'audit_review', 'audit_query'].includes(e.status)) mOverall += (e.approved_amount!=null?+e.approved_amount:+e.amount);
               }));
               const mPaid = paidForExpenses(mAllExps);
+              const mAdvance = ['audit','super_admin'].includes(currentProfile.role) ? empArr.reduce((s, ed) => s + advanceFor(ed.user?.id), 0) : 0;
               const mId = 'mgr__' + (mgrKey).replace(/[^a-z0-9]/gi,'_') + '__' + dept.replace(/[^a-z0-9]/gi,'_');
               const mOpen = hierExpanded.mgrs.has(mId);
               const mi = mgr ? (mgr.name[0]||'?').toUpperCase() : '?';
@@ -4266,7 +4465,7 @@
                     ${mL1 ? `<span title="Approved by Manager, awaiting HR" style="background:#ede9fe;color:#5b21b6;border-radius:6px;padding:1px 7px;font-size:.7rem;font-weight:700">🔍${mL1} In Review (HR)</span>` : ''}
                     <span style="background:#f0fdf4;color:#065f46;border-radius:6px;padding:1px 7px;font-size:.7rem;font-weight:700" title="Sum of approved expenses">✅ Approved: ${formatCurrency(mAppr)}</span>
                     <span style="background:#f3f4f6;color:#374151;border-radius:6px;padding:1px 7px;font-size:.7rem;font-weight:700" title="Sum of pending + in-review + approved (excludes rejected)">Overall: ${formatCurrency(mOverall)}</span>
-                    <span style="background:#dcfce7;color:#166534;border-radius:6px;padding:1px 7px;font-size:.7rem;font-weight:700" title="Paid via bank">💰 Paid: ${formatCurrency(mPaid)}</span>${(mOverall - mPaid) > 0.005 ? `<span style="background:#fef3c7;color:#92400e;border-radius:6px;padding:1px 7px;font-size:.7rem;font-weight:700" title="Still pending">⏳ Due: ${formatCurrency(mOverall - mPaid)}</span>` : `<span style="background:#dcfce7;color:#166534;border-radius:6px;padding:1px 7px;font-size:.7rem;font-weight:700">✓ Fully paid</span>`}
+                    <span style="background:#dcfce7;color:#166534;border-radius:6px;padding:1px 7px;font-size:.7rem;font-weight:700" title="Paid via bank">💰 Paid: ${formatCurrency(mPaid)}</span>${mAdvance > 0.005 ? `<span style="background:#ede9fe;color:#5b21b6;border-radius:6px;padding:1px 7px;font-size:.7rem;font-weight:700" title="Outstanding advance, subtracted from Due">💵 Advance: ${formatCurrency(mAdvance)}</span>` : ''}${(mOverall - mPaid - mAdvance) > 0.005 ? `<span style="background:#fef3c7;color:#92400e;border-radius:6px;padding:1px 7px;font-size:.7rem;font-weight:700" title="Still pending">⏳ Due: ${formatCurrency(mOverall - mPaid - mAdvance)}</span>` : `<span style="background:#dcfce7;color:#166534;border-radius:6px;padding:1px 7px;font-size:.7rem;font-weight:700">✓ Fully paid</span>`}
                     <svg id="chev-${mId}" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"
                          style="width:16px;height:16px;color:var(--text-muted);transition:transform .2s;flex-shrink:0;transform:${mOpen?'rotate(180deg)':''}">
                       <path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/>
@@ -4282,7 +4481,7 @@
                     const eAppr = exps.filter(e=>e.status==='approved').length;
                     const eRej  = exps.filter(e=>e.status==='rejected'||e.status==='l1_rejected'||e.status==='deleted').length;
                     const eAmt  = exps.reduce((s,e)=>{
-                      if(e.status==='rejected'||e.status==='l1_rejected'||e.status==='deleted') return s;
+                      if(['rejected','l1_rejected','deleted','audit_review','audit_query'].includes(e.status)) return s;
                       return s+(e.approved_amount!=null?+e.approved_amount:+e.amount);
                     },0);
                     const eId = 'emp__' + (user.id||'x').replace(/[^a-z0-9]/gi,'_');
@@ -4309,8 +4508,9 @@
                           ${eAppr?`<span title="Approved" style="background:#d1fae5;color:#065f46;border-radius:5px;padding:0 6px;font-size:.68rem;font-weight:700">✓${eAppr}</span>`:''}
                           ${eRej?`<span style="background:#fee2e2;color:#991b1b;border-radius:5px;padding:0 6px;font-size:.68rem;font-weight:700">✗${eRej}</span>`:''}
                           <span style="font-size:.78rem;font-weight:700;color:var(--primary)" title="Sum of pending + in-review + approved (excludes rejected)">Overall: ${formatCurrency(eAmt)}</span>
-                          ${(() => { const paid = paidForExpenses(exps); const pend = eAmt - paid; return `<span style="background:#dcfce7;color:#166534;border-radius:5px;padding:0 6px;font-size:.68rem;font-weight:700" title="Paid via bank">💰 Paid: ${formatCurrency(paid)}</span>${pend > 0.005 ? `<span style="background:#fef3c7;color:#92400e;border-radius:5px;padding:0 6px;font-size:.68rem;font-weight:700" title="Still pending">⏳ Due: ${formatCurrency(pend)}</span>` : `<span style="background:#dcfce7;color:#166534;border-radius:5px;padding:0 6px;font-size:.68rem;font-weight:700">✓ Fully paid</span>`}`; })()}
+                          ${(() => { const paid = paidForExpenses(exps); const adv = ['audit','super_admin'].includes(currentProfile.role) ? advanceFor(user.id) : 0; const pend = eAmt - paid - adv; return `<span style="background:#dcfce7;color:#166534;border-radius:5px;padding:0 6px;font-size:.68rem;font-weight:700" title="Paid via bank">💰 Paid: ${formatCurrency(paid)}</span>${adv > 0.005 ? `<span style="background:#ede9fe;color:#5b21b6;border-radius:5px;padding:0 6px;font-size:.68rem;font-weight:700" title="Outstanding advance, subtracted from Due">💵 Advance: ${formatCurrency(adv)}</span>` : ''}${pend > 0.005 ? `<span style="background:#fef3c7;color:#92400e;border-radius:5px;padding:0 6px;font-size:.68rem;font-weight:700" title="Still pending">⏳ Due: ${formatCurrency(pend)}</span>` : `<span style="background:#dcfce7;color:#166534;border-radius:5px;padding:0 6px;font-size:.68rem;font-weight:700">✓ Fully paid</span>`}`; })()}
                           ${currentProfile.role === 'audit' ? `<button id="audchk-${eId}" onclick="event.stopPropagation();toggleAuditCheck('${eId}')" title="${eAllChecked ? 'Marked as checked — click to unmark' : 'Mark all shown expenses for this employee as checked'}" style="display:flex;align-items:center;gap:.3rem;background:${eAllChecked ? '#0f4423' : '#fff'};color:${eAllChecked ? '#fff' : 'var(--text-muted)'};border:1px solid ${eAllChecked ? '#0f4423' : 'var(--border)'};border-radius:5px;padding:0 7px;font-size:.68rem;font-weight:700;cursor:pointer;height:20px">${eAllChecked ? '✓ Checked' : '☐ Checked'}</button>` : ''}
+                          ${['audit','super_admin'].includes(currentProfile.role) ? `<button onclick="event.stopPropagation();showAdvanceHistory('${user.id}','${escHtml((user.name||'').replace(/'/g,"\\'"))}')" title="View advance history" style="background:none;border:1px solid var(--border);border-radius:5px;padding:0 7px;font-size:.68rem;font-weight:700;cursor:pointer;color:#5b21b6;height:20px">📜 Advance</button>` : ''}
                           <svg id="chev-${eId}" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"
                                style="width:14px;height:14px;color:var(--text-muted);transition:transform .2s;flex-shrink:0;transform:${eOpen?'rotate(180deg)':''}"
                             <path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/>
@@ -4340,7 +4540,7 @@
               ${dL1 ? `<span title="Approved by Manager, awaiting HR" style="background:#ede9fe;color:#5b21b6;border-radius:6px;padding:1px 7px;font-size:.72rem;font-weight:700">🔍 ${dL1} In Review (HR)</span>` : ''}
               <span style="background:#dcfce7;color:#166534;border-radius:6px;padding:1px 7px;font-size:.72rem;font-weight:700" title="Sum of approved expenses">✅ Approved: ${formatCurrency(dAppr)}</span>
               <span style="background:var(--bg-2);color:var(--text-muted);border-radius:6px;padding:1px 7px;font-size:.72rem;font-weight:700" title="Sum of pending + in-review + approved (excludes rejected)">Overall: ${formatCurrency(dOverall)}</span>
-              <span style="background:#dcfce7;color:#166534;border-radius:6px;padding:1px 7px;font-size:.72rem;font-weight:700" title="Paid via bank">💰 Paid: ${formatCurrency(dPaid)}</span>${(dOverall - dPaid) > 0.005 ? `<span style="background:#fef3c7;color:#92400e;border-radius:6px;padding:1px 7px;font-size:.72rem;font-weight:700" title="Still pending">⏳ Due: ${formatCurrency(dOverall - dPaid)}</span>` : `<span style="background:#dcfce7;color:#166534;border-radius:6px;padding:1px 7px;font-size:.72rem;font-weight:700">✓ Fully paid</span>`}
+              <span style="background:#dcfce7;color:#166534;border-radius:6px;padding:1px 7px;font-size:.72rem;font-weight:700" title="Paid via bank">💰 Paid: ${formatCurrency(dPaid)}</span>${dAdvance > 0.005 ? `<span style="background:#ede9fe;color:#5b21b6;border-radius:6px;padding:1px 7px;font-size:.72rem;font-weight:700" title="Outstanding advance, subtracted from Due">💵 Advance: ${formatCurrency(dAdvance)}</span>` : ''}${(dOverall - dPaid - dAdvance) > 0.005 ? `<span style="background:#fef3c7;color:#92400e;border-radius:6px;padding:1px 7px;font-size:.72rem;font-weight:700" title="Still pending">⏳ Due: ${formatCurrency(dOverall - dPaid - dAdvance)}</span>` : `<span style="background:#dcfce7;color:#166534;border-radius:6px;padding:1px 7px;font-size:.72rem;font-weight:700">✓ Fully paid</span>`}
             </div>
             <svg id="chev-${dId}" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"
                  style="width:20px;height:20px;flex-shrink:0;transition:transform .2s;transform:${dOpen?'rotate(180deg)':'rotate(0deg)'};color:var(--text-muted)">
@@ -4387,7 +4587,7 @@
         ${(()=>{
           const siteData = {};
           expenses.forEach(e => {
-            if (e.status === 'rejected' || e.status === 'l1_rejected' || e.status === 'deleted') return;
+            if (['rejected', 'l1_rejected', 'deleted', 'audit_review', 'audit_query'].includes(e.status)) return;
             const site = extractSite(e) || user.site_name || 'Unassigned';
             const amt  = e.approved_amount != null ? +e.approved_amount : +e.amount;
             if (!siteData[site]) siteData[site] = { total: 0, days: new Set(), count: 0 };
@@ -4420,7 +4620,7 @@
           const cycId = safeKey.replace(/[^a-zA-Z0-9]/g, '_');
           const cycOpen = hierExpanded.cycles.has(cycId);
           const gTotal = g.entries.reduce((s,e)=>{
-            if(e.status==='rejected'||e.status==='l1_rejected'||e.status==='deleted') return s;
+            if(['rejected','l1_rejected','deleted','audit_review','audit_query'].includes(e.status)) return s;
             return s+(e.approved_amount!=null?+e.approved_amount:+e.amount);
           },0);
           const gPaid = cyclePaidFor(user.id, g.mY, g.cT);
@@ -4465,7 +4665,7 @@
                     const changed = e.approved_amount!=null && +e.approved_amount!==+e.amount;
                     const showL1  = currentProfile.role==='admin' && e.status==='pending';
                     const showHR  = currentProfile.role==='hr' && (e.status==='l1_approved'||e.status==='audit_review');
-                    const showAud = currentProfile.role==='audit' && e.status==='hr_approved';
+                    const showAud = currentProfile.role==='audit' && (e.status==='hr_approved' || e.status==='approved');
                     const showL2  = currentProfile.role==='super_admin' && ['pending','l1_approved','hr_approved','audit_review'].includes(e.status);
                     return `
                     <tr style="border-top:1px solid var(--border)">
@@ -4497,7 +4697,7 @@
                           ${showHR?`<button onclick="openApprovalModal('${e.id}')" title="Review and approve/reject as HR" style="background:#059669;color:#fff;border:none;border-radius:6px;padding:.3rem .6rem;cursor:pointer;font-size:.78rem;font-weight:700;white-space:nowrap;transition:all .15s" onmouseover="this.style.background='#047857'" onmouseout="this.style.background='#059669'">🛡️ HR Review</button>
                           <button onclick="promptRejectExpense('${e.id}')" title="Reject this expense" style="background:none;border:1px solid #fecaca;border-radius:6px;padding:.3rem .5rem;cursor:pointer;font-size:.72rem;font-weight:600;color:#dc2626;transition:background .15s" onmouseover="this.style.background='#fef2f2'" onmouseout="this.style.background='none'">✕ Reject</button>`:''}
                           ${showAud?`<button onclick="auditClearExpense('${e.id}')" title="Clear this expense — moves to fully approved" style="background:#14532d;color:#fff;border:none;border-radius:6px;padding:.3rem .6rem;cursor:pointer;font-size:.78rem;font-weight:700;white-space:nowrap;transition:all .15s" onmouseover="this.style.background='#0f4423'" onmouseout="this.style.background='#14532d'">🔍 Audit Clear</button>
-                          <button onclick="openAuditFlagModal('${e.id}')" title="Send back to HR for re-review, with a reason" style="background:#fffbeb;color:#92400e;border:1px solid #f59e0b;border-radius:6px;padding:.3rem .5rem;cursor:pointer;font-size:.75rem;font-weight:600;transition:all .15s" onmouseover="this.style.background='#fef3c7'" onmouseout="this.style.background='#fffbeb'">⚑ Flag Review</button>`:''}
+                          <button onclick="openAuditFlagModal('${e.id}')" title="Send back to HR or the Employee for re-check, with a reason" style="background:#fffbeb;color:#92400e;border:1px solid #f59e0b;border-radius:6px;padding:.3rem .5rem;cursor:pointer;font-size:.75rem;font-weight:600;transition:all .15s" onmouseover="this.style.background='#fef3c7'" onmouseout="this.style.background='#fffbeb'">⚑ Flag Review</button>`:''}
                           ${showL2?`<button onclick="openApprovalModal('${e.id}')" title="Super Admin override — approve straight through, skipping any remaining stages" style="background:#7c3aed;color:#fff;border:none;border-radius:6px;padding:.3rem .6rem;cursor:pointer;font-size:.78rem;font-weight:700;white-space:nowrap;transition:all .15s" onmouseover="this.style.background='#6d28d9'" onmouseout="this.style.background='#7c3aed'">⚡ Override Approve</button>
                           <button onclick="promptRejectExpense('${e.id}')" title="Reject this expense" style="background:none;border:1px solid #fecaca;border-radius:6px;padding:.3rem .5rem;cursor:pointer;font-size:.72rem;font-weight:600;color:#dc2626;transition:background .15s" onmouseover="this.style.background='#fef2f2'" onmouseout="this.style.background='none'">✕ Reject</button>`:''}
                           ${e.status !== 'deleted' ? `<button onclick="deleteExpense('${e.id}')" title="Permanently delete this expense" style="background:none;border:none;border-radius:6px;padding:.3rem .5rem;cursor:pointer;font-size:.72rem;font-weight:600;color:#dc2626;transition:background .15s" onmouseover="this.style.background='#fef2f2'" onmouseout="this.style.background='none'">🗑️ Delete</button>` : ''}

@@ -219,6 +219,7 @@ function statusBadge(status) {
   if (status === 'hr_approved')   return flow(done('You'), done('Manager'), done('HR'), active('Audit'));
   if (status === 'audit_cleared') return flow(done('You'), done('Manager'), done('HR'), done('Audit')) + ' ' + approvedTag;
   if (status === 'audit_review')  return flow(done('You'), done('Manager'), done('HR'), flag('Audit'));
+  if (status === 'audit_query')   return flow(flag('You'), done('Manager'), done('HR'), wait('Audit'));
   if (status === 'l1_rejected')   return flow(done('You'), rej('Manager'), wait('HR'), wait('Audit'));
   if (status === 'rejected')      return flow(done('You'), rej('Rejected'), wait('HR'), wait('Audit'));
   if (status === 'approved')      return approvedTag;
@@ -229,31 +230,33 @@ function statusBadge(status) {
 /** Return a visual approval pipeline stepper with role icons and status dots. */
 function approvalStepper(e) {
   const stat = e.status;
-  const isFinal = stat === 'approved' || stat === 'audit_cleared' || stat === 'rejected' || stat === 'l1_rejected';
+  const isFinal = stat === 'approved' || stat === 'audit_cleared' || stat === 'rejected' || stat === 'l1_rejected' || stat === 'audit_query';
   const roles = [
     { key: 'you',     label: 'You',     icon: '🧑', done: true },
     { key: 'manager', label: 'Manager', icon: '👔', done: stat !== 'pending' && stat !== 'l1_rejected' && stat !== 'rejected',
       active: stat === 'pending' },
-    { key: 'hr',      label: 'HR',      icon: '🛡️', done: ['hr_approved','audit_cleared','audit_review'].includes(stat),
+    { key: 'hr',      label: 'HR',      icon: '🛡️', done: ['hr_approved','audit_cleared','audit_review','audit_query'].includes(stat),
       active: stat === 'l1_approved' },
     { key: 'audit',   label: 'Audit',   icon: '🔍', done: stat === 'audit_cleared',
       active: stat === 'hr_approved' || stat === 'audit_review' },
   ];
   const isRejected = stat === 'rejected' || stat === 'l1_rejected';
+  const isQueried  = stat === 'audit_query';
 
   const dot = (color, pulse) =>
     `<span style="width:10px;height:10px;border-radius:50%;background:${color};display:inline-block;flex-shrink:0;${pulse ? 'animation:statusPulse 1.5s ease-in-out infinite;box-shadow:0 0 0 3px rgba(37,99,235,0.2)' : ''}"></span>`;
 
   const segments = roles.map((r, i) => {
-    const isActive = r.active && !isRejected;
-    const isDone = r.done && !isRejected;
-    const color = isRejected && i === 1 ? '#dc2626' : isDone ? '#059669' : isActive ? '#2563eb' : '#d1d5db';
-    const bg = isRejected && i === 1 ? '#fef2f2' : isDone ? '#f0fdf4' : isActive ? '#eff6ff' : '';
-    const labelColor = isRejected && i === 1 ? '#dc2626' : isActive ? '#2563eb' : isDone ? '#059669' : '#9ca3af';
-    const labelWeight = isActive ? '600' : '400';
-    const icon = isRejected && i === 1 ? '✗ ' : isDone ? '✓ ' : isActive ? '● ' : '○ ';
+    const isFlaggedHere = isQueried && i === 0;
+    const isActive = r.active && !isRejected && !isQueried;
+    const isDone = r.done && !isRejected && !isFlaggedHere;
+    const color = isRejected && i === 1 ? '#dc2626' : isFlaggedHere ? '#d97706' : isDone ? '#059669' : isActive ? '#2563eb' : '#d1d5db';
+    const bg = isRejected && i === 1 ? '#fef2f2' : isFlaggedHere ? '#fefce8' : isDone ? '#f0fdf4' : isActive ? '#eff6ff' : '';
+    const labelColor = isRejected && i === 1 ? '#dc2626' : isFlaggedHere ? '#d97706' : isActive ? '#2563eb' : isDone ? '#059669' : '#9ca3af';
+    const labelWeight = (isActive || isFlaggedHere) ? '600' : '400';
+    const icon = isRejected && i === 1 ? '✗ ' : isFlaggedHere ? '⚑ ' : isDone ? '✓ ' : isActive ? '● ' : '○ ';
     return `<span style="display:inline-flex;align-items:center;gap:3px;padding:2px 6px;border-radius:4px;${bg ? 'background:'+bg+';' : ''}font-size:11px;font-weight:${labelWeight};color:${labelColor}">
-      ${dot(color, isActive)}
+      ${dot(color, isActive || isFlaggedHere)}
       <span>${icon}${r.label}</span>
     </span>`;
   });
@@ -265,6 +268,8 @@ function approvalStepper(e) {
   if (isRejected) {
     const rejectedAt = stat === 'l1_rejected' ? 'Manager' : '';
     suffix = `<span style="margin-left:4px;font-size:11px;color:#dc2626;font-weight:600;background:#fef2f2;padding:1px 6px;border-radius:4px">✗ Rejected${rejectedAt ? ' by '+rejectedAt : ''}</span>`;
+  } else if (isQueried) {
+    suffix = `<span style="margin-left:4px;font-size:11px;color:#d97706;font-weight:600;background:#fefce8;padding:1px 6px;border-radius:4px">🔍 Audit Query — fix &amp; resubmit</span>`;
   } else if (stat === 'approved' || stat === 'audit_cleared') {
     suffix = `<span style="margin-left:4px;font-size:11px;color:#059669;font-weight:600;background:#f0fdf4;padding:1px 6px;border-radius:4px">✓ Fully Approved</span>`;
   }
@@ -345,6 +350,11 @@ function populateSidebar(profile) {
   // Payment Register: admin, hr, audit, super_admin
   if (['admin', 'hr', 'audit', 'super_admin'].includes(role)) {
     if (el('sb-payment-register-link')) el('sb-payment-register-link').style.display = '';
+  }
+
+  // Advances: audit, super_admin only
+  if (['audit', 'super_admin'].includes(role)) {
+    if (el('sb-advances-link')) el('sb-advances-link').style.display = '';
   }
 }
 

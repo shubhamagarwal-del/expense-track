@@ -564,6 +564,12 @@
           </svg>
           Payment Register
         </a>
+        <a href="advances.html" class="sidebar-link" id="sb-advances-link" style="display:none">
+          <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4" />
+          </svg>
+          Advances
+        </a>
         <a href="help.html" class="sidebar-link" id="sb-help-link">
           <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
             <path stroke-linecap="round" stroke-linejoin="round" d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
@@ -1376,11 +1382,11 @@
       // them would just be confusing. They're only visible in the Expense
       // History "Deleted" tab.
       const dayExpenses = expensesForMonth.filter(e => new Date(e.created_at).toDateString() === dayStr && e.status !== 'deleted');
-      // Rejected entries can be edited and resubmitted (fixing and re-saving
-      // replaces the rejected row with a fresh pending one) — only entries
+      // Rejected/audit_query entries can be edited and resubmitted (fixing and
+      // re-saving replaces the row with a fresh pending one) — only entries
       // actively in the approval pipeline stay locked.
-      const lockedExp  = dayExpenses.filter(e => !['pending', 'rejected', 'l1_rejected'].includes(e.status));
-      const editableExp = dayExpenses.filter(e => ['pending', 'rejected', 'l1_rejected'].includes(e.status));
+      const lockedExp  = dayExpenses.filter(e => !['pending', 'rejected', 'l1_rejected', 'audit_query'].includes(e.status));
+      const editableExp = dayExpenses.filter(e => ['pending', 'rejected', 'l1_rejected', 'audit_query'].includes(e.status));
 
       // Locked entries (approved / in-review / audit stages) — shown read-only at top
       if (lockedExp.length > 0) {

@@ -57,6 +57,40 @@ export default async function handler(req, res) {
       return res.status(200).json({ checks: data || [] });
     }
 
+    // ?advances=1 → employee advance ledger (for Advance/Due display).
+    // Audit/Super Admin get everyone's; an employee only ever gets their own.
+    // Each row also gets `recovered_amount`/`remaining` computed from its recovery log,
+    // since one advance can now be recovered across multiple partial payments.
+    if (req.query?.advances) {
+      const ALLOWED_ADVANCE_ROLES = ['audit', 'super_admin'];
+      let q = supabaseAdmin
+        .from('employee_advances')
+        .select('id, user_id, amount, given_at, given_by_name, note, status, recovered_at, recovered_by_name')
+        .order('given_at', { ascending: false });
+      if (!ALLOWED_ADVANCE_ROLES.includes(profile.role)) q = q.eq('user_id', user.id);
+      const { data, error } = await q;
+      if (error) return res.status(500).json({ error: error.message });
+      const advances = data || [];
+      const ids = advances.map(a => a.id);
+      const recoveriesByAdvance = {};
+      if (ids.length) {
+        const { data: recs } = await supabaseAdmin
+          .from('employee_advance_recoveries')
+          .select('id, advance_id, amount, recovered_at, recovered_by_name')
+          .in('advance_id', ids)
+          .order('recovered_at', { ascending: false });
+        (recs || []).forEach(r => {
+          (recoveriesByAdvance[r.advance_id] ||= []).push(r);
+        });
+      }
+      const withRemaining = advances.map(a => {
+        const recoveries = recoveriesByAdvance[a.id] || [];
+        const recoveredAmount = recoveries.reduce((s, r) => s + Number(r.amount || 0), 0);
+        return { ...a, recovered_amount: recoveredAmount, remaining: Math.max(0, Number(a.amount || 0) - recoveredAmount), recoveries };
+      });
+      return res.status(200).json({ advances: withRemaining });
+    }
+
     // ?payments=1 → recorded cycle payments (for Paid/Pending display).
     // Admin-side roles get everyone's; an employee only ever gets their own.
     if (req.query?.payments) {
@@ -138,6 +172,95 @@ export default async function handler(req, res) {
         if (error) return res.status(500).json({ error: error.message });
       }
       return res.status(200).json({ message: 'OK', count: ids.length });
+    }
+
+    // ── POST { add_advance: { user_id, amount, given_at, note } } → record a new advance (Audit, Super Admin) ──
+    if (req.body?.add_advance) {
+      const { data: profile } = await supabaseAdmin.from('users').select('role, name').eq('id', user.id).single();
+      if (!profile || !['audit', 'super_admin'].includes(profile.role)) {
+        return res.status(403).json({ error: 'Only Audit or Super Admin can add an advance' });
+      }
+      const { user_id, amount, given_at, note } = req.body.add_advance;
+      const amt = Number(amount);
+      if (!user_id || !amt || amt <= 0) return res.status(400).json({ error: 'A valid user_id and amount are required' });
+
+      const { error } = await supabaseAdmin.from('employee_advances').insert({
+        user_id,
+        amount: amt,
+        given_at: given_at || new Date().toISOString().slice(0, 10),
+        given_by: user.id,
+        given_by_name: profile.name,
+        note: note?.trim() || null,
+      });
+      if (error) return res.status(500).json({ error: error.message });
+      return res.status(200).json({ message: 'Advance recorded' });
+    }
+
+    // ── POST { advance_recover: { advance_id, amount? } } → log a recovery against an advance
+    // (Audit, Super Admin). Omit `amount` to recover the full outstanding balance in one go;
+    // pass a smaller amount to net off only part of it (e.g. one payment cycle didn't cover
+    // the whole advance) — the remainder stays outstanding for a future recovery. ──
+    if (req.body?.advance_recover) {
+      const { data: profile } = await supabaseAdmin.from('users').select('role, name').eq('id', user.id).single();
+      if (!profile || !['audit', 'super_admin'].includes(profile.role)) {
+        return res.status(403).json({ error: 'Only Audit or Super Admin can recover an advance' });
+      }
+      const { advance_id, amount } = req.body.advance_recover;
+      if (!advance_id) return res.status(400).json({ error: 'advance_id is required' });
+
+      const { data: advance, error: advErr } = await supabaseAdmin
+        .from('employee_advances').select('id, amount').eq('id', advance_id).single();
+      if (advErr || !advance) return res.status(404).json({ error: 'Advance not found' });
+
+      const { data: recs } = await supabaseAdmin
+        .from('employee_advance_recoveries').select('amount').eq('advance_id', advance_id);
+      const alreadyRecovered = (recs || []).reduce((s, r) => s + Number(r.amount || 0), 0);
+      const remaining = Number(advance.amount || 0) - alreadyRecovered;
+      if (remaining <= 0.005) return res.status(400).json({ error: 'This advance is already fully recovered' });
+
+      const amt = amount != null ? Number(amount) : remaining;
+      if (!amt || amt <= 0 || amt > remaining + 0.005) {
+        return res.status(400).json({ error: 'Amount must be between 0 and the outstanding balance' });
+      }
+
+      const { error: insErr } = await supabaseAdmin.from('employee_advance_recoveries').insert({
+        advance_id, amount: amt, recovered_by: user.id, recovered_by_name: profile.name,
+      });
+      if (insErr) return res.status(500).json({ error: insErr.message });
+
+      if (amt >= remaining - 0.005) {
+        await supabaseAdmin.from('employee_advances').update({
+          status: 'recovered',
+          recovered_at: new Date().toISOString(),
+          recovered_by: user.id,
+          recovered_by_name: profile.name,
+        }).eq('id', advance_id);
+      }
+      return res.status(200).json({ message: 'Advance recovery recorded', remaining: Math.max(0, remaining - amt) });
+    }
+
+    // ── POST { undo_advance_recovery: recoveryId } → delete a logged recovery
+    // (e.g. a payment sheet was exported/netted but the bank transfer never actually
+    // went through). Reopens the advance as outstanding if it had been marked recovered. ──
+    if (req.body?.undo_advance_recovery) {
+      const { data: profile } = await supabaseAdmin.from('users').select('role').eq('id', user.id).single();
+      if (!profile || !['audit', 'super_admin'].includes(profile.role)) {
+        return res.status(403).json({ error: 'Only Audit or Super Admin can undo an advance recovery' });
+      }
+      const recoveryId = req.body.undo_advance_recovery;
+      const { data: recovery, error: recErr } = await supabaseAdmin
+        .from('employee_advance_recoveries').select('id, advance_id').eq('id', recoveryId).single();
+      if (recErr || !recovery) return res.status(404).json({ error: 'Recovery entry not found' });
+
+      const { error: delErr } = await supabaseAdmin
+        .from('employee_advance_recoveries').delete().eq('id', recoveryId);
+      if (delErr) return res.status(500).json({ error: delErr.message });
+
+      await supabaseAdmin.from('employee_advances').update({
+        status: 'outstanding', recovered_at: null, recovered_by: null, recovered_by_name: null,
+      }).eq('id', recovery.advance_id).eq('status', 'recovered');
+
+      return res.status(200).json({ message: 'Recovery undone' });
     }
 
     // ── POST { expense_id, admin_comment } → add/edit an admin comment without
@@ -392,7 +515,7 @@ async function pendingCyclesForUser(db, userId, paidByKey) {
     .from('expenses').select('amount, approved_amount, status, created_at').eq('user_id', userId);
   const groups = new Map();
   for (const e of exps || []) {
-    if (e.status === 'rejected' || e.status === 'l1_rejected') continue;
+    if (['rejected', 'l1_rejected', 'deleted', 'audit_review', 'audit_query'].includes(e.status)) continue;
     const d = new Date(e.created_at);
     const monthYear = d.toLocaleString('en-US', { month: 'long', year: 'numeric' });
     const cycleNum = d.getDate() <= 15 ? 1 : 2;

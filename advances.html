@@ -1,0 +1,503 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ExpenseTrack — Advances</title>
+  <link rel="stylesheet" href="style.css" />
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+
+  <!-- PWA -->
+  <link rel="manifest" href="/manifest.json" />
+  <meta name="theme-color" content="#6366f1" />
+  <link rel="shortcut icon" href="/favicon.ico" />
+  <link rel="icon" type="image/png" sizes="192x192" href="/icon-192.png" />
+  <link rel="icon" type="image/svg+xml" href="/icon.svg" />
+  <link rel="apple-touch-icon" href="/icon.svg" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="ExpenseTrack" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <script src="/pwa-register.js" defer></script>
+</head>
+
+<body>
+
+  <div class="app-layout">
+    <div class="sidebar-overlay" id="sidebar-overlay" onclick="closeSidebar()"></div>
+
+    <!-- ── Sidebar ──────────────────────────────────────────── -->
+    <nav class="sidebar" id="sidebar">
+      <div class="sidebar-logo">
+        <div class="logo-icon"><img src="/icon-192.png" alt="ExpenseTrack" /></div>
+        <span class="logo-text">ExpenseTrack</span>
+      </div>
+      <div class="sidebar-nav">
+        <p class="sidebar-nav-label">Menu</p>
+        <a href="dashboard.html" class="sidebar-link">
+          <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round"
+              d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
+          </svg>
+          Dashboard
+        </a>
+        <a href="add-expense.html" class="sidebar-link" id="sb-add-link" style="display:none">
+          <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round"
+              d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+          </svg>
+          Add Expense
+        </a>
+        <a href="profile.html" class="sidebar-link" id="sb-profile-link">
+          <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round"
+              d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+          </svg>
+          My Profile
+        </a>
+        <a href="profile.html#bank-card" class="sidebar-link" id="sb-bank-link">
+          <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round"
+              d="M3 10h18M5 6h14a2 2 0 012 2v10a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2zM7 15h2" />
+          </svg>
+          Bank Details
+        </a>
+        <a href="create-user.html" class="sidebar-link" id="sb-create-user-link" style="display:none">
+          <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round"
+              d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z" />
+          </svg>
+          Create User
+        </a>
+        <a href="manage-users.html" class="sidebar-link" id="sb-manage-users-link" style="display:none">
+          <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round"
+              d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" />
+          </svg>
+          Manage Users
+        </a>
+        <a href="payment-register.html" class="sidebar-link" id="sb-payment-register-link" style="display:none">
+          <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round"
+              d="M12 8v8m-4-5h8M5 6h14a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2z" />
+          </svg>
+          Payment Register
+        </a>
+        <a href="advances.html" class="sidebar-link active" id="sb-advances-link" style="display:none">
+          <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4" />
+          </svg>
+          Advances
+        </a>
+        <a href="help.html" class="sidebar-link" id="sb-help-link">
+          <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+          Help Center
+        </a>
+      </div>
+      <div class="sidebar-footer">
+        <div class="sidebar-user">
+          <div class="avatar" id="sb-avatar">?</div>
+          <div>
+            <div class="sidebar-user-email" id="sb-email">Loading…</div>
+            <div class="sidebar-user-role" id="sb-role">—</div>
+          </div>
+        </div>
+        <button class="sidebar-btn" onclick="logout()">Sign Out</button>
+      </div>
+    </nav>
+
+    <!-- ── Main ─────────────────────────────────────────────── -->
+    <div class="app-main">
+      <header class="topbar">
+        <button class="topbar-menu" onclick="toggleSidebar()" aria-label="Open menu">
+          <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 12h16M4 18h16" />
+          </svg>
+        </button>
+        <span class="topbar-title">Advances</span>
+        <div class="topbar-right"></div>
+      </header>
+
+      <main class="page-content">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:.75rem;margin-bottom:1.25rem">
+          <div>
+            <h1 style="margin:0 0 .25rem;font-size:1.4rem;font-weight:800">💵 Advances</h1>
+            <p style="margin:0;color:var(--text-muted);font-size:.88rem">Track advance payments given to employees — outstanding amounts are subtracted from their Due automatically.</p>
+          </div>
+          <button class="btn btn-primary" onclick="openAddAdvanceModal()" style="height:38px;font-size:.875rem;font-weight:600;border-radius:10px;padding:0 1.1rem;white-space:nowrap">
+            + Add Advance
+          </button>
+        </div>
+
+        <!-- Summary -->
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:.75rem;margin-bottom:1rem">
+          <div style="background:var(--card-bg,#fff);border:1px solid var(--border);border-radius:14px;padding:1rem 1.25rem">
+            <div style="font-size:.7rem;font-weight:700;color:var(--text-muted);text-transform:uppercase">Total Outstanding</div>
+            <div id="adv-total-outstanding" style="font-size:1.4rem;font-weight:800;color:#92400e;margin-top:.3rem">—</div>
+          </div>
+          <div style="background:var(--card-bg,#fff);border:1px solid var(--border);border-radius:14px;padding:1rem 1.25rem">
+            <div style="font-size:.7rem;font-weight:700;color:var(--text-muted);text-transform:uppercase">Total Recovered</div>
+            <div id="adv-total-recovered" style="font-size:1.4rem;font-weight:800;color:#166534;margin-top:.3rem">—</div>
+          </div>
+        </div>
+
+        <!-- Filter bar -->
+        <div style="background:var(--card-bg,#fff);border:1px solid var(--border);border-radius:14px;padding:1rem 1.25rem;margin-bottom:1rem;display:flex;flex-wrap:wrap;gap:.75rem;align-items:flex-end">
+          <div style="flex:1;min-width:180px">
+            <label style="display:block;font-size:.7rem;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:.35rem">Search</label>
+            <input class="form-input" type="text" id="adv-search" placeholder="Employee name or emp no…" oninput="renderAdvances()" style="height:38px;font-size:.875rem" />
+          </div>
+          <div style="min-width:160px">
+            <label style="display:block;font-size:.7rem;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:.35rem">Status</label>
+            <select class="form-select" id="adv-status" onchange="renderAdvances()" style="height:38px;font-size:.875rem">
+              <option value="all">All</option>
+              <option value="outstanding">Outstanding</option>
+              <option value="recovered">Recovered</option>
+            </select>
+          </div>
+        </div>
+
+        <div id="adv-table-wrap" style="background:var(--card-bg,#fff);border:1px solid var(--border);border-radius:14px;overflow:hidden">
+          <div class="loading-state"><div class="spinner"></div><span>Loading advances…</span></div>
+        </div>
+      </main>
+    </div>
+  </div>
+
+  <!-- ── Add Advance Modal ───────────────────────────────────── -->
+  <div id="add-advance-modal" style="display:none;position:fixed;inset:0;z-index:10000;background:rgba(15,23,42,.55);align-items:center;justify-content:center;padding:1.25rem">
+    <div style="background:#fff;border-radius:16px;max-width:420px;width:100%;padding:1.5rem;box-shadow:0 12px 48px rgba(0,0,0,.3)">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem">
+        <h3 style="margin:0;font-size:1.05rem;font-weight:800">💵 Add Advance</h3>
+        <button onclick="closeAddAdvanceModal()" style="background:none;border:none;font-size:1.3rem;cursor:pointer;color:#64748b">✕</button>
+      </div>
+      <div class="form-group mb-3">
+        <label class="form-label">Department</label>
+        <select class="form-select" id="adv-dept-filter" onchange="filterEmployeePicker()">
+          <option value="">All Departments</option>
+        </select>
+      </div>
+      <div class="form-group mb-3">
+        <label class="form-label">Employee</label>
+        <input class="form-input" type="text" id="adv-emp-search" placeholder="Search by name or emp no…" oninput="filterEmployeePicker()" style="margin-bottom:.5rem" />
+        <input type="hidden" id="adv-emp-id" />
+        <div id="adv-emp-list" style="border:1px solid var(--border);border-radius:10px;max-height:180px;overflow-y:auto"></div>
+        <div id="adv-emp-selected" style="display:none;margin-top:.5rem;background:#eef2ff;color:#4338ca;border-radius:8px;padding:.5rem .7rem;font-size:.8rem;font-weight:600"></div>
+      </div>
+      <div class="form-group mb-3">
+        <label class="form-label">Amount (₹)</label>
+        <input class="form-input" type="number" id="adv-amount" step="0.01" placeholder="0.00" />
+      </div>
+      <div class="form-group mb-3">
+        <label class="form-label">Date Given</label>
+        <input class="form-input" type="date" id="adv-given-at" />
+      </div>
+      <div class="form-group mb-3">
+        <label class="form-label">Note (optional)</label>
+        <input class="form-input" type="text" id="adv-note" placeholder="e.g. Site visit advance" />
+      </div>
+      <button class="btn btn-primary" style="width:100%;height:42px;font-weight:700" onclick="submitAddAdvance()" id="adv-submit-btn">Save Advance</button>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="app.js"></script>
+  <script>
+    let currentProfile = null;
+    let advRows = [];
+    let advUsers = [];
+
+    (async () => {
+      const user = await requireAuth();
+      if (!user) return;
+      const profile = await getUserProfile();
+      if (!profile) { showMessage('Could not load profile.', 'error'); setTimeout(logout, 2000); return; }
+      currentProfile = profile;
+      populateSidebar(profile);
+      if (!['audit', 'super_admin'].includes(profile.role)) {
+        window.location.href = 'dashboard.html';
+        return;
+      }
+      document.getElementById('adv-given-at').value = new Date().toISOString().slice(0, 10);
+
+      await loadAdvances();
+      loadEmployeesForPicker();
+    })();
+
+    async function loadAdvances() {
+      try {
+        const token = (await db.auth.getSession()).data.session?.access_token;
+        const res = await fetch('/api/receipt-url?advances=1', { headers: { Authorization: `Bearer ${token}` } });
+        const body = await res.json();
+        if (!res.ok) throw new Error(body.error || 'Failed to load advances');
+
+        const advances = body.advances || [];
+        const userIds = [...new Set(advances.map(a => a.user_id))];
+        const usersRes = await fetch('/api/list-users', { headers: { Authorization: `Bearer ${token}` } });
+        const usersBody = usersRes.ok ? await usersRes.json() : { users: [] };
+        const userMap = {};
+        (usersBody.users || []).forEach(u => { userMap[u.id] = u; });
+
+        advRows = advances.map(a => ({ ...a, user: userMap[a.user_id] || null }))
+          .sort((a, b) => new Date(b.given_at) - new Date(a.given_at));
+
+        const outstanding = advRows.reduce((s, a) => s + Number(a.remaining ?? (a.status === 'outstanding' ? a.amount : 0)), 0);
+        const recovered = advRows.reduce((s, a) => s + Number(a.recovered_amount || 0), 0);
+        document.getElementById('adv-total-outstanding').textContent = formatCurrency(outstanding);
+        document.getElementById('adv-total-recovered').textContent = formatCurrency(recovered);
+
+        renderAdvances();
+      } catch (err) {
+        document.getElementById('adv-table-wrap').innerHTML =
+          `<div style="padding:2rem;text-align:center;color:var(--text-muted)">Failed to load: ${escHtml(err.message)}</div>`;
+      }
+    }
+
+    async function loadEmployeesForPicker() {
+      try {
+        const token = (await db.auth.getSession()).data.session?.access_token;
+        const res = await fetch('/api/list-users', { headers: { Authorization: `Bearer ${token}` } });
+        if (!res.ok) return;
+        const { users } = await res.json();
+        // Only plain "employee" role users can submit expenses (add-expense.html), so only they can meaningfully receive/repay an advance
+        advUsers = (users || []).filter(u => u.role === 'employee').sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+
+        const depts = [...new Set(advUsers.map(u => (u.department || '').trim()).filter(Boolean))].sort();
+        const deptSel = document.getElementById('adv-dept-filter');
+        deptSel.innerHTML = '<option value="">All Departments</option>' +
+          depts.map(d => `<option value="${escHtml(d)}">${escHtml(d)}</option>`).join('');
+
+        filterEmployeePicker();
+      } catch {}
+    }
+
+    /** Rebuild the employee picker list from the department filter + search text. */
+    function filterEmployeePicker() {
+      const dept = (document.getElementById('adv-dept-filter')?.value || '').toLowerCase().trim();
+      const search = (document.getElementById('adv-emp-search')?.value || '').toLowerCase().trim();
+      const filtered = advUsers.filter(u => {
+        if (dept && (u.department || '').toLowerCase().trim() !== dept) return false;
+        if (search) {
+          const name = (u.name || '').toLowerCase();
+          const empNo = (u.emp_no || '').toLowerCase();
+          if (!name.includes(search) && !empNo.includes(search)) return false;
+        }
+        return true;
+      });
+      const list = document.getElementById('adv-emp-list');
+      const selectedId = document.getElementById('adv-emp-id').value;
+      if (!filtered.length) {
+        list.innerHTML = `<div style="padding:.75rem;color:var(--text-muted);font-size:.82rem;text-align:center">No employees match</div>`;
+        return;
+      }
+      list.innerHTML = filtered.map(u => `
+        <div onclick="selectAdvanceEmployee('${u.id}')"
+             style="padding:.55rem .8rem;cursor:pointer;font-size:.83rem;border-bottom:1px solid #f0f0f0;${u.id === selectedId ? 'background:#eef2ff' : ''}"
+             onmouseover="this.style.background='#f5f5f5'" onmouseout="this.style.background='${u.id === selectedId ? '#eef2ff' : '#fff'}'">
+          <span style="font-weight:600">${escHtml(u.name || u.email)}</span>
+          <span style="color:#94a3b8"> — ${escHtml(u.emp_no || '—')}${u.department ? ' · ' + escHtml(u.department) : ''}</span>
+        </div>`).join('');
+    }
+
+    function selectAdvanceEmployee(userId) {
+      const u = advUsers.find(x => x.id === userId);
+      if (!u) return;
+      document.getElementById('adv-emp-id').value = userId;
+      const banner = document.getElementById('adv-emp-selected');
+      banner.style.display = 'block';
+      banner.textContent = `Selected: ${u.name || u.email} (${u.emp_no || '—'})`;
+      filterEmployeePicker();
+    }
+
+    /** Effective status derived from remaining balance (a partially-recovered advance still counts as "outstanding" here). */
+    function advEffectiveStatus(a) {
+      const rem = Number(a.remaining ?? (a.status === 'outstanding' ? a.amount : 0));
+      return rem <= 0.005 ? 'recovered' : 'outstanding';
+    }
+
+    function statusBadge(a) {
+      const rem = Number(a.remaining ?? (a.status === 'outstanding' ? a.amount : 0));
+      if (rem <= 0.005) return `<span style="background:#dcfce7;color:#166534;border-radius:6px;padding:2px 9px;font-size:.72rem;font-weight:700">✓ Recovered</span>`;
+      if (a.recovered_amount > 0.005) return `<span style="background:#fef3c7;color:#92400e;border-radius:6px;padding:2px 9px;font-size:.72rem;font-weight:700">◐ Partial — ${formatCurrency(rem)} left</span>`;
+      return `<span style="background:#fef3c7;color:#92400e;border-radius:6px;padding:2px 9px;font-size:.72rem;font-weight:700">⏳ Outstanding</span>`;
+    }
+
+    function renderAdvances() {
+      const search = (document.getElementById('adv-search')?.value || '').toLowerCase().trim();
+      const status = document.getElementById('adv-status')?.value || 'all';
+      const rows = advRows.filter(a => {
+        if (status !== 'all' && advEffectiveStatus(a) !== status) return false;
+        if (search) {
+          const name = (a.user?.name || '').toLowerCase();
+          const empNo = (a.user?.emp_no || '').toLowerCase();
+          if (!name.includes(search) && !empNo.includes(search)) return false;
+        }
+        return true;
+      });
+
+      const wrap = document.getElementById('adv-table-wrap');
+      if (!rows.length) {
+        wrap.innerHTML = `<div style="padding:2.5rem;text-align:center;color:var(--text-muted)">No advances found.</div>`;
+        return;
+      }
+
+      wrap.innerHTML = `
+        <div style="overflow-x:auto">
+          <table style="width:100%;border-collapse:collapse;font-size:.85rem">
+            <thead>
+              <tr style="background:var(--bg-page,#f9fafb)">
+                <th style="padding:.65rem .9rem;text-align:left;font-size:.68rem;text-transform:uppercase;color:var(--text-muted);font-weight:700">Employee</th>
+                <th style="padding:.65rem .9rem;text-align:right;font-size:.68rem;text-transform:uppercase;color:var(--text-muted);font-weight:700">Amount</th>
+                <th style="padding:.65rem .9rem;text-align:left;font-size:.68rem;text-transform:uppercase;color:var(--text-muted);font-weight:700">Date Given</th>
+                <th style="padding:.65rem .9rem;text-align:left;font-size:.68rem;text-transform:uppercase;color:var(--text-muted);font-weight:700">Given By</th>
+                <th style="padding:.65rem .9rem;text-align:left;font-size:.68rem;text-transform:uppercase;color:var(--text-muted);font-weight:700">Note</th>
+                <th style="padding:.65rem .9rem;text-align:left;font-size:.68rem;text-transform:uppercase;color:var(--text-muted);font-weight:700">Status</th>
+                <th style="padding:.65rem .9rem;text-align:right;font-size:.68rem;text-transform:uppercase;color:var(--text-muted);font-weight:700">Action</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${rows.map(a => `
+                <tr style="border-top:1px solid var(--border)">
+                  <td style="padding:.6rem .9rem">
+                    <div style="font-weight:700">${escHtml(a.user?.name || 'Unknown')}</div>
+                    <div style="font-size:.72rem;color:var(--text-muted)">${escHtml(a.user?.emp_no || '—')}</div>
+                  </td>
+                  <td style="padding:.6rem .9rem;text-align:right;font-weight:700">${formatCurrency(a.amount)}</td>
+                  <td style="padding:.6rem .9rem;white-space:nowrap">${new Date(a.given_at).toLocaleDateString('en-IN', { day:'2-digit', month:'short', year:'numeric' })}</td>
+                  <td style="padding:.6rem .9rem;color:var(--text-muted)">${escHtml(a.given_by_name || '—')}</td>
+                  <td style="padding:.6rem .9rem;color:var(--text-muted);max-width:200px">${escHtml(a.note || '—')}</td>
+                  <td style="padding:.6rem .9rem">${statusBadge(a)}</td>
+                  <td style="padding:.6rem .9rem;text-align:right">
+                    ${advEffectiveStatus(a) === 'outstanding' ? `
+                      <button class="btn btn-secondary btn-sm" onclick="recoverAdvance('${a.id}')" style="font-size:.75rem;padding:.3rem .6rem;border-radius:7px">Mark Recovered</button>
+                      <button class="btn btn-secondary btn-sm" onclick="recoverAdvancePartial('${a.id}', ${Number(a.remaining ?? a.amount)})" style="font-size:.75rem;padding:.3rem .6rem;border-radius:7px;margin-left:.3rem">Partial…</button>
+                    ` : ''}
+                  </td>
+                </tr>${(a.recoveries || []).length ? `
+                <tr style="border-top:1px dashed var(--border)">
+                  <td colspan="7" style="padding:.3rem .9rem .6rem 2.2rem;background:#fafafa">
+                    <div style="font-size:.68rem;color:var(--text-muted);font-weight:700;margin:.2rem 0 .25rem">RECOVERY LOG</div>
+                    ${a.recoveries.map(r => `
+                      <div style="display:flex;justify-content:space-between;align-items:center;padding:.15rem 0;font-size:.78rem">
+                        <span>${new Date(r.recovered_at).toLocaleDateString('en-IN')} — ${formatCurrency(r.amount)} <span style="color:var(--text-muted)">by ${escHtml(r.recovered_by_name || '—')}</span></span>
+                        <button onclick="undoAdvanceRecovery('${r.id}')" style="background:none;border:none;color:#dc2626;font-size:.72rem;font-weight:700;cursor:pointer;padding:2px 6px">↩ Undo</button>
+                      </div>`).join('')}
+                  </td>
+                </tr>` : ''}`).join('')}
+            </tbody>
+          </table>
+        </div>`;
+    }
+
+    function openAddAdvanceModal() {
+      document.getElementById('adv-dept-filter').value = '';
+      document.getElementById('adv-emp-search').value = '';
+      document.getElementById('adv-emp-id').value = '';
+      document.getElementById('adv-emp-selected').style.display = 'none';
+      filterEmployeePicker();
+      document.getElementById('adv-amount').value = '';
+      document.getElementById('adv-given-at').value = new Date().toISOString().slice(0, 10);
+      document.getElementById('adv-note').value = '';
+      document.getElementById('add-advance-modal').style.display = 'flex';
+    }
+
+    function closeAddAdvanceModal() {
+      document.getElementById('add-advance-modal').style.display = 'none';
+    }
+
+    async function submitAddAdvance() {
+      const user_id = document.getElementById('adv-emp-id').value;
+      const amount = parseFloat(document.getElementById('adv-amount').value);
+      const given_at = document.getElementById('adv-given-at').value;
+      const note = document.getElementById('adv-note').value.trim();
+
+      if (!user_id) { showMessage('Please select an employee.', 'error'); return; }
+      if (!amount || amount <= 0) { showMessage('Please enter a valid amount.', 'error'); return; }
+
+      const btn = document.getElementById('adv-submit-btn');
+      setLoading(btn, true);
+      try {
+        const token = (await db.auth.getSession()).data.session?.access_token;
+        const res = await fetch('/api/receipt-url', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+          body: JSON.stringify({ add_advance: { user_id, amount, given_at, note } }),
+        });
+        const body = await res.json();
+        if (!res.ok) throw new Error(body.error || 'Failed to add advance');
+        showMessage('Advance recorded!', 'success');
+        closeAddAdvanceModal();
+        await loadAdvances();
+      } catch (err) {
+        showMessage(err.message, 'error');
+      } finally {
+        setLoading(btn, false);
+      }
+    }
+
+    async function recoverAdvance(id) {
+      if (!confirm('Mark this advance as recovered?')) return;
+      try {
+        const token = (await db.auth.getSession()).data.session?.access_token;
+        const res = await fetch('/api/receipt-url', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+          body: JSON.stringify({ advance_recover: { advance_id: id } }),
+        });
+        const body = await res.json();
+        if (!res.ok) throw new Error(body.error || 'Failed to update');
+        showMessage('Advance marked as recovered.', 'success');
+        await loadAdvances();
+      } catch (err) {
+        showMessage(err.message, 'error');
+      }
+    }
+
+    /** Manually recover part of an outstanding advance (e.g. a synced/confirmed payment only covered part of it). */
+    async function recoverAdvancePartial(id, remaining) {
+      const input = prompt(`Amount actually recovered (max ₹${Number(remaining).toFixed(2)}):`);
+      if (input === null) return;
+      const amt = parseFloat(input);
+      if (!amt || amt <= 0) { showMessage('Please enter a valid amount.', 'error'); return; }
+      if (amt > Number(remaining) + 0.005) { showMessage('Amount exceeds the outstanding balance.', 'error'); return; }
+      try {
+        const token = (await db.auth.getSession()).data.session?.access_token;
+        const res = await fetch('/api/receipt-url', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+          body: JSON.stringify({ advance_recover: { advance_id: id, amount: amt } }),
+        });
+        const body = await res.json();
+        if (!res.ok) throw new Error(body.error || 'Failed to update');
+        showMessage('Partial recovery recorded.', 'success');
+        await loadAdvances();
+      } catch (err) {
+        showMessage(err.message, 'error');
+      }
+    }
+
+    /** Undo a logged recovery (e.g. a payment sheet was exported/netted but the bank transfer never went through). */
+    async function undoAdvanceRecovery(recoveryId) {
+      if (!confirm('Undo this recovery? The advance amount will go back to outstanding.')) return;
+      try {
+        const token = (await db.auth.getSession()).data.session?.access_token;
+        const res = await fetch('/api/receipt-url', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+          body: JSON.stringify({ undo_advance_recovery: recoveryId }),
+        });
+        const body = await res.json();
+        if (!res.ok) throw new Error(body.error || 'Failed to undo');
+        showMessage('Recovery undone.', 'success');
+        await loadAdvances();
+      } catch (err) {
+        showMessage(err.message, 'error');
+      }
+    }
+  </script>
+</body>
+
+</html>

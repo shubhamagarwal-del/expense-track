@@ -1407,12 +1407,12 @@ tbody tr:hover { background: #fafbff; }
 }
 
 /* Make approval stepper clickable with hover feedback */
-.approval-stepper[data-id]:not([data-status="approved"]):not([data-status="audit_cleared"]):not([data-status="rejected"]):not([data-status="l1_rejected"]) {
+.approval-stepper[data-id]:not([data-status="approved"]):not([data-status="audit_cleared"]):not([data-status="rejected"]):not([data-status="l1_rejected"]):not([data-status="audit_query"]) {
   cursor: pointer !important;
   border-radius: 8px;
   transition: all 0.15s;
 }
-.approval-stepper[data-id]:not([data-status="approved"]):not([data-status="audit_cleared"]):not([data-status="rejected"]):not([data-status="l1_rejected"]):hover {
+.approval-stepper[data-id]:not([data-status="approved"]):not([data-status="audit_cleared"]):not([data-status="rejected"]):not([data-status="l1_rejected"]):not([data-status="audit_query"]):hover {
   background: #dbeafe !important;
   border-color: #3b82f6 !important;
   box-shadow: 0 2px 12px rgba(37,99,235,0.15);

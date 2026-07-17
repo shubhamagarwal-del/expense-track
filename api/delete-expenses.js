@@ -48,10 +48,10 @@ export default async function handler(req, res) {
   }
 
   const { ids, date_start, date_end } = req.body;
-  // Pending entries are being replaced by their edited version; rejected
+  // Pending entries are being replaced by their edited version; rejected/audit_query
   // entries are being resubmitted (fixed and re-saved as a fresh pending row) —
   // both are the user's own, not-yet-approved work, safe to self-clean.
-  const SELF_CLEANABLE_STATUSES = ['pending', 'rejected', 'l1_rejected'];
+  const SELF_CLEANABLE_STATUSES = ['pending', 'rejected', 'l1_rejected', 'audit_query'];
 
   // Pass 1 — delete by specific UUIDs (user's own pending/rejected only)
   if (Array.isArray(ids) && ids.length > 0) {
