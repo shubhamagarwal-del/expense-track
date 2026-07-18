@@ -486,9 +486,15 @@
 
     // ─── REAL-TIME ──────────────────────────────────────────────
     let _rtDebounce = null;
+    let _rtChannel = null;
+    let _rtReconnectTimer = null;
 
     function setupRealtime() {
-      db.channel('rt-dashboard-expenses')
+      // If a channel from a previous call (or a dropped connection) is still
+      // around, tear it down first so we don't end up with duplicate subscriptions.
+      if (_rtChannel) { try { db.removeChannel(_rtChannel); } catch (_) {} }
+
+      _rtChannel = db.channel('rt-dashboard-expenses')
         .on('postgres_changes', { event: '*', schema: 'public', table: 'expenses' }, () => {
           clearTimeout(_rtDebounce);
           _rtDebounce = setTimeout(async () => {
@@ -514,10 +520,19 @@
                 updateEmpStats(expenses);
                 refreshListView();
               }
-            } catch (_) {}
+            } catch (err) { console.error('[realtime] refresh failed:', err); }
           }, 700);
         })
-        .subscribe();
+        .subscribe((status) => {
+          // The websocket can silently drop (network blip, laptop sleep, tab
+          // backgrounded a long time) with no auto-recovery from the client
+          // library — without this, live updates just stop until a manual
+          // page refresh. Re-establish the subscription when that happens.
+          if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') {
+            clearTimeout(_rtReconnectTimer);
+            _rtReconnectTimer = setTimeout(() => setupRealtime(), 3000);
+          }
+        });
     }
 
     // ─── CLICKABLE STATUS STEPPER ─────────────────────────
@@ -653,6 +668,15 @@
         });
         advanceOutstandingMap = map;
       } catch {}
+    }
+
+    /** For a superseded entry, find the entry (if any) that replaced it. */
+    function findResubmissionOf(e) {
+      return allExpensesFetched.find(x => x.resubmitted_from === e.id);
+    }
+    /** For a resubmitted entry, find the original (now superseded) entry it replaced. */
+    function findOriginalOf(e) {
+      return e.resubmitted_from ? allExpensesFetched.find(x => x.id === e.resubmitted_from) : null;
     }
 
     /** Outstanding advance total for one user (0 if none). */
@@ -1164,7 +1188,7 @@
 
     function updateEmpStats(expenses) {
       const now = new Date();
-      const approvedAndPending = expenses.filter(e => e.status !== 'rejected' && e.status !== 'l1_rejected' && e.status !== 'deleted');
+      const approvedAndPending = expenses.filter(e => !['rejected', 'l1_rejected', 'deleted', 'audit_review', 'audit_query', 'superseded'].includes(e.status));
       const effectiveAmt = e => e.approved_amount != null ? +e.approved_amount : +e.amount;
       const total = approvedAndPending.reduce((s, e) => s + effectiveAmt(e), 0);
       const month = approvedAndPending
@@ -1245,7 +1269,9 @@
             const cleared    = g.expenses.filter(e => e.status === 'audit_cleared').length;
             const approved   = g.expenses.filter(e => e.status === 'approved').length;
             const rejected   = g.expenses.filter(e => e.status === 'rejected' || e.status === 'l1_rejected' || e.status === 'deleted' || e.status === 'superseded').length;
-            const totalAmt = g.expenses.reduce((s, e) => s + effectiveAmt(e), 0);
+            const totalAmt = g.expenses
+              .filter(e => !['rejected', 'l1_rejected', 'deleted', 'audit_review', 'audit_query', 'superseded'].includes(e.status))
+              .reduce((s, e) => s + effectiveAmt(e), 0);
             const col = g.cNum === 1 ? '#6366f1' : '#7c3aed';
             const tagBg  = g.cNum === 1 ? '#ede9fe' : '#f3e8ff';
             const tagCol = g.cNum === 1 ? '#6366f1' : '#7c3aed';
@@ -1476,8 +1502,8 @@
             <option value="pending">Pending — Manager Review</option>
             <option value="l1_approved">Manager Approved — HR Review</option>
             <option value="hr_approved">HR Approved — Audit Review</option>
-            <option value="audit_review">Audit Flagged — HR</option>
-            <option value="audit_query">Audit Query — Employee</option>
+            <option value="audit_review">Rejected by Audit — to HR</option>
+            <option value="audit_query">Rejected by Audit — to Employee</option>
             <option value="audit_cleared">Audit Cleared</option>
             <option value="approved">Approved (Legacy)</option>
             <option value="l1_rejected">Rejected by Manager</option>
@@ -1670,7 +1696,7 @@
       const today = now.toISOString().split('T')[0];
       const effAmt = e => e.approved_amount != null ? +e.approved_amount : +e.amount;
 
-      const active = expenses.filter(e => e.status !== 'rejected' && e.status !== 'l1_rejected' && e.status !== 'deleted');
+      const active = expenses.filter(e => !['rejected', 'l1_rejected', 'deleted', 'audit_review', 'audit_query', 'superseded'].includes(e.status));
       const todayTotal = active
         .filter(e => e.created_at.startsWith(today))
         .reduce((s, e) => s + effAmt(e), 0);
@@ -2529,10 +2555,20 @@
       <td>${catPill(e.category)}</td>
       <td class="td-desc">
         ${parseDescForDisplay(e.description)}
-        ${e.rejection_reason ? `<div style="color: var(--primary); font-size: 0.75rem; margin-top: 0.4rem; background: var(--bg-2); padding: 0.4rem; border-radius: 4px;"><strong>Admin Comment:</strong> ${escHtml(e.rejection_reason)}</div>` : ''}
-        ${e.status === 'deleted' ? `<div style="color: #991b1b; font-size: 0.75rem; margin-top: 0.4rem; background: #fee2e2; padding: 0.4rem; border-radius: 4px;"><strong>🗑️ Deleted${e.deleted_by_name ? ' by ' + escHtml(e.deleted_by_name) : ''}:</strong> ${escHtml(e.deleted_reason || 'No reason given')}</div>` : ''}
-        ${e.status === 'audit_query' ? `<div style="color: #92400e; font-size: 0.75rem; margin-top: 0.4rem; background: #fef3c7; padding: 0.4rem; border-radius: 4px;"><strong>🔍 Audit Query${e.audit_by_name ? ' by ' + escHtml(e.audit_by_name) : ''}:</strong> ${escHtml(e.audit_note || 'Needs correction')}</div>` : ''}
-        ${e.status === 'superseded' ? `<div style="color: #475569; font-size: 0.75rem; margin-top: 0.4rem; background: #f1f5f9; padding: 0.4rem; border-radius: 4px;"><strong>↻ Fixed &amp; Resubmitted</strong>${e.audit_note ? ` — Audit Query: ${escHtml(e.audit_note)}` : ''} — a corrected version of this entry was resubmitted.</div>` : ''}
+        ${e.rejection_reason ? `<div style="color: var(--primary); font-size: 0.75rem; margin-top: 0.4rem; background: var(--bg-2); padding: 0.4rem; border-radius: 4px; white-space: normal; overflow-wrap: break-word;"><strong>Admin Comment:</strong> ${escHtml(e.rejection_reason)}</div>` : ''}
+        ${e.status === 'deleted' ? `<div style="color: #991b1b; font-size: 0.75rem; margin-top: 0.4rem; background: #fee2e2; padding: 0.4rem; border-radius: 4px; white-space: normal; overflow-wrap: break-word;"><strong>🗑️ Deleted${e.deleted_by_name ? ' by ' + escHtml(e.deleted_by_name) : ''}:</strong> ${escHtml(e.deleted_reason || 'No reason given')}</div>` : ''}
+        ${e.status === 'audit_query' ? `<div style="color: #991b1b; font-size: 0.75rem; margin-top: 0.4rem; background: #fee2e2; padding: 0.4rem; border-radius: 4px; white-space: normal; overflow-wrap: break-word;"><strong>✗ Rejected by Audit${e.audit_by_name ? ' (' + escHtml(e.audit_by_name) + ')' : ''}:</strong> ${escHtml(e.audit_note || 'Needs correction')}</div>` : ''}
+        ${e.status === 'superseded' ? (() => {
+          const newEntry = findResubmissionOf(e);
+          const linkText = newEntry
+            ? `It's now <strong>${formatCurrency(newEntry.approved_amount != null ? newEntry.approved_amount : newEntry.amount)}</strong> dated ${formatDate(newEntry.created_at)}, status: ${statusBadge(newEntry.status)}`
+            : `You already fixed it and submitted it again as a new entry — look for it under Pending.`;
+          return `<div style="color: #475569; font-size: 0.75rem; margin-top: 0.4rem; background: #f1f5f9; padding: 0.4rem; border-radius: 4px; white-space: normal; overflow-wrap: break-word;"><strong>↻ This is an old, outdated entry.</strong> ${linkText}${e.audit_note ? ` (Audit had rejected it: "${escHtml(e.audit_note)}")` : ''}</div>`;
+        })() : ''}
+        ${e.resubmitted_from ? (() => {
+          const orig = findOriginalOf(e);
+          return orig ? `<div style="color: #475569; font-size: 0.75rem; margin-top: 0.4rem; background: #f1f5f9; padding: 0.4rem; border-radius: 4px; white-space: normal; overflow-wrap: break-word;"><strong>↻ Resubmission</strong> — replaces the ${formatCurrency(orig.amount)} entry from ${formatDate(orig.created_at)} shown under the Rejected tab.</div>` : '';
+        })() : ''}
         ${(e.status === 'rejected' || e.status === 'l1_rejected' || e.status === 'audit_query') ? `<a href="add-expense.html?editDate=${encodeURIComponent(e.created_at)}" style="display:inline-block;margin-top:.4rem;font-size:.75rem;font-weight:700;color:var(--primary)">✎ Fix and resubmit →</a>` : ''}
       </td>
       <td class="td-amount">
@@ -2566,7 +2602,8 @@
       <td>${catPill(e.category)}</td>
       <td class="td-desc">
         ${parseDescForDisplay(e.description)}
-        ${e.rejection_reason ? `<div style="color: var(--primary); font-size: 0.75rem; margin-top: 0.25rem; background: var(--bg-2); padding: 0.25rem; border-radius: 4px;"><strong>Admin Comment:</strong> ${escHtml(e.rejection_reason)}</div>` : ''}
+        ${e.rejection_reason ? `<div style="color: var(--primary); font-size: 0.75rem; margin-top: 0.25rem; background: var(--bg-2); padding: 0.25rem; border-radius: 4px; white-space: normal; overflow-wrap: break-word;"><strong>Admin Comment:</strong> ${escHtml(e.rejection_reason)}</div>` : ''}
+        ${e.resubmitted_note ? `<div style="color: #92400e; font-size: 0.75rem; margin-top: 0.25rem; background: #fef3c7; padding: 0.25rem; border-radius: 4px; white-space: normal; overflow-wrap: break-word;"><strong>↻ Resubmitted — was flagged by Audit:</strong> ${escHtml(e.resubmitted_note)}</div>` : ''}
       </td>
       <td class="td-amount ${isHighAmount ? 'budget-flag' : ''}">${formatCurrency(e.amount)}</td>
       <td>${statusBadge(e.status)}</td>
@@ -2609,8 +2646,18 @@
       <div class="expense-card-desc">${parseDescForDisplay(e.description)}</div>
       ${e.rejection_reason ? `<div class="expense-card-desc" style="color: #dc2626; background: #fee2e2; padding: 0.5rem; border-radius: 4px; margin-top: 0.5rem;"><strong>Rejected:</strong> ${escHtml(e.rejection_reason)}</div>` : ''}
       ${e.status === 'deleted' ? `<div class="expense-card-desc" style="color: #991b1b; background: #fee2e2; padding: 0.5rem; border-radius: 4px; margin-top: 0.5rem;"><strong>🗑️ Deleted${e.deleted_by_name ? ' by ' + escHtml(e.deleted_by_name) : ''}:</strong> ${escHtml(e.deleted_reason || 'No reason given')}</div>` : ''}
-      ${e.status === 'audit_query' ? `<div class="expense-card-desc" style="color: #92400e; background: #fef3c7; padding: 0.5rem; border-radius: 4px; margin-top: 0.5rem;"><strong>🔍 Audit Query${e.audit_by_name ? ' by ' + escHtml(e.audit_by_name) : ''}:</strong> ${escHtml(e.audit_note || 'Needs correction')}</div>` : ''}
-      ${e.status === 'superseded' ? `<div class="expense-card-desc" style="color: #475569; background: #f1f5f9; padding: 0.5rem; border-radius: 4px; margin-top: 0.5rem;"><strong>↻ Fixed &amp; Resubmitted</strong>${e.audit_note ? ` — Audit Query: ${escHtml(e.audit_note)}` : ''} — a corrected version of this entry was resubmitted.</div>` : ''}
+      ${e.status === 'audit_query' ? `<div class="expense-card-desc" style="color: #991b1b; background: #fee2e2; padding: 0.5rem; border-radius: 4px; margin-top: 0.5rem;"><strong>✗ Rejected by Audit${e.audit_by_name ? ' (' + escHtml(e.audit_by_name) + ')' : ''}:</strong> ${escHtml(e.audit_note || 'Needs correction')}</div>` : ''}
+      ${e.status === 'superseded' ? (() => {
+        const newEntry = findResubmissionOf(e);
+        const linkText = newEntry
+          ? `It's now <strong>${formatCurrency(newEntry.approved_amount != null ? newEntry.approved_amount : newEntry.amount)}</strong> dated ${formatDate(newEntry.created_at)}, status: ${statusBadge(newEntry.status)}`
+          : `You already fixed it and submitted it again as a new entry — look for it under Pending.`;
+        return `<div class="expense-card-desc" style="color: #475569; background: #f1f5f9; padding: 0.5rem; border-radius: 4px; margin-top: 0.5rem;"><strong>↻ This is an old, outdated entry.</strong> ${linkText}${e.audit_note ? ` (Audit had rejected it: "${escHtml(e.audit_note)}")` : ''}</div>`;
+      })() : ''}
+      ${e.resubmitted_from ? (() => {
+        const orig = findOriginalOf(e);
+        return orig ? `<div class="expense-card-desc" style="color: #475569; background: #f1f5f9; padding: 0.5rem; border-radius: 4px; margin-top: 0.5rem;"><strong>↻ Resubmission</strong> — replaces the ${formatCurrency(orig.amount)} entry from ${formatDate(orig.created_at)} shown under the Rejected tab.</div>` : '';
+      })() : ''}
       ${(e.status === 'rejected' || e.status === 'l1_rejected' || e.status === 'audit_query') ? `<a href="add-expense.html?editDate=${encodeURIComponent(e.created_at)}" style="display:inline-block;margin-top:.5rem;font-size:.78rem;font-weight:700;color:var(--primary)">✎ Fix and resubmit →</a>` : ''}
       ${receiptCardFooter(e)}
     </div>`;
@@ -2679,6 +2726,7 @@
       </div>
       <div class="expense-card-desc">${parseDescForDisplay(e.description)}</div>
       ${e.rejection_reason ? `<div class="expense-card-desc" style="color: var(--primary); background: var(--bg-2); padding: 0.5rem; border-radius: 4px; margin-top: 0.5rem; border-left: 3px solid var(--primary);"><strong>Admin Comment:</strong> ${escHtml(e.rejection_reason)}</div>` : ''}
+      ${e.resubmitted_note ? `<div class="expense-card-desc" style="color: #92400e; background: #fef3c7; padding: 0.5rem; border-radius: 4px; margin-top: 0.5rem; border-left: 3px solid #f59e0b;"><strong>↻ Resubmitted — was flagged by Audit:</strong> ${escHtml(e.resubmitted_note)}</div>` : ''}
       ${e.l1_remark ? `<div class="expense-card-desc" style="background:#eff6ff;padding:.4rem;border-radius:4px;margin-top:.25rem;font-size:.78rem;border-left:3px solid #3b82f6"><strong>L1 Remark:</strong> ${escHtml(e.l1_remark)}</div>` : ''}
       ${e.l2_remark ? `<div class="expense-card-desc" style="background:#f0fdf4;padding:.4rem;border-radius:4px;margin-top:.25rem;font-size:.78rem;border-left:3px solid #22c55e"><strong>L2 Remark:</strong> ${escHtml(e.l2_remark)}</div>` : ''}
       ${receiptCardFooter(e)}
@@ -3098,10 +3146,10 @@
             <p style="margin:0 0 .75rem;font-size:.82rem;color:#6b7280">Who should re-check this expense?</p>
             <div style="display:flex;gap:.5rem;margin-bottom:1rem">
               <label style="flex:1;display:flex;align-items:center;gap:.4rem;border:1.5px solid #f59e0b;background:#fffbeb;border-radius:10px;padding:.5rem .7rem;cursor:pointer;font-size:.82rem;font-weight:600;color:#92400e">
-                <input type="radio" name="_audit-flag-target" value="audit_review" checked style="accent-color:#f59e0b"> HR
+                <input type="radio" name="_audit-flag-target" value="audit_query" checked style="accent-color:#f59e0b"> Employee
               </label>
               <label style="flex:1;display:flex;align-items:center;gap:.4rem;border:1.5px solid #cbd5e1;border-radius:10px;padding:.5rem .7rem;cursor:pointer;font-size:.82rem;font-weight:600;color:#374151">
-                <input type="radio" name="_audit-flag-target" value="audit_query" style="accent-color:#f59e0b"> Employee
+                <input type="radio" name="_audit-flag-target" value="audit_review" style="accent-color:#f59e0b"> HR
               </label>
             </div>
             <p style="margin:0 0 .5rem;font-size:.78rem;color:#6b7280">Reason is mandatory — it'll be shown to whoever you pick above.</p>
@@ -3117,8 +3165,8 @@
       }
       document.getElementById('_audit-flag-expense-id').value = expenseId;
       document.getElementById('_audit-flag-reason').value = '';
-      const hrRadio = modal.querySelector('input[name="_audit-flag-target"][value="audit_review"]');
-      if (hrRadio) hrRadio.checked = true;
+      const empRadio = modal.querySelector('input[name="_audit-flag-target"][value="audit_query"]');
+      if (empRadio) empRadio.checked = true;
     }
 
     async function submitAuditFlag() {
@@ -3658,6 +3706,13 @@
               <th style="padding:.4rem .5rem;text-align:right;font-size:.7rem;color:var(--text-muted)">AMOUNT</th>
               <th style="padding:.4rem .5rem;text-align:left;font-size:.7rem;color:var(--text-muted)">CYCLE</th>
             </tr></thead><tbody>${rows}</tbody></table>` : ''}
+          ${(r.advancesRecovered && r.advancesRecovered.length) ? `
+          <div style="margin-top:.75rem;background:#ede9fe;border:1px solid #ddd6fe;border-radius:8px;padding:.6rem .75rem;font-size:.82rem;color:#5b21b6">
+            💵 <strong>Advance auto-recovered</strong> for ${r.advancesRecovered.length} employee${r.advancesRecovered.length!==1?'s':''} (payment came in less than the cycle's full amount, matching their outstanding advance):
+            <ul style="margin:.35rem 0 0;padding-left:1.1rem">
+              ${r.advancesRecovered.map(a => `<li>${escHtml(a.name)} — ${fmt(a.amount)}</li>`).join('')}
+            </ul>
+          </div>` : ''}
           ${problemLine('⚠️ Employee not matched', r.unmatchedEmployee, '#dc2626')}
           ${problemLine('↩️ Already synced', r.duplicates, '#64748b')}
           ${problemLine('ℹ️ Not yet reimbursed', r.skippedNotReimbursed, '#64748b')}
@@ -3696,6 +3751,13 @@
               <th style="padding:.4rem .5rem;text-align:left;font-size:.7rem;color:var(--text-muted)">CYCLE</th>
               <th style="padding:.4rem .5rem;text-align:left;font-size:.7rem;color:var(--text-muted)">UTR</th>
             </tr></thead><tbody>${rows}</tbody></table>` : ''}
+          ${(r.advancesRecovered && r.advancesRecovered.length) ? `
+          <div style="margin-top:.75rem;background:#ede9fe;border:1px solid #ddd6fe;border-radius:8px;padding:.6rem .75rem;font-size:.82rem;color:#5b21b6">
+            💵 <strong>Advance auto-recovered</strong> for ${r.advancesRecovered.length} employee${r.advancesRecovered.length!==1?'s':''} (payment came in less than the cycle's full amount, matching their outstanding advance):
+            <ul style="margin:.35rem 0 0;padding-left:1.1rem">
+              ${r.advancesRecovered.map(a => `<li>${escHtml(a.name)} — ${fmt(a.amount)}</li>`).join('')}
+            </ul>
+          </div>` : ''}
           ${problemLine('⚠️ Failed transactions skipped', r.skippedFailed, '#b45309')}
           ${problemLine('↩️ Already imported (duplicate UTR)', r.duplicates, '#64748b')}
           ${problemLine('❓ Account not matched', r.unmatched, '#dc2626')}
@@ -4677,6 +4739,7 @@
                         <div>${parseDescForDisplay(e.description)}</div>
                         ${e.rejection_reason?`<div style="font-size:.7rem;color:#dc2626;margin-top:.2rem">💬 ${escHtml(e.rejection_reason)}</div>`:''}
                         ${e.audit_note?`<div style="font-size:.7rem;color:#92400e;background:#fef3c7;padding:.2rem .4rem;border-radius:4px;margin-top:.2rem">⚑ Audit: ${escHtml(e.audit_note)}</div>`:''}
+                        ${e.resubmitted_note?`<div style="font-size:.7rem;color:#92400e;background:#fef3c7;padding:.2rem .4rem;border-radius:4px;margin-top:.2rem">↻ Resubmitted — was flagged: ${escHtml(e.resubmitted_note)}</div>`:''}
                         ${e.l1_remark?`<div style="font-size:.68rem;color:#3b82f6;margin-top:.15rem">L1: ${escHtml(e.l1_remark)}</div>`:''}
                         ${e.l2_remark?`<div style="font-size:.68rem;color:#16a34a;margin-top:.15rem">L2: ${escHtml(e.l2_remark)}</div>`:''}
                       </td>

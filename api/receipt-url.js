@@ -386,7 +386,7 @@ async function importPayments(req, res, db, actingUser, actingProfile) {
     paidByKey[k] = (paidByKey[k] || 0) + Number(p.amount_paid || 0);
   });
 
-  const summary = { total: rows.length, marked: [], skippedFailed: [], duplicates: [], unmatched: [], noPending: [] };
+  const summary = { total: rows.length, marked: [], skippedFailed: [], duplicates: [], unmatched: [], noPending: [], advancesRecovered: [] };
   const toInsert = [];
 
   for (const row of rows) {
@@ -423,6 +423,14 @@ async function importPayments(req, res, db, actingUser, actingProfile) {
     }
     if (row.utr) existingUtrs.add(row.utr);
     summary.marked.push({ bene: row.bene, name: u.name, amount: row.amount, utr: row.utr, allocations, leftover: Math.round(remaining * 100) / 100 });
+
+    // This confirmed bank payment left a gap on the cycle(s) it touched — if that
+    // matches (part of) an outstanding advance, treat it as netted off and recover it.
+    const gap = targets.reduce((s, c) => s + Math.max(0, c.pending), 0);
+    if (gap > 0.005) {
+      const recovered = await autoRecoverAdvanceGap(db, u.id, gap);
+      if (recovered > 0.005) summary.advancesRecovered.push({ name: u.name, amount: Math.round(recovered * 100) / 100 });
+    }
   }
 
   if (toInsert.length) {
@@ -465,10 +473,15 @@ async function syncAccounts2026(res, db) {
   const { data: users } = await db.from('users').select('id, name, emp_no').not('emp_no', 'is', null);
   const byEmpNo = new Map((users || []).map(u => [String(u.emp_no).trim().toLowerCase(), u]));
 
-  const { data: existing } = await db.from('cycle_payments').select('utr_number');
+  const { data: existing } = await db.from('cycle_payments').select('user_id, month_year, cycle_num, amount_paid, utr_number');
   const existingUtrs = new Set((existing || []).map(p => p.utr_number));
+  const paidByKey = {};
+  (existing || []).forEach(p => {
+    const k = `${p.user_id}|${p.month_year}|${p.cycle_num}`;
+    paidByKey[k] = (paidByKey[k] || 0) + Number(p.amount_paid || 0);
+  });
 
-  const summary = { total: claims.length, synced: [], unmatchedEmployee: [], skippedNotReimbursed: [], duplicates: [] };
+  const summary = { total: claims.length, synced: [], unmatchedEmployee: [], skippedNotReimbursed: [], duplicates: [], advancesRecovered: [] };
   const toInsert = [];
 
   for (const claim of claims) {
@@ -497,6 +510,20 @@ async function syncAccounts2026(res, db) {
     });
     existingUtrs.add(utr);
     summary.synced.push({ employee: u.name, employee_number: claim.employee_number, month: claim.month, cycle: cycleNum, amount });
+
+    // If this confirmed payment is less than the cycle's full approved total, the
+    // gap likely matches an outstanding advance that was netted off — recover it.
+    const cycles = await pendingCyclesForUser(db, u.id, paidByKey);
+    const cycle = cycles.find(c => c.monthYear === claim.month && c.cycleNum === cycleNum);
+    const k = `${u.id}|${claim.month || ''}|${cycleNum}`;
+    paidByKey[k] = (paidByKey[k] || 0) + amount;
+    if (cycle) {
+      const gap = cycle.pending - amount;
+      if (gap > 0.005) {
+        const recovered = await autoRecoverAdvanceGap(db, u.id, gap);
+        if (recovered > 0.005) summary.advancesRecovered.push({ name: u.name, amount: Math.round(recovered * 100) / 100 });
+      }
+    }
   }
 
   if (toInsert.length) {
@@ -531,4 +558,48 @@ async function pendingCyclesForUser(db, userId, paidByKey) {
   }
   out.sort((a, b) => (a.yr - b.yr) || (a.mo - b.mo) || (a.cycleNum - b.cycleNum)); // oldest first
   return out;
+}
+
+/**
+ * A confirmed bank/accounts payment came in lower than the cycle's full approved
+ * total — if that gap matches (part of) an outstanding advance, treat it as the
+ * advance having been netted off and auto-recover it. Only called against a
+ * CONFIRMED payment (bank PDF import / accounts-2026 sync), never against a mere
+ * payment-sheet export, so this only fires once real money has actually moved.
+ */
+async function autoRecoverAdvanceGap(db, userId, gapAmount) {
+  if (!(gapAmount > 0.005)) return 0;
+  const { data: advances } = await db
+    .from('employee_advances')
+    .select('id, amount')
+    .eq('user_id', userId)
+    .eq('status', 'outstanding')
+    .order('given_at', { ascending: true });
+  if (!advances || !advances.length) return 0;
+
+  const ids = advances.map(a => a.id);
+  const { data: recs } = await db
+    .from('employee_advance_recoveries').select('advance_id, amount').in('advance_id', ids);
+  const recoveredByAdvance = {};
+  (recs || []).forEach(r => {
+    recoveredByAdvance[r.advance_id] = (recoveredByAdvance[r.advance_id] || 0) + Number(r.amount || 0);
+  });
+
+  let budget = gapAmount;
+  for (const adv of advances) {
+    if (budget <= 0.005) break;
+    const remaining = Number(adv.amount) - (recoveredByAdvance[adv.id] || 0);
+    if (remaining <= 0.005) continue;
+    const take = Math.min(remaining, budget);
+    await db.from('employee_advance_recoveries').insert({
+      advance_id: adv.id, amount: take, recovered_by_name: 'Auto (Payment Sync)',
+    });
+    if (take >= remaining - 0.005) {
+      await db.from('employee_advances').update({
+        status: 'recovered', recovered_at: new Date().toISOString(), recovered_by_name: 'Auto (Payment Sync)',
+      }).eq('id', adv.id);
+    }
+    budget -= take;
+  }
+  return gapAmount - budget; // total actually recovered
 }

@@ -1455,6 +1455,15 @@
         const rowId = row.id;
         const oldUrl = row.querySelector('.row-old-url').value;
         const newFiles = _rowNewFiles[rowId] || [];
+
+        // If this row started life as an audit_query/rejected/l1_rejected entry, link the
+        // fresh row back to it (and carry Audit's reason forward) — looked up per-row so a
+        // day with several flagged entries links each new row to its own original, not just one.
+        const origId = row.dataset.expenseId || null;
+        const origExp = origId ? expensesForMonth.find(x => x.id === origId) : null;
+        const wasReviewed = origExp && ['audit_query', 'rejected', 'l1_rejected'].includes(origExp.status);
+        const rowResubmittedFrom = wasReviewed ? origId : null;
+        const rowResubmittedNote = (wasReviewed && origExp.status === 'audit_query') ? origExp.audit_note : null;
         const existingUrlsForRow = parseReceiptUrls(oldUrl);
 
         // Hotel Room Rent above limit requires proof
@@ -1503,7 +1512,7 @@
           finalDescription = `REGULAR|${site}|${desc}`;
         }
 
-        newEntries.push({ user_id: currentUser.id, company_id: currentUser.company_id || null, amount, category, description: finalDescription, created_at: submissionTs, status: 'pending', receipt_url });
+        newEntries.push({ user_id: currentUser.id, company_id: currentUser.company_id || null, amount, category, description: finalDescription, created_at: submissionTs, status: 'pending', receipt_url, resubmitted_note: rowResubmittedNote, resubmitted_from: rowResubmittedFrom });
       }
 
       try {
