@@ -876,7 +876,7 @@
     function applyStatusSelectFilter(expenses) {
       const sel = (document.getElementById('f-status')?.value || 'all');
       if (sel === 'all') return expenses;
-      if (sel === 'rejected') return expenses.filter(e => e.status === 'rejected' || e.status === 'l1_rejected' || e.status === 'deleted');
+      if (sel === 'rejected') return expenses.filter(e => e.status === 'rejected' || e.status === 'l1_rejected' || e.status === 'deleted' || e.status === 'superseded');
       return expenses.filter(e => e.status === sel);
     }
 
@@ -1046,7 +1046,7 @@
       const effectiveStatus = statusDropdown !== 'all' ? statusDropdown : currentListFilter;
 
       if (effectiveStatus === 'rejected') {
-        base = base.filter(e => e.status === 'rejected' || e.status === 'l1_rejected' || e.status === 'deleted' || e.status === 'audit_query');
+        base = base.filter(e => e.status === 'rejected' || e.status === 'l1_rejected' || e.status === 'deleted' || e.status === 'audit_query' || e.status === 'superseded');
       } else if (effectiveStatus !== 'all') {
         base = base.filter(e => e.status === effectiveStatus);
       }
@@ -1111,7 +1111,7 @@
       // Filter by status tab
       const empRole = !['admin','super_admin','hr','audit'].includes(currentProfile.role);
       if (currentListFilter === 'rejected') {
-        filtered = filtered.filter(e => e.status === 'rejected' || e.status === 'l1_rejected' || e.status === 'audit_query');
+        filtered = filtered.filter(e => e.status === 'rejected' || e.status === 'l1_rejected' || e.status === 'audit_query' || e.status === 'superseded');
       } else if (currentListFilter === 'approved') {
         // "Approved" = any stage of approval (employee & admin both)
         filtered = filtered.filter(e => ['approved','hr_approved','audit_cleared','audit_review'].includes(e.status));
@@ -1244,7 +1244,7 @@
             const auditFlag  = g.expenses.filter(e => e.status === 'audit_review').length;
             const cleared    = g.expenses.filter(e => e.status === 'audit_cleared').length;
             const approved   = g.expenses.filter(e => e.status === 'approved').length;
-            const rejected   = g.expenses.filter(e => e.status === 'rejected' || e.status === 'l1_rejected' || e.status === 'deleted').length;
+            const rejected   = g.expenses.filter(e => e.status === 'rejected' || e.status === 'l1_rejected' || e.status === 'deleted' || e.status === 'superseded').length;
             const totalAmt = g.expenses.reduce((s, e) => s + effectiveAmt(e), 0);
             const col = g.cNum === 1 ? '#6366f1' : '#7c3aed';
             const tagBg  = g.cNum === 1 ? '#ede9fe' : '#f3e8ff';
@@ -2152,7 +2152,7 @@
 
       if (currentListFilter !== 'all') {
         if (currentListFilter === 'rejected') {
-          filtered = filtered.filter(e => e.status === 'rejected' || e.status === 'l1_rejected' || e.status === 'audit_query');
+          filtered = filtered.filter(e => e.status === 'rejected' || e.status === 'l1_rejected' || e.status === 'audit_query' || e.status === 'superseded');
         } else if (currentListFilter === 'approved') {
           filtered = filtered.filter(e => ['approved','hr_approved','audit_cleared','audit_review'].includes(e.status));
         } else {
@@ -4481,7 +4481,7 @@
                     const ePend = exps.filter(e=>e.status==='pending').length;
                     const eL1   = exps.filter(e=>e.status==='l1_approved').length;
                     const eAppr = exps.filter(e=>e.status==='approved').length;
-                    const eRej  = exps.filter(e=>e.status==='rejected'||e.status==='l1_rejected'||e.status==='deleted').length;
+                    const eRej  = exps.filter(e=>e.status==='rejected'||e.status==='l1_rejected'||e.status==='deleted'||e.status==='superseded').length;
                     const eAmt  = exps.reduce((s,e)=>{
                       if(['rejected','l1_rejected','deleted','audit_review','audit_query','superseded'].includes(e.status)) return s;
                       return s+(e.approved_amount!=null?+e.approved_amount:+e.amount);
