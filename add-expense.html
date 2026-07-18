@@ -770,11 +770,11 @@
 
       let cycleTotal = 0;
       expensesForMonth.forEach(e => {
-        if (e.status === 'deleted') return;
+        if (e.status === 'deleted' || e.status === 'superseded') return;
         const d = new Date(e.created_at);
         if (d.getDate() >= startDay && d.getDate() <= endDay) {
           filledDays.add(d.toDateString());
-          if (e.status !== 'rejected' && e.status !== 'l1_rejected') {
+          if (!['rejected', 'l1_rejected', 'audit_query'].includes(e.status)) {
             cycleTotal += e.approved_amount != null ? +e.approved_amount : +e.amount;
           }
         }
@@ -847,7 +847,7 @@
         const dayStr = dayDate.toDateString();
         // Deleted entries don't count toward a day's fill status, approval
         // status, or total — they're gone, only visible in Expense History.
-        const dayExpenses = expensesForMonth.filter(e => new Date(e.created_at).toDateString() === dayStr && e.status !== 'deleted');
+        const dayExpenses = expensesForMonth.filter(e => new Date(e.created_at).toDateString() === dayStr && e.status !== 'deleted' && e.status !== 'superseded');
         const isFilled = dayExpenses.length > 0;
 
         const card = document.createElement('div');
@@ -1381,7 +1381,7 @@
       // Deleted entries aren't shown here at all — nothing to edit, and locking
       // them would just be confusing. They're only visible in the Expense
       // History "Deleted" tab.
-      const dayExpenses = expensesForMonth.filter(e => new Date(e.created_at).toDateString() === dayStr && e.status !== 'deleted');
+      const dayExpenses = expensesForMonth.filter(e => new Date(e.created_at).toDateString() === dayStr && e.status !== 'deleted' && e.status !== 'superseded');
       // Rejected/audit_query entries can be edited and resubmitted (fixing and
       // re-saving replaces the row with a fresh pending one) — only entries
       // actively in the approval pipeline stay locked.

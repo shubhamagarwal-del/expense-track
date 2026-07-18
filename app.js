@@ -224,13 +224,14 @@ function statusBadge(status) {
   if (status === 'rejected')      return flow(done('You'), rej('Rejected'), wait('HR'), wait('Audit'));
   if (status === 'approved')      return approvedTag;
   if (status === 'deleted')       return `<span class="status-badge" style="background:#fee2e2;color:#991b1b;white-space:nowrap">🗑️ Deleted</span>`;
+  if (status === 'superseded')    return `<span class="status-badge" style="background:#f1f5f9;color:#475569;white-space:nowrap">↻ Superseded</span>`;
   return `<span class="status-badge badge-pending">${status}</span>`;
 }
 
 /** Return a visual approval pipeline stepper with role icons and status dots. */
 function approvalStepper(e) {
   const stat = e.status;
-  const isFinal = stat === 'approved' || stat === 'audit_cleared' || stat === 'rejected' || stat === 'l1_rejected' || stat === 'audit_query';
+  const isFinal = stat === 'approved' || stat === 'audit_cleared' || stat === 'rejected' || stat === 'l1_rejected' || stat === 'audit_query' || stat === 'deleted' || stat === 'superseded';
   const roles = [
     { key: 'you',     label: 'You',     icon: '🧑', done: true },
     { key: 'manager', label: 'Manager', icon: '👔', done: stat !== 'pending' && stat !== 'l1_rejected' && stat !== 'rejected',

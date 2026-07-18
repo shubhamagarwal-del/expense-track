@@ -515,7 +515,7 @@ async function pendingCyclesForUser(db, userId, paidByKey) {
     .from('expenses').select('amount, approved_amount, status, created_at').eq('user_id', userId);
   const groups = new Map();
   for (const e of exps || []) {
-    if (['rejected', 'l1_rejected', 'deleted', 'audit_review', 'audit_query'].includes(e.status)) continue;
+    if (['rejected', 'l1_rejected', 'deleted', 'audit_review', 'audit_query', 'superseded'].includes(e.status)) continue;
     const d = new Date(e.created_at);
     const monthYear = d.toLocaleString('en-US', { month: 'long', year: 'numeric' });
     const cycleNum = d.getDate() <= 15 ? 1 : 2;

@@ -848,7 +848,7 @@
     function buildCycleTotalsMap(expenses) {
       const map = {};
       for (const e of expenses) {
-        if (['rejected', 'l1_rejected', 'deleted', 'audit_review', 'audit_query'].includes(e.status)) continue;
+        if (['rejected', 'l1_rejected', 'deleted', 'audit_review', 'audit_query', 'superseded'].includes(e.status)) continue;
         const d = new Date(e.created_at);
         const mY = d.toLocaleString('en-US', { month: 'long', year: 'numeric' });
         const cNum = d.getDate() <= 15 ? 1 : 2;
@@ -1201,7 +1201,7 @@
       const effectiveAmt = e => e.approved_amount != null ? +e.approved_amount : +e.amount;
 
       const overallApproved = expenses
-        .filter(e => !['rejected', 'l1_rejected', 'deleted', 'audit_review', 'audit_query'].includes(e.status))
+        .filter(e => !['rejected', 'l1_rejected', 'deleted', 'audit_review', 'audit_query', 'superseded'].includes(e.status))
         .reduce((s, e) => s + effectiveAmt(e), 0);
       const overallPaid = paidForExpenses(expenses);
       const overallAdvance = advanceFor(currentProfile.id);
@@ -1761,7 +1761,7 @@
         }
         // Use approved_amount for total, exclude rejected
         g.totalAmount = g.entries.reduce((sum, e) => {
-          if (['rejected', 'l1_rejected', 'deleted', 'audit_review', 'audit_query'].includes(e.status)) return sum;
+          if (['rejected', 'l1_rejected', 'deleted', 'audit_review', 'audit_query', 'superseded'].includes(e.status)) return sum;
           return sum + (e.approved_amount != null ? +e.approved_amount : +e.amount);
         }, 0);
       });
@@ -1776,7 +1776,7 @@
       sortedGroups.forEach(g => g.entries.sort((a, b) => new Date(b.created_at) - new Date(a.created_at)));
 
       const total = expenses.reduce((s, e) => {
-        if (['rejected', 'l1_rejected', 'deleted', 'audit_review', 'audit_query'].includes(e.status)) return s;
+        if (['rejected', 'l1_rejected', 'deleted', 'audit_review', 'audit_query', 'superseded'].includes(e.status)) return s;
         return s + (e.approved_amount != null ? +e.approved_amount : +e.amount);
       }, 0);
       el.innerHTML = `
@@ -1950,7 +1950,7 @@
                                     ${(currentProfile.role==='audit' && e.status==='hr_approved') ? `
                                       <button onclick="auditClearExpense('${e.id}')" title="Audit Clear" style="background:#14532d;color:#fff;border:none;border-radius:10px;padding:.45rem 1rem;cursor:pointer;font-size:.82rem;font-weight:700;white-space:nowrap;box-shadow:0 2px 8px rgba(20,83,45,0.3);transition:all .15s" onmouseover="this.style.background='#0f4423';this.style.transform='translateY(-1px)'" onmouseout="this.style.background='#14532d';this.style.transform=''">🔍 Clear</button>
                                     ` : ''}
-                                    ${e.status !== 'deleted' ? `<button onclick="deleteExpense('${e.id}')" title="Delete" style="background:none;border:1px solid #fecaca;border-radius:8px;padding:.4rem .6rem;cursor:pointer;font-size:.85rem;color:#dc2626;transition:background .15s" onmouseover="this.style.background='#fef2f2'" onmouseout="this.style.background='none'">🗑️</button>` : ''}
+                                    ${!['deleted','superseded'].includes(e.status) ? `<button onclick="deleteExpense('${e.id}')" title="Delete" style="background:none;border:1px solid #fecaca;border-radius:8px;padding:.4rem .6rem;cursor:pointer;font-size:.85rem;color:#dc2626;transition:background .15s" onmouseover="this.style.background='#fef2f2'" onmouseout="this.style.background='none'">🗑️</button>` : ''}
                                   </div>
                                 </td>
                               </tr>`;
@@ -2532,6 +2532,7 @@
         ${e.rejection_reason ? `<div style="color: var(--primary); font-size: 0.75rem; margin-top: 0.4rem; background: var(--bg-2); padding: 0.4rem; border-radius: 4px;"><strong>Admin Comment:</strong> ${escHtml(e.rejection_reason)}</div>` : ''}
         ${e.status === 'deleted' ? `<div style="color: #991b1b; font-size: 0.75rem; margin-top: 0.4rem; background: #fee2e2; padding: 0.4rem; border-radius: 4px;"><strong>🗑️ Deleted${e.deleted_by_name ? ' by ' + escHtml(e.deleted_by_name) : ''}:</strong> ${escHtml(e.deleted_reason || 'No reason given')}</div>` : ''}
         ${e.status === 'audit_query' ? `<div style="color: #92400e; font-size: 0.75rem; margin-top: 0.4rem; background: #fef3c7; padding: 0.4rem; border-radius: 4px;"><strong>🔍 Audit Query${e.audit_by_name ? ' by ' + escHtml(e.audit_by_name) : ''}:</strong> ${escHtml(e.audit_note || 'Needs correction')}</div>` : ''}
+        ${e.status === 'superseded' ? `<div style="color: #475569; font-size: 0.75rem; margin-top: 0.4rem; background: #f1f5f9; padding: 0.4rem; border-radius: 4px;"><strong>↻ Fixed &amp; Resubmitted</strong>${e.audit_note ? ` — Audit Query: ${escHtml(e.audit_note)}` : ''} — a corrected version of this entry was resubmitted.</div>` : ''}
         ${(e.status === 'rejected' || e.status === 'l1_rejected' || e.status === 'audit_query') ? `<a href="add-expense.html?editDate=${encodeURIComponent(e.created_at)}" style="display:inline-block;margin-top:.4rem;font-size:.75rem;font-weight:700;color:var(--primary)">✎ Fix and resubmit →</a>` : ''}
       </td>
       <td class="td-amount">
@@ -2578,7 +2579,7 @@
           <button onclick="deleteExpense('${e.id}')" class="btn btn-secondary btn-sm" style="padding: 0.2rem 0.5rem; font-size: 0.75rem; display:block; width: 100%; color:#dc2626;border-color:#fecaca">🗑️ Delete</button>
         ` : `
           <button onclick="promptAddComment('${e.id}')" class="btn btn-secondary btn-sm" style="padding: 0.2rem 0.5rem; font-size: 0.75rem; margin-bottom: 0.2rem; display:block; width: 100%;">💬 Edit Comment</button>
-          ${e.status !== 'deleted' ? `<button onclick="deleteExpense('${e.id}')" class="btn btn-secondary btn-sm" style="padding: 0.2rem 0.5rem; font-size: 0.75rem; display:block; width: 100%; color:#dc2626;border-color:#fecaca">🗑️ Delete</button>` : ''}
+          ${!['deleted','superseded'].includes(e.status) ? `<button onclick="deleteExpense('${e.id}')" class="btn btn-secondary btn-sm" style="padding: 0.2rem 0.5rem; font-size: 0.75rem; display:block; width: 100%; color:#dc2626;border-color:#fecaca">🗑️ Delete</button>` : ''}
         `}
       </td>
     </tr>`;
@@ -2609,6 +2610,7 @@
       ${e.rejection_reason ? `<div class="expense-card-desc" style="color: #dc2626; background: #fee2e2; padding: 0.5rem; border-radius: 4px; margin-top: 0.5rem;"><strong>Rejected:</strong> ${escHtml(e.rejection_reason)}</div>` : ''}
       ${e.status === 'deleted' ? `<div class="expense-card-desc" style="color: #991b1b; background: #fee2e2; padding: 0.5rem; border-radius: 4px; margin-top: 0.5rem;"><strong>🗑️ Deleted${e.deleted_by_name ? ' by ' + escHtml(e.deleted_by_name) : ''}:</strong> ${escHtml(e.deleted_reason || 'No reason given')}</div>` : ''}
       ${e.status === 'audit_query' ? `<div class="expense-card-desc" style="color: #92400e; background: #fef3c7; padding: 0.5rem; border-radius: 4px; margin-top: 0.5rem;"><strong>🔍 Audit Query${e.audit_by_name ? ' by ' + escHtml(e.audit_by_name) : ''}:</strong> ${escHtml(e.audit_note || 'Needs correction')}</div>` : ''}
+      ${e.status === 'superseded' ? `<div class="expense-card-desc" style="color: #475569; background: #f1f5f9; padding: 0.5rem; border-radius: 4px; margin-top: 0.5rem;"><strong>↻ Fixed &amp; Resubmitted</strong>${e.audit_note ? ` — Audit Query: ${escHtml(e.audit_note)}` : ''} — a corrected version of this entry was resubmitted.</div>` : ''}
       ${(e.status === 'rejected' || e.status === 'l1_rejected' || e.status === 'audit_query') ? `<a href="add-expense.html?editDate=${encodeURIComponent(e.created_at)}" style="display:inline-block;margin-top:.5rem;font-size:.78rem;font-weight:700;color:var(--primary)">✎ Fix and resubmit →</a>` : ''}
       ${receiptCardFooter(e)}
     </div>`;
@@ -2689,7 +2691,7 @@
         ` : ''}
         ${showL2Btn ? `<button onclick="openApprovalModal('${e.id}')" class="btn btn-primary btn-sm" style="grid-column:1/-1;background:#7c3aed;border-color:#7c3aed;font-size:.82rem;padding:.35rem" title="Approve this expense as Super Admin">✅ Super Admin — Approve</button>` : ''}
         <button onclick="openCommentModal('${e.id}')" class="btn btn-secondary btn-sm" title="Add a comment">💬 Comment</button>
-        ${e.status !== 'deleted' ? `<button onclick="deleteExpense('${e.id}')" class="btn btn-secondary btn-sm" style="color:#dc2626;border-color:#fecaca" title="Permanently delete this expense">🗑️ Delete</button>` : ''}
+        ${!['deleted','superseded'].includes(e.status) ? `<button onclick="deleteExpense('${e.id}')" class="btn btn-secondary btn-sm" style="color:#dc2626;border-color:#fecaca" title="Permanently delete this expense">🗑️ Delete</button>` : ''}
       </div>
     </div>`;
     }
@@ -3271,7 +3273,7 @@
       // ── Sheet 2: Site Summary ──────────────────────────────
       const siteMap = {};
       sorted.forEach(e => {
-        if (['rejected', 'l1_rejected', 'deleted', 'audit_review', 'audit_query'].includes(e.status)) return;
+        if (['rejected', 'l1_rejected', 'deleted', 'audit_review', 'audit_query', 'superseded'].includes(e.status)) return;
         const u = e.users || {};
         const empKey = (u.name || u.email || e.user_id);
         const site   = siteWithCode(extractSite(e) || u.site_name || '') || 'Unassigned';
@@ -3303,7 +3305,7 @@
       // Group by employee → cycle → total + approval info
       const empMap = {};
       sorted.forEach(e => {
-        if (['rejected', 'l1_rejected', 'deleted', 'audit_review', 'audit_query'].includes(e.status)) return;
+        if (['rejected', 'l1_rejected', 'deleted', 'audit_review', 'audit_query', 'superseded'].includes(e.status)) return;
         const u = e.users || {};
         const empKey = u.emp_no || u.name || e.user_id;
         const date = new Date(e.created_at);
@@ -3410,7 +3412,7 @@
       // Group by user + month + cycle (track cycle's calendar year/month for end-date calc)
       const groups = new Map();
       for (const e of expenses) {
-        if (['rejected', 'l1_rejected', 'deleted', 'audit_review', 'audit_query'].includes(e.status)) continue;
+        if (['rejected', 'l1_rejected', 'deleted', 'audit_review', 'audit_query', 'superseded'].includes(e.status)) continue;
         const date = new Date(e.created_at);
         const mY = date.toLocaleString('default', { month: 'long', year: 'numeric' });
         const cNum = date.getDate() <= 15 ? 1 : 2;
@@ -4413,7 +4415,7 @@
               if (e.status === 'pending') dPend++;
               if (e.status === 'l1_approved') dL1++;
               if (['approved','hr_approved','audit_cleared'].includes(e.status)) dAppr += (e.approved_amount != null ? +e.approved_amount : +e.amount);
-              if (!['rejected', 'l1_rejected', 'deleted', 'audit_review', 'audit_query'].includes(e.status)) dOverall += (e.approved_amount != null ? +e.approved_amount : +e.amount);
+              if (!['rejected', 'l1_rejected', 'deleted', 'audit_review', 'audit_query', 'superseded'].includes(e.status)) dOverall += (e.approved_amount != null ? +e.approved_amount : +e.amount);
             });
           });
         });
@@ -4438,7 +4440,7 @@
                 if (e.status==='pending') mPend++;
                 if (e.status==='l1_approved') mL1++;
                 if (['approved','hr_approved','audit_cleared'].includes(e.status)) mAppr += (e.approved_amount!=null?+e.approved_amount:+e.amount);
-                if (!['rejected', 'l1_rejected', 'deleted', 'audit_review', 'audit_query'].includes(e.status)) mOverall += (e.approved_amount!=null?+e.approved_amount:+e.amount);
+                if (!['rejected', 'l1_rejected', 'deleted', 'audit_review', 'audit_query', 'superseded'].includes(e.status)) mOverall += (e.approved_amount!=null?+e.approved_amount:+e.amount);
               }));
               const mPaid = paidForExpenses(mAllExps);
               const mAdvance = ['audit','super_admin'].includes(currentProfile.role) ? empArr.reduce((s, ed) => s + advanceFor(ed.user?.id), 0) : 0;
@@ -4481,7 +4483,7 @@
                     const eAppr = exps.filter(e=>e.status==='approved').length;
                     const eRej  = exps.filter(e=>e.status==='rejected'||e.status==='l1_rejected'||e.status==='deleted').length;
                     const eAmt  = exps.reduce((s,e)=>{
-                      if(['rejected','l1_rejected','deleted','audit_review','audit_query'].includes(e.status)) return s;
+                      if(['rejected','l1_rejected','deleted','audit_review','audit_query','superseded'].includes(e.status)) return s;
                       return s+(e.approved_amount!=null?+e.approved_amount:+e.amount);
                     },0);
                     const eId = 'emp__' + (user.id||'x').replace(/[^a-z0-9]/gi,'_');
@@ -4587,7 +4589,7 @@
         ${(()=>{
           const siteData = {};
           expenses.forEach(e => {
-            if (['rejected', 'l1_rejected', 'deleted', 'audit_review', 'audit_query'].includes(e.status)) return;
+            if (['rejected', 'l1_rejected', 'deleted', 'audit_review', 'audit_query', 'superseded'].includes(e.status)) return;
             const site = extractSite(e) || user.site_name || 'Unassigned';
             const amt  = e.approved_amount != null ? +e.approved_amount : +e.amount;
             if (!siteData[site]) siteData[site] = { total: 0, days: new Set(), count: 0 };
@@ -4620,7 +4622,7 @@
           const cycId = safeKey.replace(/[^a-zA-Z0-9]/g, '_');
           const cycOpen = hierExpanded.cycles.has(cycId);
           const gTotal = g.entries.reduce((s,e)=>{
-            if(['rejected','l1_rejected','deleted','audit_review','audit_query'].includes(e.status)) return s;
+            if(['rejected','l1_rejected','deleted','audit_review','audit_query','superseded'].includes(e.status)) return s;
             return s+(e.approved_amount!=null?+e.approved_amount:+e.amount);
           },0);
           const gPaid = cyclePaidFor(user.id, g.mY, g.cT);
@@ -4700,7 +4702,7 @@
                           <button onclick="openAuditFlagModal('${e.id}')" title="Send back to HR or the Employee for re-check, with a reason" style="background:#fffbeb;color:#92400e;border:1px solid #f59e0b;border-radius:6px;padding:.3rem .5rem;cursor:pointer;font-size:.75rem;font-weight:600;transition:all .15s" onmouseover="this.style.background='#fef3c7'" onmouseout="this.style.background='#fffbeb'">⚑ Flag Review</button>`:''}
                           ${showL2?`<button onclick="openApprovalModal('${e.id}')" title="Super Admin override — approve straight through, skipping any remaining stages" style="background:#7c3aed;color:#fff;border:none;border-radius:6px;padding:.3rem .6rem;cursor:pointer;font-size:.78rem;font-weight:700;white-space:nowrap;transition:all .15s" onmouseover="this.style.background='#6d28d9'" onmouseout="this.style.background='#7c3aed'">⚡ Override Approve</button>
                           <button onclick="promptRejectExpense('${e.id}')" title="Reject this expense" style="background:none;border:1px solid #fecaca;border-radius:6px;padding:.3rem .5rem;cursor:pointer;font-size:.72rem;font-weight:600;color:#dc2626;transition:background .15s" onmouseover="this.style.background='#fef2f2'" onmouseout="this.style.background='none'">✕ Reject</button>`:''}
-                          ${e.status !== 'deleted' ? `<button onclick="deleteExpense('${e.id}')" title="Permanently delete this expense" style="background:none;border:none;border-radius:6px;padding:.3rem .5rem;cursor:pointer;font-size:.72rem;font-weight:600;color:#dc2626;transition:background .15s" onmouseover="this.style.background='#fef2f2'" onmouseout="this.style.background='none'">🗑️ Delete</button>` : ''}
+                          ${!['deleted','superseded'].includes(e.status) ? `<button onclick="deleteExpense('${e.id}')" title="Permanently delete this expense" style="background:none;border:none;border-radius:6px;padding:.3rem .5rem;cursor:pointer;font-size:.72rem;font-weight:600;color:#dc2626;transition:background .15s" onmouseover="this.style.background='#fef2f2'" onmouseout="this.style.background='none'">🗑️ Delete</button>` : ''}
                         </div>
                       </td>
                     </tr>`;

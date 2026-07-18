@@ -48,24 +48,37 @@ export default async function handler(req, res) {
   }
 
   const { ids, date_start, date_end } = req.body;
-  // Pending entries are being replaced by their edited version; rejected/audit_query
-  // entries are being resubmitted (fixed and re-saved as a fresh pending row) —
-  // both are the user's own, not-yet-approved work, safe to self-clean.
-  const SELF_CLEANABLE_STATUSES = ['pending', 'rejected', 'l1_rejected', 'audit_query'];
+  // Pending entries are being replaced by their edited version — no reviewer
+  // feedback attached yet, safe to hard-delete. Rejected/l1_rejected/audit_query
+  // entries are being resubmitted after reviewer feedback — soft-mark them
+  // 'superseded' instead of deleting, so the original submission and the
+  // rejection_reason/audit_note stay visible in history instead of vanishing.
+  const HARD_DELETE_STATUSES = ['pending'];
+  const SOFT_SUPERSEDE_STATUSES = ['rejected', 'l1_rejected', 'audit_query'];
+  const now = new Date().toISOString();
 
-  // Pass 1 — delete by specific UUIDs (user's own pending/rejected only)
+  // Pass 1 — by specific UUIDs (user's own rows only)
   if (Array.isArray(ids) && ids.length > 0) {
     await supabaseAdmin.from('expenses').delete()
       .in('id', ids)
       .eq('user_id', user.id)
-      .in('status', SELF_CLEANABLE_STATUSES);
+      .in('status', HARD_DELETE_STATUSES);
+    await supabaseAdmin.from('expenses').update({ status: 'superseded', superseded_at: now })
+      .in('id', ids)
+      .eq('user_id', user.id)
+      .in('status', SOFT_SUPERSEDE_STATUSES);
   }
 
-  // Pass 2 — date-range sweep for any orphan pending/rejected rows that day
+  // Pass 2 — date-range sweep for any orphan rows that day
   if (date_start && date_end) {
     await supabaseAdmin.from('expenses').delete()
       .eq('user_id', user.id)
-      .in('status', SELF_CLEANABLE_STATUSES)
+      .in('status', HARD_DELETE_STATUSES)
+      .gte('created_at', date_start)
+      .lte('created_at', date_end);
+    await supabaseAdmin.from('expenses').update({ status: 'superseded', superseded_at: now })
+      .eq('user_id', user.id)
+      .in('status', SOFT_SUPERSEDE_STATUSES)
       .gte('created_at', date_start)
       .lte('created_at', date_end);
   }
