@@ -9,6 +9,91 @@ const DEPARTMENTS = [
   'Procurement', 'Project', 'Purchase', 'Sales', 'Tender', 'TL',
 ];
 
+// ── DUE / PAYMENT STATUS EXCLUSIONS ─────────────────────────
+// Single source of truth for "not payable" statuses — used everywhere a Due,
+// Overall, or export total is calculated. Mirrored in api/receipt-url.js
+// (server-side, separate runtime — update both if this list changes).
+const DUE_EXCLUDED_STATUSES = ['rejected', 'l1_rejected', 'deleted', 'audit_review', 'audit_query', 'superseded'];
+
+// ── LANGUAGE (EN / HI) ──────────────────────────────────────
+// Covers only the important status messages/notices (locked entries, rejection/audit
+// reasons, the needs-attention banner, etc.) — not a full app-wide translation.
+const TRANSLATIONS = {
+  en: {
+    locked_notice: (n, stageSummary) => `🔒 ${n} entr${n > 1 ? 'ies' : 'y'} locked (${stageSummary}) — already submitted for approval, so can't be edited here. Check Expense History for full status.`,
+    stage_l1_approved: 'waiting on HR',
+    stage_hr_approved: 'waiting on Audit',
+    stage_audit_review: 'flagged — waiting on HR',
+    stage_audit_cleared: 'fully approved',
+    stage_approved: 'fully approved',
+    rejected_by_audit: (name, reason) => `✗ Rejected by Audit${name ? ' (' + name + ')' : ''}: ${reason}`,
+    rejected_generic: (reason) => `✗ Rejected: ${reason}`,
+    deleted_by: (name, reason) => `🗑️ Deleted${name ? ' by ' + name : ''}: ${reason}`,
+    old_version_known: (amt, date, badge) => `↻ This is an old, outdated entry. It's now <strong>${amt}</strong> dated ${date}, status: ${badge}`,
+    old_version_unknown: `↻ This is an old, outdated entry. You already fixed it and submitted it again as a new entry — look for it under Pending.`,
+    audit_had_rejected: (reason) => ` (Audit had rejected it: "${reason}")`,
+    resubmission_note: (amt, date) => `↻ Resubmission — replaces the ${amt} entry from ${date} shown under the Rejected tab.`,
+    banner_title: (n) => `${n} expense${n !== 1 ? 's' : ''} need${n === 1 ? 's' : ''} your attention`,
+    banner_sub: (n, label) => `${n === 1 ? 'This entry was' : 'These entries were'} ${label} — fix and resubmit to keep it moving.`,
+    banner_label_flagged: 'flagged by Audit',
+    banner_label_rejected: 'rejected',
+    fix_now: 'Fix Now →',
+    fix_resubmit_link: '✎ Fix and resubmit →',
+    advance_outstanding_note: (amt) => `Note: Advance Outstanding ${amt} — actual payable amount is net of this; see the Payment Sheet export for the netted bank-transfer amount.`,
+  },
+  hi: {
+    locked_notice: (n, stageSummary) => `🔒 ${n} entry lock ${n > 1 ? 'hain' : 'hai'} (${stageSummary}) — pehle se approval ke liye bhej di gayi hai, isliye yahan edit nahi ho sakti. Poora status Expense History mein dekhein.`,
+    stage_l1_approved: 'HR ke paas hai',
+    stage_hr_approved: 'Audit ke paas hai',
+    stage_audit_review: 'flag hui hai — HR ke paas hai',
+    stage_audit_cleared: 'pura approve ho gaya',
+    stage_approved: 'pura approve ho gaya',
+    rejected_by_audit: (name, reason) => `✗ Audit ne reject kiya${name ? ' (' + name + ')' : ''}: ${reason}`,
+    rejected_generic: (reason) => `✗ Reject ho gaya: ${reason}`,
+    deleted_by: (name, reason) => `🗑️ Delete kiya${name ? ' — ' + name : ''}: ${reason}`,
+    old_version_known: (amt, date, badge) => `↻ Yeh ek purani, outdated entry hai. Ab yeh <strong>${amt}</strong> hai, date ${date}, status: ${badge}`,
+    old_version_unknown: `↻ Yeh ek purani, outdated entry hai. Aap ise fix karke naye entry ke roop mein dobara bhej chuke hain — Pending mein dhoondein.`,
+    audit_had_rejected: (reason) => ` (Audit ne reject kiya tha: "${reason}")`,
+    resubmission_note: (amt, date) => `↻ Resubmission — yeh ${date} ki ${amt} wali entry ko replace karta hai, jo Rejected tab mein dikhti hai.`,
+    banner_title: (n) => `${n} expense pe aapka dhyan chahiye`,
+    banner_sub: (n, label) => `${n === 1 ? 'yeh entry' : 'yeh entries'} ${label} — fix karke dobara bhejo.`,
+    banner_label_flagged: 'Audit ne flag ki thi',
+    banner_label_rejected: 'reject hui thi',
+    fix_now: 'Abhi Fix Karo →',
+    fix_resubmit_link: '✎ Fix karke dobara bhejo →',
+    advance_outstanding_note: (amt) => `Note: Advance Outstanding ${amt} — asli payable amount isse kam hoga; netted bank-transfer amount ke liye Payment Sheet export dekhein.`,
+  },
+};
+
+function getLang() {
+  try { return localStorage.getItem('lang') === 'hi' ? 'hi' : 'en'; } catch { return 'en'; }
+}
+
+function setLang(lang) {
+  try { localStorage.setItem('lang', lang); } catch {}
+  location.reload();
+}
+
+/** Look up a translated string/template by key for the current language. */
+function t(key, ...args) {
+  const lang = getLang();
+  const entry = (TRANSLATIONS[lang] || TRANSLATIONS.en)[key];
+  if (entry == null) return '';
+  return typeof entry === 'function' ? entry(...args) : entry;
+}
+
+/** Compact "EN | हिं" pill toggle — call with a container element id to render it there. */
+function renderLangToggle(containerId) {
+  const el = document.getElementById(containerId);
+  if (!el) return;
+  const lang = getLang();
+  el.innerHTML = `
+    <div style="display:inline-flex;align-items:center;background:var(--surface-1,#f1f5f9);border-radius:20px;padding:3px;font-size:12px;font-weight:700;gap:2px">
+      <button type="button" onclick="setLang('en')" style="border:none;cursor:pointer;padding:4px 10px;border-radius:16px;${lang==='en' ? 'background:#2563eb;color:#fff;' : 'background:transparent;color:#64748b;'}">EN</button>
+      <button type="button" onclick="setLang('hi')" style="border:none;cursor:pointer;padding:4px 10px;border-radius:16px;${lang==='hi' ? 'background:#2563eb;color:#fff;' : 'background:transparent;color:#64748b;'}">हिं</button>
+    </div>`;
+}
+
 // ── CONFIG ────────────────────────────────────────────────
 // Credentials are loaded from the server (.env). Config is cached in
 // sessionStorage so each page only pays the fetch cost once per browser session.

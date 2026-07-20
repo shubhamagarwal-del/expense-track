@@ -145,10 +145,24 @@ export default async function handler(req, res) {
   }
 
   // ── SINGLE mode: { expense_id, action, remark, audit_note } ──
-  const { expense_id, action, approved_amount, remark, audit_note } = req.body;
-  const validActions = ['approved', 'rejected', 'hr_approved', 'audit_cleared', 'audit_review', 'audit_query'];
+  const { expense_id, action, approved_amount, remark, audit_note, category } = req.body;
+  const validActions = ['approved', 'rejected', 'hr_approved', 'audit_cleared', 'audit_review', 'audit_query', 'update_category'];
   if (!expense_id || !validActions.includes(action))
     return res.status(400).json({ error: 'Invalid request body' });
+
+  // ── Category correction (Audit only) — a metadata fix, not a status transition ──
+  if (action === 'update_category') {
+    if (profile.role !== 'audit')
+      return res.status(403).json({ error: 'Only Audit can change an expense category' });
+    const VALID_CATEGORIES = ['Travel', 'Food', 'Hotel Room Rent', 'Printing & Stationery', 'Petrol / Diesel', 'Courier / Parcel', 'Parking'];
+    if (!VALID_CATEGORIES.includes(category))
+      return res.status(400).json({ error: 'Invalid category' });
+    const { error: catErr } = await supabaseAdmin
+      .from('expenses').update({ category }).eq('id', expense_id);
+    if (catErr) return res.status(500).json({ error: catErr.message });
+    return res.status(200).json({ message: 'Category updated', category });
+  }
+
   if (action === 'rejected' && !remark?.trim())
     return res.status(400).json({ error: 'A reason is required for rejection' });
   if ((action === 'audit_review' || action === 'audit_query') && !audit_note?.trim())

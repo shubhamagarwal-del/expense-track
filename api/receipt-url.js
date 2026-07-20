@@ -1,5 +1,9 @@
 import { createClient } from '@supabase/supabase-js';
 
+// Mirrors DUE_EXCLUDED_STATUSES in app.js (browser side) — server-side runtime can't
+// share that file directly, so keep this list in sync manually if it ever changes.
+const DUE_EXCLUDED_STATUSES = ['rejected', 'l1_rejected', 'deleted', 'audit_review', 'audit_query', 'superseded'];
+
 /**
  * Combines several related, low-traffic endpoints into one serverless function
  * (Vercel Hobby plan caps deployments at 12 functions):
@@ -542,7 +546,7 @@ async function pendingCyclesForUser(db, userId, paidByKey) {
     .from('expenses').select('amount, approved_amount, status, created_at').eq('user_id', userId);
   const groups = new Map();
   for (const e of exps || []) {
-    if (['rejected', 'l1_rejected', 'deleted', 'audit_review', 'audit_query', 'superseded'].includes(e.status)) continue;
+    if (DUE_EXCLUDED_STATUSES.includes(e.status)) continue;
     const d = new Date(e.created_at);
     const monthYear = d.toLocaleString('en-US', { month: 'long', year: 'numeric' });
     const cycleNum = d.getDate() <= 15 ? 1 : 2;

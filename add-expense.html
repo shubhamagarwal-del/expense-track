@@ -598,6 +598,7 @@
             <p id="hero-subtitle">Review and add your daily business spending.</p>
           </div>
           <div class="topbar-right" style="display:flex;gap:.5rem;align-items:center">
+            <div id="lang-toggle"></div>
             <button class="topbar-menu" onclick="toggleSidebar()"
               style="background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); padding: 0.5rem; border-radius: 10px; color: white;">☰</button>
             <button onclick="logout()" title="Sign Out"
@@ -699,7 +700,8 @@
       'Hotel Room Rent':      700,
       'Printing & Stationery': null,
       'Petrol / Diesel':       null,
-      'Courier / Parcel':      null
+      'Courier / Parcel':      null,
+      'Parking':               null
     };
 
     // SITE_DATA is defined globally in app.js (loaded above) — shared with the dashboard.
@@ -714,6 +716,7 @@
       }
       currentUser = profile;
       populateSidebar(profile);
+      renderLangToggle('lang-toggle');
 
       // Deep link from Expense History's "Fix and resubmit" link — jump
       // straight to that date's entry panel instead of the current month.
@@ -948,6 +951,7 @@
             <option value="Printing & Stationery" ${normalCat === 'Printing & Stationery' ? 'selected' : ''}>Printing & Stationery</option>
             <option value="Petrol / Diesel"       ${normalCat === 'Petrol / Diesel'       ? 'selected' : ''}>Petrol / Diesel</option>
             <option value="Courier / Parcel"      ${normalCat === 'Courier / Parcel'      ? 'selected' : ''}>Courier / Parcel</option>
+            <option value="Parking"               ${normalCat === 'Parking'               ? 'selected' : ''}>Parking</option>
           </select>
         </div>
       </div>
@@ -1077,9 +1081,21 @@
         if (st === 'deleted' && data.deleted_reason) {
           const reasonEl = document.createElement('div');
           reasonEl.style.cssText = 'background:#fee2e2;color:#991b1b;font-size:.75rem;border-radius:6px;padding:.4rem .6rem;margin-top:.5rem';
-          reasonEl.innerHTML = `<strong>Deleted${data.deleted_by_name ? ' by ' + data.deleted_by_name : ''}:</strong> ${data.deleted_reason}`;
+          reasonEl.innerHTML = t('deleted_by', data.deleted_by_name, data.deleted_reason);
           card.appendChild(reasonEl);
         }
+      } else if (data.status === 'audit_query' && data.audit_note) {
+        // Editable row, sent back by Audit — show why right here so the employee
+        // doesn't have to leave this page to find out what to fix.
+        const reasonEl = document.createElement('div');
+        reasonEl.style.cssText = 'background:#fee2e2;color:#991b1b;font-size:.78rem;border-radius:8px;padding:.55rem .75rem;margin-bottom:.75rem;font-weight:600';
+        reasonEl.innerHTML = t('rejected_by_audit', data.audit_by_name, data.audit_note);
+        card.insertBefore(reasonEl, card.firstChild);
+      } else if ((data.status === 'rejected' || data.status === 'l1_rejected') && data.rejection_reason) {
+        const reasonEl = document.createElement('div');
+        reasonEl.style.cssText = 'background:#fee2e2;color:#991b1b;font-size:.78rem;border-radius:8px;padding:.55rem .75rem;margin-bottom:.75rem;font-weight:600';
+        reasonEl.innerHTML = t('rejected_generic', data.rejection_reason);
+        card.insertBefore(reasonEl, card.firstChild);
       }
       calcPanelTotal();
     }
@@ -1326,7 +1342,7 @@
     function parseExpenseToRowData(exp) {
       const parts = (exp.description || '').split('|');
       const type = parts[0];
-      const row = { id: exp.id, amount: exp.amount, category: exp.category, receipt_url: exp.receipt_url, status: exp.status, deleted_reason: exp.deleted_reason, deleted_by_name: exp.deleted_by_name };
+      const row = { id: exp.id, amount: exp.amount, category: exp.category, receipt_url: exp.receipt_url, status: exp.status, deleted_reason: exp.deleted_reason, deleted_by_name: exp.deleted_by_name, rejection_reason: exp.rejection_reason, audit_note: exp.audit_note, audit_by_name: exp.audit_by_name };
 
       if (type === 'TRAVEL_BUS' || type === 'TRAVEL_TAXI' || type === 'TRAVEL_TRAIN' || type === 'TRAVEL_FLIGHT') {
         row.category  = 'Travel';
@@ -1390,9 +1406,22 @@
 
       // Locked entries (approved / in-review / audit stages) — shown read-only at top
       if (lockedExp.length > 0) {
+        const STAGE_KEYS = {
+          l1_approved: 'stage_l1_approved',
+          hr_approved: 'stage_hr_approved',
+          audit_review: 'stage_audit_review',
+          audit_cleared: 'stage_audit_cleared',
+          approved: 'stage_approved',
+        };
+        const stageCounts = {};
+        lockedExp.forEach(e => {
+          const label = STAGE_KEYS[e.status] ? t(STAGE_KEYS[e.status]) : e.status;
+          stageCounts[label] = (stageCounts[label] || 0) + 1;
+        });
+        const stageSummary = Object.entries(stageCounts).map(([label, n]) => `${n} ${label}`).join(', ');
         const notice = document.createElement('div');
         notice.style.cssText = 'background:#eff6ff;border:1px solid #bfdbfe;border-radius:12px;padding:.75rem 1rem;margin-bottom:1rem;font-size:.82rem;color:#1e40af;font-weight:600';
-        notice.innerHTML = `🔒 ${lockedExp.length} entr${lockedExp.length > 1 ? 'ies' : 'y'} locked — already processed and cannot be edited here.`;
+        notice.innerHTML = t('locked_notice', lockedExp.length, stageSummary);
         container.appendChild(notice);
         lockedExp.forEach(exp => addRow(parseExpenseToRowData(exp), true));
       }

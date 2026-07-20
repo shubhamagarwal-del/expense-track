@@ -212,6 +212,7 @@
           </svg>
         </button>
         <span class="topbar-title" id="topbar-title">Dashboard</span>
+        <div id="lang-toggle" style="margin-left:auto;margin-right:.75rem"></div>
         <div class="topbar-right" id="topbar-right"></div>
       </header>
 
@@ -453,6 +454,7 @@
       currentProfile = profile;
       populateSidebar(profile);
       enforcePasswordChange(profile);
+      renderLangToggle('lang-toggle');
 
       // Load live line manager data from Supabase (cached in sessionStorage).
       // Wrapped in try/catch — a missing function or failed API must never
@@ -562,6 +564,9 @@
        </a>`;
 
       document.getElementById('main-content').innerHTML = `
+      <!-- Needs-attention banner — populated by renderEmployeeActionBanner() -->
+      <div id="emp-action-banner"></div>
+
       <!-- Premium Header -->
       <div style="background: linear-gradient(135deg, #1e1b4b 0%, #312e81 100%); margin: -2rem -2rem 2rem -2rem; padding: 3rem 2rem 5rem 2rem; border-radius: 0 0 40px 40px; color: white;">
         <div style="max-width: 1200px; margin: 0 auto; display: flex; justify-content: space-between; align-items: center;">
@@ -872,7 +877,7 @@
     function buildCycleTotalsMap(expenses) {
       const map = {};
       for (const e of expenses) {
-        if (['rejected', 'l1_rejected', 'deleted', 'audit_review', 'audit_query', 'superseded'].includes(e.status)) continue;
+        if (DUE_EXCLUDED_STATUSES.includes(e.status)) continue;
         const d = new Date(e.created_at);
         const mY = d.toLocaleString('en-US', { month: 'long', year: 'numeric' });
         const cNum = d.getDate() <= 15 ? 1 : 2;
@@ -1188,7 +1193,7 @@
 
     function updateEmpStats(expenses) {
       const now = new Date();
-      const approvedAndPending = expenses.filter(e => !['rejected', 'l1_rejected', 'deleted', 'audit_review', 'audit_query', 'superseded'].includes(e.status));
+      const approvedAndPending = expenses.filter(e => !DUE_EXCLUDED_STATUSES.includes(e.status));
       const effectiveAmt = e => e.approved_amount != null ? +e.approved_amount : +e.amount;
       const total = approvedAndPending.reduce((s, e) => s + effectiveAmt(e), 0);
       const month = approvedAndPending
@@ -1198,6 +1203,36 @@
       document.getElementById('s-total').textContent = formatCurrency(total);
       document.getElementById('s-month').textContent = formatCurrency(month);
       renderCycleBreakdown(expenses);
+      renderEmployeeActionBanner(expenses);
+    }
+
+    /**
+     * Sticky "needs your attention" banner at the top of the employee dashboard —
+     * shows for every rejected/l1_rejected/audit_query entry that hasn't been fixed
+     * and resubmitted yet. Not dismissible; it re-renders on every data refresh
+     * (initial load + realtime) and only disappears once the entry is resubmitted.
+     */
+    function renderEmployeeActionBanner(expenses) {
+      const el = document.getElementById('emp-action-banner');
+      if (!el) return;
+      const needsAction = expenses.filter(e => ['rejected', 'l1_rejected', 'audit_query'].includes(e.status));
+      if (!needsAction.length) { el.innerHTML = ''; return; }
+
+      const count = needsAction.length;
+      const isQueried = needsAction.some(e => e.status === 'audit_query');
+      const label = t(isQueried ? 'banner_label_flagged' : 'banner_label_rejected');
+
+      el.innerHTML = `
+        <div style="max-width:1200px;margin:0 auto 1rem auto;padding:0 1rem">
+          <div style="background:#fef2f2;border:1.5px solid #fecaca;border-radius:14px;padding:.9rem 1.1rem;display:flex;align-items:center;gap:.75rem;flex-wrap:wrap">
+            <span style="font-size:1.4rem;flex-shrink:0">⚠️</span>
+            <div style="flex:1;min-width:200px">
+              <div style="font-weight:800;color:#991b1b;font-size:.95rem">${t('banner_title', count)}</div>
+              <div style="color:#b91c1c;font-size:.82rem;margin-top:.15rem">${t('banner_sub', count, label)}</div>
+            </div>
+            <button onclick="setListFilter('rejected'); document.getElementById('emp-table')?.scrollIntoView({behavior:'smooth',block:'start'});" style="background:#dc2626;color:#fff;font-weight:700;font-size:.85rem;padding:.55rem 1.1rem;border-radius:10px;white-space:nowrap;flex-shrink:0;border:none;cursor:pointer">${t('fix_now')}</button>
+          </div>
+        </div>`;
     }
 
     function renderCycleBreakdown(expenses) {
@@ -1225,7 +1260,7 @@
       const effectiveAmt = e => e.approved_amount != null ? +e.approved_amount : +e.amount;
 
       const overallApproved = expenses
-        .filter(e => !['rejected', 'l1_rejected', 'deleted', 'audit_review', 'audit_query', 'superseded'].includes(e.status))
+        .filter(e => !DUE_EXCLUDED_STATUSES.includes(e.status))
         .reduce((s, e) => s + effectiveAmt(e), 0);
       const overallPaid = paidForExpenses(expenses);
       const overallAdvance = advanceFor(currentProfile.id);
@@ -1270,7 +1305,7 @@
             const approved   = g.expenses.filter(e => e.status === 'approved').length;
             const rejected   = g.expenses.filter(e => e.status === 'rejected' || e.status === 'l1_rejected' || e.status === 'deleted' || e.status === 'superseded').length;
             const totalAmt = g.expenses
-              .filter(e => !['rejected', 'l1_rejected', 'deleted', 'audit_review', 'audit_query', 'superseded'].includes(e.status))
+              .filter(e => !DUE_EXCLUDED_STATUSES.includes(e.status))
               .reduce((s, e) => s + effectiveAmt(e), 0);
             const col = g.cNum === 1 ? '#6366f1' : '#7c3aed';
             const tagBg  = g.cNum === 1 ? '#ede9fe' : '#f3e8ff';
@@ -1696,7 +1731,7 @@
       const today = now.toISOString().split('T')[0];
       const effAmt = e => e.approved_amount != null ? +e.approved_amount : +e.amount;
 
-      const active = expenses.filter(e => !['rejected', 'l1_rejected', 'deleted', 'audit_review', 'audit_query', 'superseded'].includes(e.status));
+      const active = expenses.filter(e => !DUE_EXCLUDED_STATUSES.includes(e.status));
       const todayTotal = active
         .filter(e => e.created_at.startsWith(today))
         .reduce((s, e) => s + effAmt(e), 0);
@@ -1787,7 +1822,7 @@
         }
         // Use approved_amount for total, exclude rejected
         g.totalAmount = g.entries.reduce((sum, e) => {
-          if (['rejected', 'l1_rejected', 'deleted', 'audit_review', 'audit_query', 'superseded'].includes(e.status)) return sum;
+          if (DUE_EXCLUDED_STATUSES.includes(e.status)) return sum;
           return sum + (e.approved_amount != null ? +e.approved_amount : +e.amount);
         }, 0);
       });
@@ -1802,7 +1837,7 @@
       sortedGroups.forEach(g => g.entries.sort((a, b) => new Date(b.created_at) - new Date(a.created_at)));
 
       const total = expenses.reduce((s, e) => {
-        if (['rejected', 'l1_rejected', 'deleted', 'audit_review', 'audit_query', 'superseded'].includes(e.status)) return s;
+        if (DUE_EXCLUDED_STATUSES.includes(e.status)) return s;
         return s + (e.approved_amount != null ? +e.approved_amount : +e.amount);
       }, 0);
       el.innerHTML = `
@@ -1940,7 +1975,7 @@
                               return `
                               <tr style="border-bottom:1px solid var(--border)">
                                 <td style="padding:.75rem;white-space:nowrap">${new Date(e.created_at).toLocaleDateString('en-IN',{day:'2-digit',month:'short'})}</td>
-                                <td style="padding:.75rem">${catPill(e.category)}</td>
+                                <td style="padding:.75rem">${catPillEditable(e)}</td>
                                 <td style="padding:.75rem">
                                   ${amtChanged ? `<div style="text-decoration:line-through;color:var(--text-muted);font-size:.8rem">${formatCurrency(e.amount)}</div>` : ''}
                                   <div style="font-weight:700;color:var(--primary)">${formatCurrency(approvedAmt)}</div>
@@ -2555,21 +2590,21 @@
       <td>${catPill(e.category)}</td>
       <td class="td-desc">
         ${parseDescForDisplay(e.description)}
-        ${e.rejection_reason ? `<div style="color: var(--primary); font-size: 0.75rem; margin-top: 0.4rem; background: var(--bg-2); padding: 0.4rem; border-radius: 4px; white-space: normal; overflow-wrap: break-word;"><strong>Admin Comment:</strong> ${escHtml(e.rejection_reason)}</div>` : ''}
-        ${e.status === 'deleted' ? `<div style="color: #991b1b; font-size: 0.75rem; margin-top: 0.4rem; background: #fee2e2; padding: 0.4rem; border-radius: 4px; white-space: normal; overflow-wrap: break-word;"><strong>🗑️ Deleted${e.deleted_by_name ? ' by ' + escHtml(e.deleted_by_name) : ''}:</strong> ${escHtml(e.deleted_reason || 'No reason given')}</div>` : ''}
-        ${e.status === 'audit_query' ? `<div style="color: #991b1b; font-size: 0.75rem; margin-top: 0.4rem; background: #fee2e2; padding: 0.4rem; border-radius: 4px; white-space: normal; overflow-wrap: break-word;"><strong>✗ Rejected by Audit${e.audit_by_name ? ' (' + escHtml(e.audit_by_name) + ')' : ''}:</strong> ${escHtml(e.audit_note || 'Needs correction')}</div>` : ''}
+        ${e.rejection_reason ? `<div style="color: var(--primary); font-size: 0.75rem; margin-top: 0.4rem; background: var(--bg-2); padding: 0.4rem; border-radius: 4px; white-space: normal; overflow-wrap: break-word;">${t('rejected_generic', escHtml(e.rejection_reason))}</div>` : ''}
+        ${e.status === 'deleted' ? `<div style="color: #991b1b; font-size: 0.75rem; margin-top: 0.4rem; background: #fee2e2; padding: 0.4rem; border-radius: 4px; white-space: normal; overflow-wrap: break-word;">${t('deleted_by', e.deleted_by_name ? escHtml(e.deleted_by_name) : '', escHtml(e.deleted_reason || 'No reason given'))}</div>` : ''}
+        ${e.status === 'audit_query' ? `<div style="color: #991b1b; font-size: 0.75rem; margin-top: 0.4rem; background: #fee2e2; padding: 0.4rem; border-radius: 4px; white-space: normal; overflow-wrap: break-word;">${t('rejected_by_audit', e.audit_by_name ? escHtml(e.audit_by_name) : '', escHtml(e.audit_note || 'Needs correction'))}</div>` : ''}
         ${e.status === 'superseded' ? (() => {
           const newEntry = findResubmissionOf(e);
-          const linkText = newEntry
-            ? `It's now <strong>${formatCurrency(newEntry.approved_amount != null ? newEntry.approved_amount : newEntry.amount)}</strong> dated ${formatDate(newEntry.created_at)}, status: ${statusBadge(newEntry.status)}`
-            : `You already fixed it and submitted it again as a new entry — look for it under Pending.`;
-          return `<div style="color: #475569; font-size: 0.75rem; margin-top: 0.4rem; background: #f1f5f9; padding: 0.4rem; border-radius: 4px; white-space: normal; overflow-wrap: break-word;"><strong>↻ This is an old, outdated entry.</strong> ${linkText}${e.audit_note ? ` (Audit had rejected it: "${escHtml(e.audit_note)}")` : ''}</div>`;
+          const inner = newEntry
+            ? t('old_version_known', formatCurrency(newEntry.approved_amount != null ? newEntry.approved_amount : newEntry.amount), formatDate(newEntry.created_at), statusBadge(newEntry.status))
+            : t('old_version_unknown');
+          return `<div style="color: #475569; font-size: 0.75rem; margin-top: 0.4rem; background: #f1f5f9; padding: 0.4rem; border-radius: 4px; white-space: normal; overflow-wrap: break-word;">${inner}${e.audit_note ? t('audit_had_rejected', escHtml(e.audit_note)) : ''}</div>`;
         })() : ''}
         ${e.resubmitted_from ? (() => {
           const orig = findOriginalOf(e);
-          return orig ? `<div style="color: #475569; font-size: 0.75rem; margin-top: 0.4rem; background: #f1f5f9; padding: 0.4rem; border-radius: 4px; white-space: normal; overflow-wrap: break-word;"><strong>↻ Resubmission</strong> — replaces the ${formatCurrency(orig.amount)} entry from ${formatDate(orig.created_at)} shown under the Rejected tab.</div>` : '';
+          return orig ? `<div style="color: #475569; font-size: 0.75rem; margin-top: 0.4rem; background: #f1f5f9; padding: 0.4rem; border-radius: 4px; white-space: normal; overflow-wrap: break-word;">${t('resubmission_note', formatCurrency(orig.amount), formatDate(orig.created_at))}</div>` : '';
         })() : ''}
-        ${(e.status === 'rejected' || e.status === 'l1_rejected' || e.status === 'audit_query') ? `<a href="add-expense.html?editDate=${encodeURIComponent(e.created_at)}" style="display:inline-block;margin-top:.4rem;font-size:.75rem;font-weight:700;color:var(--primary)">✎ Fix and resubmit →</a>` : ''}
+        ${(e.status === 'rejected' || e.status === 'l1_rejected' || e.status === 'audit_query') ? `<a href="add-expense.html?editDate=${encodeURIComponent(e.created_at)}" style="display:inline-block;margin-top:.4rem;font-size:.75rem;font-weight:700;color:var(--primary);white-space:normal;overflow-wrap:break-word">${t('fix_resubmit_link')}</a>` : ''}
       </td>
       <td class="td-amount">
         ${amtChanged ? `<div style="text-decoration:line-through;color:var(--text-muted);font-size:.78rem">${formatCurrency(e.amount)}</div>` : ''}
@@ -2599,7 +2634,7 @@
         <div style="font-size:0.75rem; color:var(--text-2)">${email} | 📱 ${phone}</div>
         <div style="font-size:0.75rem; color:var(--text-3)">${site} | ${dept}</div>
       </td>
-      <td>${catPill(e.category)}</td>
+      <td>${catPillEditable(e)}</td>
       <td class="td-desc">
         ${parseDescForDisplay(e.description)}
         ${e.rejection_reason ? `<div style="color: var(--primary); font-size: 0.75rem; margin-top: 0.25rem; background: var(--bg-2); padding: 0.25rem; border-radius: 4px; white-space: normal; overflow-wrap: break-word;"><strong>Admin Comment:</strong> ${escHtml(e.rejection_reason)}</div>` : ''}
@@ -2644,21 +2679,21 @@
         🕒 Submitted: ${formatDateTime(e.created_at)}
       </div>
       <div class="expense-card-desc">${parseDescForDisplay(e.description)}</div>
-      ${e.rejection_reason ? `<div class="expense-card-desc" style="color: #dc2626; background: #fee2e2; padding: 0.5rem; border-radius: 4px; margin-top: 0.5rem;"><strong>Rejected:</strong> ${escHtml(e.rejection_reason)}</div>` : ''}
-      ${e.status === 'deleted' ? `<div class="expense-card-desc" style="color: #991b1b; background: #fee2e2; padding: 0.5rem; border-radius: 4px; margin-top: 0.5rem;"><strong>🗑️ Deleted${e.deleted_by_name ? ' by ' + escHtml(e.deleted_by_name) : ''}:</strong> ${escHtml(e.deleted_reason || 'No reason given')}</div>` : ''}
-      ${e.status === 'audit_query' ? `<div class="expense-card-desc" style="color: #991b1b; background: #fee2e2; padding: 0.5rem; border-radius: 4px; margin-top: 0.5rem;"><strong>✗ Rejected by Audit${e.audit_by_name ? ' (' + escHtml(e.audit_by_name) + ')' : ''}:</strong> ${escHtml(e.audit_note || 'Needs correction')}</div>` : ''}
+      ${e.rejection_reason ? `<div class="expense-card-desc" style="color: #dc2626; background: #fee2e2; padding: 0.5rem; border-radius: 4px; margin-top: 0.5rem;">${t('rejected_generic', escHtml(e.rejection_reason))}</div>` : ''}
+      ${e.status === 'deleted' ? `<div class="expense-card-desc" style="color: #991b1b; background: #fee2e2; padding: 0.5rem; border-radius: 4px; margin-top: 0.5rem;">${t('deleted_by', e.deleted_by_name ? escHtml(e.deleted_by_name) : '', escHtml(e.deleted_reason || 'No reason given'))}</div>` : ''}
+      ${e.status === 'audit_query' ? `<div class="expense-card-desc" style="color: #991b1b; background: #fee2e2; padding: 0.5rem; border-radius: 4px; margin-top: 0.5rem;">${t('rejected_by_audit', e.audit_by_name ? escHtml(e.audit_by_name) : '', escHtml(e.audit_note || 'Needs correction'))}</div>` : ''}
       ${e.status === 'superseded' ? (() => {
         const newEntry = findResubmissionOf(e);
-        const linkText = newEntry
-          ? `It's now <strong>${formatCurrency(newEntry.approved_amount != null ? newEntry.approved_amount : newEntry.amount)}</strong> dated ${formatDate(newEntry.created_at)}, status: ${statusBadge(newEntry.status)}`
-          : `You already fixed it and submitted it again as a new entry — look for it under Pending.`;
-        return `<div class="expense-card-desc" style="color: #475569; background: #f1f5f9; padding: 0.5rem; border-radius: 4px; margin-top: 0.5rem;"><strong>↻ This is an old, outdated entry.</strong> ${linkText}${e.audit_note ? ` (Audit had rejected it: "${escHtml(e.audit_note)}")` : ''}</div>`;
+        const inner = newEntry
+          ? t('old_version_known', formatCurrency(newEntry.approved_amount != null ? newEntry.approved_amount : newEntry.amount), formatDate(newEntry.created_at), statusBadge(newEntry.status))
+          : t('old_version_unknown');
+        return `<div class="expense-card-desc" style="color: #475569; background: #f1f5f9; padding: 0.5rem; border-radius: 4px; margin-top: 0.5rem;">${inner}${e.audit_note ? t('audit_had_rejected', escHtml(e.audit_note)) : ''}</div>`;
       })() : ''}
       ${e.resubmitted_from ? (() => {
         const orig = findOriginalOf(e);
-        return orig ? `<div class="expense-card-desc" style="color: #475569; background: #f1f5f9; padding: 0.5rem; border-radius: 4px; margin-top: 0.5rem;"><strong>↻ Resubmission</strong> — replaces the ${formatCurrency(orig.amount)} entry from ${formatDate(orig.created_at)} shown under the Rejected tab.</div>` : '';
+        return orig ? `<div class="expense-card-desc" style="color: #475569; background: #f1f5f9; padding: 0.5rem; border-radius: 4px; margin-top: 0.5rem;">${t('resubmission_note', formatCurrency(orig.amount), formatDate(orig.created_at))}</div>` : '';
       })() : ''}
-      ${(e.status === 'rejected' || e.status === 'l1_rejected' || e.status === 'audit_query') ? `<a href="add-expense.html?editDate=${encodeURIComponent(e.created_at)}" style="display:inline-block;margin-top:.5rem;font-size:.78rem;font-weight:700;color:var(--primary)">✎ Fix and resubmit →</a>` : ''}
+      ${(e.status === 'rejected' || e.status === 'l1_rejected' || e.status === 'audit_query') ? `<a href="add-expense.html?editDate=${encodeURIComponent(e.created_at)}" style="display:inline-block;margin-top:.5rem;font-size:.78rem;font-weight:700;color:var(--primary)">${t('fix_resubmit_link')}</a>` : ''}
       ${receiptCardFooter(e)}
     </div>`;
     }
@@ -2712,7 +2747,7 @@
       </div>
       <div style="margin:.5rem 0">${approvalStepper(e)}</div>
       <div class="expense-card-meta">
-        ${catPill(e.category)}
+        ${catPillEditable(e)}
         <span class="expense-card-date">${formatDate(e.created_at)}</span>
       </div>
       <div class="expense-card-meta" style="margin-top:.5rem; flex-direction: column; align-items: flex-start; gap: 0.2rem;">
@@ -3189,6 +3224,63 @@
       } catch (err) { showMessage(err.message, 'error'); }
     }
 
+    // ── Audit: inline category correction ───────────────────────
+    const AUDIT_CATEGORY_OPTIONS = ['Travel', 'Food', 'Hotel Room Rent', 'Printing & Stationery', 'Petrol / Diesel', 'Courier / Parcel', 'Parking'];
+
+    /** Inner content (pill + pencil button) shared by the initial render and the post-edit restore. */
+    function catPillEditableInner(e) {
+      return `${catPill(e.category)}<button type="button" onclick="event.stopPropagation();openCategoryEditPopover('${e.id}', this)" title="Change category" style="background:none;border:none;cursor:pointer;padding:0;font-size:.75rem;line-height:1;color:var(--text-muted)">✏️</button>`;
+    }
+
+    /** Category pill — editable (pencil icon → inline dropdown) when viewed by Audit. */
+    function catPillEditable(e) {
+      if (currentProfile?.role !== 'audit') return catPill(e.category);
+      return `<span class="cat-pill-editable" data-expense-id="${e.id}" style="display:inline-flex;align-items:center;gap:.3rem">${catPillEditableInner(e)}</span>`;
+    }
+
+    function openCategoryEditPopover(expenseId, btnEl) {
+      const exp = allExpensesFetched.find(x => x.id === expenseId);
+      const wrap = btnEl.closest('.cat-pill-editable');
+      if (!exp || !wrap) return;
+
+      const select = document.createElement('select');
+      select.className = 'form-input';
+      select.style.cssText = 'font-size:.75rem;padding:.15rem .3rem;width:auto';
+      if (!AUDIT_CATEGORY_OPTIONS.includes(exp.category)) {
+        const opt = document.createElement('option');
+        opt.value = exp.category; opt.textContent = `${exp.category} (current)`;
+        select.appendChild(opt);
+      }
+      AUDIT_CATEGORY_OPTIONS.forEach(c => {
+        const opt = document.createElement('option');
+        opt.value = c; opt.textContent = c;
+        if (c === exp.category) opt.selected = true;
+        select.appendChild(opt);
+      });
+
+      const restore = () => { wrap.innerHTML = catPillEditableInner(exp); };
+      select.onchange = () => updateExpenseCategory(expenseId, select.value);
+      select.onblur = () => setTimeout(restore, 150);
+      wrap.innerHTML = '';
+      wrap.appendChild(select);
+      select.focus();
+    }
+
+    async function updateExpenseCategory(expenseId, category) {
+      try {
+        const { data: { session } } = await db.auth.getSession();
+        const res = await fetch('/api/approve-expense', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session?.access_token}` },
+          body: JSON.stringify({ expense_id: expenseId, action: 'update_category', category })
+        });
+        const json = await res.json();
+        if (!res.ok) throw new Error(json.error || 'Failed');
+        showMessage('Category updated', 'success');
+        await loadAdminExpenses();
+      } catch (err) { showMessage(err.message, 'error'); }
+    }
+
     function emptyState(title, sub) {
       return `
     <div class="empty-state">
@@ -3299,7 +3391,8 @@
         const s = siteWithCode(extractSite(e) || u.site_name || '');
         const date = new Date(e.created_at);
         const cycle = date.getDate() <= 15 ? "1st - 15th" : "16th - End";
-        const approvedAmt = e.approved_amount != null ? e.approved_amount : e.amount;
+        const isExcludedFromDue = DUE_EXCLUDED_STATUSES.includes(e.status);
+        const approvedAmt = isExcludedFromDue ? 0 : (e.approved_amount != null ? e.approved_amount : e.amount);
         const bankAcct = u.bank_account || '';
         return [
           formatDate(e.created_at), cycle, formatDateTime(e.created_at),
@@ -3313,6 +3406,32 @@
         ];
       });
 
+      // Status-aware TOTAL row — so a glance (or a plain column-select-and-sum) at this
+      // sheet matches Sheet 3's Grand Total, instead of requiring the Approved Amount
+      // column to be summed correctly by eye around excluded-status rows.
+      const totalRow = new Array(headers.length).fill('');
+      totalRow[11] = '★ TOTAL (Approved — excludes rejected/audit-flagged/deleted/superseded)';
+      totalRow[13] = rows.reduce((sum, r) => sum + (Number(r[13]) || 0), 0);
+      rows.push([], totalRow);
+
+      // Advance-outstanding footer notes on the main Expenses sheet too (this is the
+      // sheet that opens by default) — actual payable amount is net of these; see the
+      // Payment Sheet export for the netted bank-transfer amount.
+      const advFooterRows = [];
+      const seenAdvUsers = new Set();
+      sorted.forEach(e => {
+        if (seenAdvUsers.has(e.user_id)) return;
+        seenAdvUsers.add(e.user_id);
+        const adv = advanceFor(e.user_id);
+        if (adv > 0.005) {
+          const blank = new Array(headers.length).fill('');
+          blank[3] = e.users?.name || '';
+          blank[11] = t('advance_outstanding_note', formatCurrency(adv));
+          advFooterRows.push(blank);
+        }
+      });
+      if (advFooterRows.length) rows.push([], ...advFooterRows);
+
       const ws = XLSX.utils.aoa_to_sheet([headers, ...rows]);
       // Freeze header row
       ws['!freeze'] = { xSplit: 0, ySplit: 1 };
@@ -3321,7 +3440,7 @@
       // ── Sheet 2: Site Summary ──────────────────────────────
       const siteMap = {};
       sorted.forEach(e => {
-        if (['rejected', 'l1_rejected', 'deleted', 'audit_review', 'audit_query', 'superseded'].includes(e.status)) return;
+        if (DUE_EXCLUDED_STATUSES.includes(e.status)) return;
         const u = e.users || {};
         const empKey = (u.name || u.email || e.user_id);
         const site   = siteWithCode(extractSite(e) || u.site_name || '') || 'Unassigned';
@@ -3353,13 +3472,13 @@
       // Group by employee → cycle → total + approval info
       const empMap = {};
       sorted.forEach(e => {
-        if (['rejected', 'l1_rejected', 'deleted', 'audit_review', 'audit_query', 'superseded'].includes(e.status)) return;
+        if (DUE_EXCLUDED_STATUSES.includes(e.status)) return;
         const u = e.users || {};
         const empKey = u.emp_no || u.name || e.user_id;
         const date = new Date(e.created_at);
         const cycle = date.getDate() <= 15 ? '1st - 15th' : '16th - End';
         const amt = e.approved_amount != null ? +e.approved_amount : +e.amount;
-        if (!empMap[empKey]) empMap[empKey] = { name: u.name || '', emp_no: u.emp_no || '', dept: u.department || '', cycles: {} };
+        if (!empMap[empKey]) empMap[empKey] = { name: u.name || '', emp_no: u.emp_no || '', dept: u.department || '', userId: e.user_id, cycles: {} };
         if (!empMap[empKey].cycles[cycle]) empMap[empKey].cycles[cycle] = { total: 0, l1_name: '', l1_at: '', l2_name: '', l2_at: '' };
         empMap[empKey].cycles[cycle].total += amt;
         // Track latest approval info (overwrite with each expense — last one wins)
@@ -3396,6 +3515,11 @@
             }
           });
           empSumRows.push(['', '', '', `★ Total — ${emp.name}`, '', '', '', '', empTotal]);
+          const adv = advanceFor(emp.userId);
+          if (adv > 0.005) {
+            empSumRows.push(['', '', '', `Advance Outstanding — ${emp.name}`, '', '', '', '', -adv]);
+            empSumRows.push(['', '', '', t('advance_outstanding_note', formatCurrency(adv)), '', '', '', '', '']);
+          }
           empSumRows.push([]);
           grandTotal += empTotal;
         });
@@ -3460,7 +3584,7 @@
       // Group by user + month + cycle (track cycle's calendar year/month for end-date calc)
       const groups = new Map();
       for (const e of expenses) {
-        if (['rejected', 'l1_rejected', 'deleted', 'audit_review', 'audit_query', 'superseded'].includes(e.status)) continue;
+        if (DUE_EXCLUDED_STATUSES.includes(e.status)) continue;
         const date = new Date(e.created_at);
         const mY = date.toLocaleString('default', { month: 'long', year: 'numeric' });
         const cNum = date.getDate() <= 15 ? 1 : 2;
@@ -3806,15 +3930,17 @@
         "L2 Approver", "L2 Date", "L2 Remark", "Admin Comment"
       ];
 
+      const clean = str => `"${String(str || '').replace(/"/g, '""')}"`;
+
       const rows = sorted.map(e => {
         const u = e.users || {};
         const { from: f, to: t, desc: d } = parseExpenseDescription(e);
         const s = siteWithCode(extractSite(e) || u.site_name || '');
         const date = new Date(e.created_at);
         const cycle = date.getDate() <= 15 ? "1st - 15th" : "16th - End";
-        const approvedAmt = e.approved_amount != null ? e.approved_amount : e.amount;
+        const isExcludedFromDue = DUE_EXCLUDED_STATUSES.includes(e.status);
+        const approvedAmt = isExcludedFromDue ? 0 : (e.approved_amount != null ? e.approved_amount : e.amount);
         const bankAcct = u.bank_account || '';
-        const clean = str => `"${String(str || '').replace(/"/g, '""')}"`;
         return [
           formatDate(e.created_at), cycle, formatDateTime(e.created_at),
           u.name || '', u.emp_no || '', u.phone || '', u.department || '',
@@ -3826,7 +3952,23 @@
         ].map(clean).join(',');
       });
 
-      const csvContent = headers.join(',') + "\n" + rows.join('\n');
+      // Advance-outstanding footer notes — actual payable amount is net of these;
+      // see the Payment Sheet export for the netted bank-transfer amount.
+      const advNoteRows = [];
+      const seenAdvUsers = new Set();
+      sorted.forEach(e => {
+        if (seenAdvUsers.has(e.user_id)) return;
+        seenAdvUsers.add(e.user_id);
+        const adv = advanceFor(e.user_id);
+        if (adv > 0.005) {
+          const blank = new Array(headers.length).fill('');
+          blank[3] = e.users?.name || '';
+          blank[11] = t('advance_outstanding_note', formatCurrency(adv));
+          advNoteRows.push(blank.map(clean).join(','));
+        }
+      });
+
+      const csvContent = headers.join(',') + "\n" + rows.join('\n') + (advNoteRows.length ? "\n" + advNoteRows.join('\n') : '');
       const blob = new Blob(['﻿' + csvContent], { type: 'text/csv;charset=utf-8;' });
       triggerDownload(blob, finalFilename);
     }
@@ -4040,7 +4182,9 @@
           const uid = e.user_id;
           if (!deptMap[d].employees[uid]) deptMap[d].employees[uid] = { user:e.users||{}, expenses:[] };
           deptMap[d].employees[uid].expenses.push(e);
-          deptMap[d].total += Number(e.approved_amount ?? e.amount ?? 0);
+          if (!DUE_EXCLUDED_STATUSES.includes(e.status)) {
+            deptMap[d].total += Number(e.approved_amount ?? e.amount ?? 0);
+          }
           deptMap[d].count++;
         });
         const depts = Object.keys(deptMap).sort();
@@ -4117,7 +4261,10 @@
           let deptTotal = 0;
           Object.values(di.employees).forEach(({ user, expenses: empExps }) => {
             pageCtxEmpName = user.name || '—';
-            pageCtxEmpTotal = empExps.reduce((s, e) => s + Number(e.approved_amount ?? e.amount ?? 0), 0);
+            pageCtxEmpTotal = empExps.reduce((s, e) => {
+              if (DUE_EXCLUDED_STATUSES.includes(e.status)) return s;
+              return s + Number(e.approved_amount ?? e.amount ?? 0);
+            }, 0);
             if (y > 260) y = newPage();
 
             // Employee header — plain text + thin underline
@@ -4133,7 +4280,9 @@
             empExps.forEach(e => {
               if (y > 275) y = newPage();
               const amt = e.approved_amount != null ? e.approved_amount : e.amount;
-              deptTotal += Number(amt||0);
+              if (!DUE_EXCLUDED_STATUSES.includes(e.status)) {
+                deptTotal += Number(amt||0);
+              }
               const statusTxt = e.status.replace('_',' ').toUpperCase();
               // Use the same per-type parsing as the Excel/CSV exports (not a naive prefix-strip) so
               // From/To/Site fields don't leak into the description text shown here.
@@ -4211,6 +4360,21 @@
             doc.text(`Rs. ${pageCtxEmpTotal.toLocaleString('en-IN',{minimumFractionDigits:2})}`, pageW-margin, y+5, {align:'right'});
             doc.line(margin, y+7, pageW-margin, y+7);
             y += 11;
+
+            // Advance-outstanding note — actual payable amount is net of this;
+            // see the Payment Sheet export for the netted bank-transfer amount.
+            const advAmt = advanceFor(user.id);
+            if (advAmt > 0.005) {
+              if (y > 278) y = newPage();
+              doc.setFontSize(7.5); doc.setFont(undefined,'italic'); doc.setTextColor(146,64,14);
+              const noteLines = doc.splitTextToSize(
+                t('advance_outstanding_note', `Rs. ${advAmt.toLocaleString('en-IN',{minimumFractionDigits:2})}`),
+                pageW - margin * 2
+              );
+              doc.text(noteLines, margin, y);
+              y += noteLines.length * 3.2 + 3;
+              doc.setFont(undefined,'normal'); doc.setTextColor(0,0,0);
+            }
           });
 
           // Department subtotal — double underline
@@ -4477,7 +4641,7 @@
               if (e.status === 'pending') dPend++;
               if (e.status === 'l1_approved') dL1++;
               if (['approved','hr_approved','audit_cleared'].includes(e.status)) dAppr += (e.approved_amount != null ? +e.approved_amount : +e.amount);
-              if (!['rejected', 'l1_rejected', 'deleted', 'audit_review', 'audit_query', 'superseded'].includes(e.status)) dOverall += (e.approved_amount != null ? +e.approved_amount : +e.amount);
+              if (!DUE_EXCLUDED_STATUSES.includes(e.status)) dOverall += (e.approved_amount != null ? +e.approved_amount : +e.amount);
             });
           });
         });
@@ -4502,7 +4666,7 @@
                 if (e.status==='pending') mPend++;
                 if (e.status==='l1_approved') mL1++;
                 if (['approved','hr_approved','audit_cleared'].includes(e.status)) mAppr += (e.approved_amount!=null?+e.approved_amount:+e.amount);
-                if (!['rejected', 'l1_rejected', 'deleted', 'audit_review', 'audit_query', 'superseded'].includes(e.status)) mOverall += (e.approved_amount!=null?+e.approved_amount:+e.amount);
+                if (!DUE_EXCLUDED_STATUSES.includes(e.status)) mOverall += (e.approved_amount!=null?+e.approved_amount:+e.amount);
               }));
               const mPaid = paidForExpenses(mAllExps);
               const mAdvance = ['audit','super_admin'].includes(currentProfile.role) ? empArr.reduce((s, ed) => s + advanceFor(ed.user?.id), 0) : 0;
@@ -4651,7 +4815,7 @@
         ${(()=>{
           const siteData = {};
           expenses.forEach(e => {
-            if (['rejected', 'l1_rejected', 'deleted', 'audit_review', 'audit_query', 'superseded'].includes(e.status)) return;
+            if (DUE_EXCLUDED_STATUSES.includes(e.status)) return;
             const site = extractSite(e) || user.site_name || 'Unassigned';
             const amt  = e.approved_amount != null ? +e.approved_amount : +e.amount;
             if (!siteData[site]) siteData[site] = { total: 0, days: new Set(), count: 0 };
@@ -4734,7 +4898,7 @@
                     return `
                     <tr style="border-top:1px solid var(--border)">
                       <td style="padding:.5rem .75rem;white-space:nowrap;color:var(--text-muted)">${new Date(e.created_at).toLocaleDateString('en-IN',{day:'2-digit',month:'short'})}</td>
-                      <td style="padding:.5rem .75rem">${catPill(e.category)}</td>
+                      <td style="padding:.5rem .75rem">${catPillEditable(e)}</td>
                       <td style="padding:.5rem .75rem;max-width:220px">
                         <div>${parseDescForDisplay(e.description)}</div>
                         ${e.rejection_reason?`<div style="font-size:.7rem;color:#dc2626;margin-top:.2rem">💬 ${escHtml(e.rejection_reason)}</div>`:''}
