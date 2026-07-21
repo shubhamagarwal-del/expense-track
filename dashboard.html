@@ -4566,7 +4566,8 @@
     function hierChipMatches(e, key) {
       if (key === 'all') return true;
       if (key === 'approved') return ['approved', 'hr_approved', 'audit_cleared'].includes(e.status);
-      if (key === 'needs_audit') return ['hr_approved', 'approved'].includes(e.status) && !auditCheckedMap[e.id];
+      if (key === 'needs_audit') return ['hr_approved', 'approved'].includes(e.status);
+      if (key === 'completed_audit') return ['audit_cleared', 'audit_review', 'audit_query'].includes(e.status);
       return e.status === key;
     }
     function setHierStatusFilter(status) {
@@ -4613,9 +4614,12 @@
       const l1Cnt = countsBase.filter(e => e.status === 'l1_approved').length;
       const approvedSum = countsBase.filter(e => e.status === 'approved')
         .reduce((s, e) => s + (e.approved_amount != null ? +e.approved_amount : +e.amount), 0);
-      // Audit's own queue — how many are actually awaiting Audit action, split into
-      // not-yet-checked vs already marked checked, so Audit can see progress at a glance.
-      const needsAuditCnt   = countsBase.filter(e => ['hr_approved','approved'].includes(e.status) && !auditCheckedMap[e.id]).length;
+      // Audit's own queue — fully automatic, driven by the real status (not the
+      // separate manual "Checked for payment" marker): still awaiting Audit's own
+      // Clear/Flag action vs already actioned (cleared or flagged) by Audit.
+      const needsAuditCnt     = countsBase.filter(e => ['hr_approved','approved'].includes(e.status)).length;
+      const completedAuditCnt = countsBase.filter(e => ['audit_cleared','audit_review','audit_query'].includes(e.status)).length;
+      // Existing manual "Checked for payment" marker — kept as its own separate count.
       const auditCheckedCnt = countsBase.filter(e => ['hr_approved','approved'].includes(e.status) && auditCheckedMap[e.id]).length;
       const chipStyle = key => hierStatusFilter === key
         ? 'outline:2px solid currentColor;outline-offset:-2px'
@@ -4657,14 +4661,21 @@
             </div>
             <div class="stat-value" style="font-size:1.5rem">${formatCurrency(approvedSum)}</div>
           </div>
-          ${currentProfile.role === 'audit' && needsAuditCnt ? `<div class="stat-card" style="border-left:3px solid #dc2626;cursor:pointer;padding:1rem 1.125rem;gap:.5rem;color:#dc2626;${chipStyle('needs_audit')}" onclick="setHierStatusFilter('needs_audit')" title="Awaiting your review — not yet marked Checked">
+          ${currentProfile.role === 'audit' && needsAuditCnt ? `<div class="stat-card" style="border-left:3px solid #dc2626;cursor:pointer;padding:1rem 1.125rem;gap:.5rem;color:#dc2626;${chipStyle('needs_audit')}" onclick="setHierStatusFilter('needs_audit')" title="Awaiting your Clear/Flag action">
             <div class="stat-top">
               <span class="stat-label">Needs Audit</span>
               <div class="stat-icon" style="background:#fee2e2;color:#dc2626">🔍</div>
             </div>
             <div class="stat-value" style="font-size:1.5rem">${needsAuditCnt}</div>
           </div>` : ''}
-          ${currentProfile.role === 'audit' && auditCheckedCnt ? `<div class="stat-card" style="border-left:3px solid #16a34a;padding:1rem 1.125rem;gap:.5rem;color:#16a34a" title="Already marked Checked by you">
+          ${currentProfile.role === 'audit' && completedAuditCnt ? `<div class="stat-card" style="border-left:3px solid #2563eb;cursor:pointer;padding:1rem 1.125rem;gap:.5rem;color:#2563eb;${chipStyle('completed_audit')}" onclick="setHierStatusFilter('completed_audit')" title="Already Cleared or Flagged by you — automatic, based on status">
+            <div class="stat-top">
+              <span class="stat-label">Completed</span>
+              <div class="stat-icon" style="background:#dbeafe;color:#2563eb">✓</div>
+            </div>
+            <div class="stat-value" style="font-size:1.5rem">${completedAuditCnt}</div>
+          </div>` : ''}
+          ${currentProfile.role === 'audit' && auditCheckedCnt ? `<div class="stat-card" style="border-left:3px solid #16a34a;padding:1rem 1.125rem;gap:.5rem;color:#16a34a" title="Manually marked Checked-for-payment by you">
             <div class="stat-top">
               <span class="stat-label">Checked</span>
               <div class="stat-icon" style="background:#dcfce7;color:#16a34a">✓</div>
@@ -4690,7 +4701,7 @@
         const col = deptColor(dept);
         const dId = 'dept__' + dept.replace(/[^a-z0-9]/gi, '_');
 
-        let dEmps = new Set(), dPend = 0, dL1 = 0, dAppr = 0, dOverall = 0, dNeedsAudit = 0, dAuditChecked = 0;
+        let dEmps = new Set(), dPend = 0, dL1 = 0, dAppr = 0, dOverall = 0, dNeedsAudit = 0, dAuditChecked = 0, dCompletedAudit = 0;
         const dAllExps = [];
         Object.values(dData.managers).forEach(md => {
           Object.values(md.employees).forEach(ed => {
@@ -4701,7 +4712,8 @@
               if (e.status === 'l1_approved') dL1++;
               if (['approved','hr_approved','audit_cleared'].includes(e.status)) dAppr += (e.approved_amount != null ? +e.approved_amount : +e.amount);
               if (!DUE_EXCLUDED_STATUSES.includes(e.status)) dOverall += (e.approved_amount != null ? +e.approved_amount : +e.amount);
-              if (['hr_approved','approved'].includes(e.status)) { if (auditCheckedMap[e.id]) dAuditChecked++; else dNeedsAudit++; }
+              if (['hr_approved','approved'].includes(e.status)) { dNeedsAudit++; if (auditCheckedMap[e.id]) dAuditChecked++; }
+              if (['audit_cleared','audit_review','audit_query'].includes(e.status)) dCompletedAudit++;
             });
           });
         });
@@ -4719,7 +4731,7 @@
         const buildDeptBody = () => mgrs.map(([mgrKey, mgrData]) => {
               const mgr = mgrData.mgr;
               const empArr = Object.values(mgrData.employees).sort((a,b)=>(a.user?.name||'').localeCompare(b.user?.name||''));
-              let mPend = 0, mL1 = 0, mAppr = 0, mOverall = 0, mNeedsAudit = 0, mAuditChecked = 0;
+              let mPend = 0, mL1 = 0, mAppr = 0, mOverall = 0, mNeedsAudit = 0, mAuditChecked = 0, mCompletedAudit = 0;
               const mAllExps = [];
               empArr.forEach(ed => ed.expenses.forEach(e => {
                 mAllExps.push(e);
@@ -4727,7 +4739,8 @@
                 if (e.status==='l1_approved') mL1++;
                 if (['approved','hr_approved','audit_cleared'].includes(e.status)) mAppr += (e.approved_amount!=null?+e.approved_amount:+e.amount);
                 if (!DUE_EXCLUDED_STATUSES.includes(e.status)) mOverall += (e.approved_amount!=null?+e.approved_amount:+e.amount);
-                if (['hr_approved','approved'].includes(e.status)) { if (auditCheckedMap[e.id]) mAuditChecked++; else mNeedsAudit++; }
+                if (['hr_approved','approved'].includes(e.status)) { mNeedsAudit++; if (auditCheckedMap[e.id]) mAuditChecked++; }
+                if (['audit_cleared','audit_review','audit_query'].includes(e.status)) mCompletedAudit++;
               }));
               const mPaid = paidForExpenses(mAllExps);
               const mAdvance = ['audit','super_admin'].includes(currentProfile.role) ? empArr.reduce((s, ed) => s + advanceFor(ed.user?.id), 0) : 0;
@@ -4752,8 +4765,9 @@
                     <span style="background:#f3f4f6;border-radius:6px;padding:1px 7px;font-size:.7rem;font-weight:600;color:#374151">${empArr.length} emp</span>
                     ${mPend ? `<span title="Awaiting Manager (L1) approval" style="background:#fef3c7;color:#92400e;border-radius:6px;padding:1px 7px;font-size:.7rem;font-weight:700">⏳${mPend} Pending (L1)</span>` : ''}
                     ${mL1 ? `<span title="Approved by Manager, awaiting HR" style="background:#ede9fe;color:#5b21b6;border-radius:6px;padding:1px 7px;font-size:.7rem;font-weight:700">🔍${mL1} In Review (HR)</span>` : ''}
-                    ${currentProfile.role === 'audit' && mNeedsAudit ? `<span title="Awaiting your review — not yet marked Checked" style="background:#fee2e2;color:#991b1b;border-radius:6px;padding:1px 7px;font-size:.7rem;font-weight:700">🔍${mNeedsAudit} Needs Audit</span>` : ''}
-                    ${currentProfile.role === 'audit' && mAuditChecked ? `<span title="Already marked Checked by you" style="background:#dcfce7;color:#166534;border-radius:6px;padding:1px 7px;font-size:.7rem;font-weight:700">✓${mAuditChecked} Checked</span>` : ''}
+                    ${currentProfile.role === 'audit' && mNeedsAudit ? `<span title="Awaiting your Clear/Flag action" style="background:#fee2e2;color:#991b1b;border-radius:6px;padding:1px 7px;font-size:.7rem;font-weight:700">🔍${mNeedsAudit} Needs Audit</span>` : ''}
+                    ${currentProfile.role === 'audit' && mCompletedAudit ? `<span title="Already Cleared or Flagged by you" style="background:#dbeafe;color:#1d4ed8;border-radius:6px;padding:1px 7px;font-size:.7rem;font-weight:700">✓${mCompletedAudit} Completed</span>` : ''}
+                    ${currentProfile.role === 'audit' && mAuditChecked ? `<span title="Manually marked Checked-for-payment by you" style="background:#dcfce7;color:#166534;border-radius:6px;padding:1px 7px;font-size:.7rem;font-weight:700">✓${mAuditChecked} Checked</span>` : ''}
                     <span style="background:#f0fdf4;color:#065f46;border-radius:6px;padding:1px 7px;font-size:.7rem;font-weight:700" title="Sum of approved expenses">✅ Approved: ${formatCurrency(mAppr)}</span>
                     <span style="background:#f3f4f6;color:#374151;border-radius:6px;padding:1px 7px;font-size:.7rem;font-weight:700" title="Sum of pending + in-review + approved (excludes rejected)">Overall: ${formatCurrency(mOverall)}</span>
                     <span style="background:#dcfce7;color:#166534;border-radius:6px;padding:1px 7px;font-size:.7rem;font-weight:700" title="Paid via bank">💰 Paid: ${formatCurrency(mPaid)}</span>${mAdvance > 0.005 ? `<span style="background:#ede9fe;color:#5b21b6;border-radius:6px;padding:1px 7px;font-size:.7rem;font-weight:700" title="Outstanding advance, subtracted from Due">💵 Advance: ${formatCurrency(mAdvance)}</span>` : ''}${(mOverall - mPaid - mAdvance) > 0.005 ? `<span style="background:#fef3c7;color:#92400e;border-radius:6px;padding:1px 7px;font-size:.7rem;font-weight:700" title="Still pending">⏳ Due: ${formatCurrency(mOverall - mPaid - mAdvance)}</span>` : `<span style="background:#dcfce7;color:#166534;border-radius:6px;padding:1px 7px;font-size:.7rem;font-weight:700">✓ Fully paid</span>`}
@@ -4829,8 +4843,9 @@
               <span style="background:var(--bg-2);color:var(--text-muted);border-radius:6px;padding:1px 7px;font-size:.72rem;font-weight:700">${dEmps.size} emp</span>
               ${dPend ? `<span title="Awaiting Manager (L1) approval" style="background:#fef3c7;color:#92400e;border-radius:6px;padding:1px 7px;font-size:.72rem;font-weight:700">⏳ ${dPend} Pending (L1)</span>` : ''}
               ${dL1 ? `<span title="Approved by Manager, awaiting HR" style="background:#ede9fe;color:#5b21b6;border-radius:6px;padding:1px 7px;font-size:.72rem;font-weight:700">🔍 ${dL1} In Review (HR)</span>` : ''}
-              ${currentProfile.role === 'audit' && dNeedsAudit ? `<span title="Awaiting your review — not yet marked Checked" style="background:#fee2e2;color:#991b1b;border-radius:6px;padding:1px 7px;font-size:.72rem;font-weight:700">🔍 ${dNeedsAudit} Needs Audit</span>` : ''}
-              ${currentProfile.role === 'audit' && dAuditChecked ? `<span title="Already marked Checked by you" style="background:#dcfce7;color:#166534;border-radius:6px;padding:1px 7px;font-size:.72rem;font-weight:700">✓ ${dAuditChecked} Checked</span>` : ''}
+              ${currentProfile.role === 'audit' && dNeedsAudit ? `<span title="Awaiting your Clear/Flag action" style="background:#fee2e2;color:#991b1b;border-radius:6px;padding:1px 7px;font-size:.72rem;font-weight:700">🔍 ${dNeedsAudit} Needs Audit</span>` : ''}
+              ${currentProfile.role === 'audit' && dCompletedAudit ? `<span title="Already Cleared or Flagged by you" style="background:#dbeafe;color:#1d4ed8;border-radius:6px;padding:1px 7px;font-size:.72rem;font-weight:700">✓ ${dCompletedAudit} Completed</span>` : ''}
+              ${currentProfile.role === 'audit' && dAuditChecked ? `<span title="Manually marked Checked-for-payment by you" style="background:#dcfce7;color:#166534;border-radius:6px;padding:1px 7px;font-size:.72rem;font-weight:700">✓ ${dAuditChecked} Checked</span>` : ''}
               <span style="background:#dcfce7;color:#166534;border-radius:6px;padding:1px 7px;font-size:.72rem;font-weight:700" title="Sum of approved expenses">✅ Approved: ${formatCurrency(dAppr)}</span>
               <span style="background:var(--bg-2);color:var(--text-muted);border-radius:6px;padding:1px 7px;font-size:.72rem;font-weight:700" title="Sum of pending + in-review + approved (excludes rejected)">Overall: ${formatCurrency(dOverall)}</span>
               <span style="background:#dcfce7;color:#166534;border-radius:6px;padding:1px 7px;font-size:.72rem;font-weight:700" title="Paid via bank">💰 Paid: ${formatCurrency(dPaid)}</span>${dAdvance > 0.005 ? `<span style="background:#ede9fe;color:#5b21b6;border-radius:6px;padding:1px 7px;font-size:.72rem;font-weight:700" title="Outstanding advance, subtracted from Due">💵 Advance: ${formatCurrency(dAdvance)}</span>` : ''}${(dOverall - dPaid - dAdvance) > 0.005 ? `<span style="background:#fef3c7;color:#92400e;border-radius:6px;padding:1px 7px;font-size:.72rem;font-weight:700" title="Still pending">⏳ Due: ${formatCurrency(dOverall - dPaid - dAdvance)}</span>` : `<span style="background:#dcfce7;color:#166534;border-radius:6px;padding:1px 7px;font-size:.72rem;font-weight:700">✓ Fully paid</span>`}
