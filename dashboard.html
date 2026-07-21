@@ -369,6 +369,23 @@
     }
 
     /**
+     * Single source of truth for the "user search" box — matches an expense's
+     * owner (name/email/emp_no) OR their department's Line Manager name, so
+     * searching a manager who hasn't submitted expenses of their own still
+     * surfaces their team. Was previously re-implemented ~6 times across this
+     * file; several copies never got the manager-name match, which silently
+     * broke the search for manager-only names.
+     */
+    function matchesUserSearch(e, search) {
+      if (!search) return true;
+      if ((e.users?.name || '').toLowerCase().includes(search)) return true;
+      if ((e.users?.email || '').toLowerCase().includes(search)) return true;
+      if ((e.users?.emp_no || '').toLowerCase().includes(search)) return true;
+      const lms = getLM(e.users?.department);
+      return !!(lms && lms.some(m => (m.name || '').toLowerCase().includes(search)));
+    }
+
+    /**
      * Rebuild the #f-manager dropdown.
      * Super Admin: shows all managers from DEPT_MANAGERS (not limited to fetched data).
      * Admin: shows managers whose employees appear in the current data set.
@@ -1081,12 +1098,7 @@
       }
 
       const search = (document.getElementById('f-user-search')?.value || '').toLowerCase().trim();
-      if (search) {
-        base = base.filter(e =>
-          (e.users?.email || '').toLowerCase().includes(search) ||
-          (e.users?.name  || '').toLowerCase().includes(search)
-        );
-      }
+      if (search) base = base.filter(e => matchesUserSearch(e, search));
 
       const managerFilter = (document.getElementById('f-manager')?.value || '').trim();
       if (managerFilter) {
@@ -1153,13 +1165,8 @@
 
       const isAdmin = ['admin', 'super_admin', 'hr', 'audit'].includes(currentProfile.role);
 
-      // Filter by search string — name OR email (Admins only)
-      if (search && isAdmin) {
-        filtered = filtered.filter(e =>
-          (e.users?.email || '').toLowerCase().includes(search) ||
-          (e.users?.name  || '').toLowerCase().includes(search)
-        );
-      }
+      // Filter by search string — name/email/emp_no OR Line Manager name (Admins only)
+      if (search && isAdmin) filtered = filtered.filter(e => matchesUserSearch(e, search));
 
       // Filter by line manager
       const managerFilter = (document.getElementById('f-manager')?.value || '').trim();
@@ -2118,10 +2125,7 @@
       let filtered = activeFilteredExpenses !== null ? activeFilteredExpenses : allExpensesFetched;
 
       if (search) {
-        filtered = filtered.filter(e =>
-          (e.users?.email || '').toLowerCase().includes(search) ||
-          (e.users?.name  || '').toLowerCase().includes(search)
-        );
+        filtered = filtered.filter(e => matchesUserSearch(e, search));
 
         if (monthVal && cyclePart !== 'all') {
           showCycleProgress(filtered, monthVal, cyclePart);
@@ -2223,12 +2227,7 @@
 
       const isAdmin = ['admin', 'super_admin', 'hr', 'audit'].includes(currentProfile.role);
 
-      if (search && isAdmin) {
-        filtered = filtered.filter(e =>
-          (e.users?.email || '').toLowerCase().includes(search) ||
-          (e.users?.name  || '').toLowerCase().includes(search)
-        );
-      }
+      if (search && isAdmin) filtered = filtered.filter(e => matchesUserSearch(e, search));
 
       const managerFilter = (document.getElementById('f-manager')?.value || '').trim();
       if (managerFilter && isAdmin) {
@@ -2306,11 +2305,7 @@
       // lets you narrow the action queue to one department or one employee.
       const search = (document.getElementById('f-user-search')?.value || '').toLowerCase().trim();
       let base = allExpensesFetched;
-      if (search) base = base.filter(e =>
-        (e.users?.name || '').toLowerCase().includes(search) ||
-        (e.users?.email || '').toLowerCase().includes(search) ||
-        (e.users?.emp_no || '').toLowerCase().includes(search)
-      );
+      if (search) base = base.filter(e => matchesUserSearch(e, search));
       base = applyDeptSelectFilter(base);
       base = applyEmployeeSelectFilter(base);
 
@@ -4540,16 +4535,7 @@
       const mgrFilter = (document.getElementById('f-manager')?.value || '').trim();
 
       let filtered = expenses;
-      if (search) filtered = filtered.filter(e => {
-        if ((e.users?.name || '').toLowerCase().includes(search)) return true;
-        if ((e.users?.email || '').toLowerCase().includes(search)) return true;
-        if ((e.users?.emp_no || '').toLowerCase().includes(search)) return true;
-        // Also match the department's Line Manager name — a manager who hasn't
-        // submitted any expenses of their own would otherwise never surface,
-        // since their whole team is only reachable via their employees' names.
-        const lms = getLM(e.users?.department);
-        return !!(lms && lms.some(m => (m.name || '').toLowerCase().includes(search)));
-      });
+      if (search) filtered = filtered.filter(e => matchesUserSearch(e, search));
       if (mgrFilter) filtered = filtered.filter(e => {
         const lms = getLM(e.users?.department);
         return lms && lms.some(m => m.name === mgrFilter);
