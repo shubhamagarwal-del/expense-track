@@ -2607,20 +2607,20 @@
       if (['TRAVEL_BUS', 'TRAVEL_TAXI', 'TRAVEL_TRAIN', 'TRAVEL_FLIGHT'].includes(type)) {
         const label = { TRAVEL_BUS: 'Bus', TRAVEL_TAXI: 'Taxi', TRAVEL_TRAIN: 'Train', TRAVEL_FLIGHT: 'Flight' }[type];
         const from = p[1]||'', to = p[2]||'', site = p[3]||'', desc = p[4]||'';
-        return join([label, from && to ? `${from} → ${to}` : '', site, desc]);
+        return join([label, from && to ? `${from} -> ${to}` : '', site, desc]);
       }
       if (type === 'TRAVEL_BIKE') {
         const km = p[1]||'', from = p[2]||'', to = p[3]||'', site = p[4]||'', desc = p[5]||'';
-        return join(['Bike', km ? `${km} km` : '', from && to ? `${from} → ${to}` : '', site, desc]);
+        return join(['Bike', km ? `${km} km` : '', from && to ? `${from} -> ${to}` : '', site, desc]);
       }
       if (type === 'FOOD') return join(['Food', p[1]||'', p[2]||'']);
       if (type === 'TRAVEL' || type === 'BUS') {
         const from = p[1]||'', to = p[2]||'', site = p[3]||'', desc = p[4]||'';
-        return join(['Bus', from && to ? `${from} → ${to}` : '', site, desc]);
+        return join(['Bus', from && to ? `${from} -> ${to}` : '', site, desc]);
       }
       if (type === 'TAXI') {
         const from = p[1]||'', to = p[2]||'', site = p[3]||'', desc = p[4]||'';
-        return join(['Taxi', from && to ? `${from} → ${to}` : '', site, desc]);
+        return join(['Taxi', from && to ? `${from} -> ${to}` : '', site, desc]);
       }
       if (type === 'BIKE') {
         const km = p[1]||'', site = p[2]||'', desc = p[3]||'';
