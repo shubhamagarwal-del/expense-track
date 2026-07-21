@@ -2593,6 +2593,47 @@
       return escHtml(raw);
     }
 
+    /**
+     * Plain-text equivalent of parseDescForDisplay(), for jsPDF — which can't render
+     * the HTML/emoji spans above. Mirrors every type branch there (route, km, site,
+     * note); keep both in sync if a category's pipe-encoding ever changes.
+     */
+    function parseDescPlainText(raw) {
+      if (!raw) return '';
+      const p = raw.split('|');
+      const type = p[0];
+      const join = arr => arr.filter(Boolean).join(' · ');
+
+      if (['TRAVEL_BUS', 'TRAVEL_TAXI', 'TRAVEL_TRAIN', 'TRAVEL_FLIGHT'].includes(type)) {
+        const label = { TRAVEL_BUS: 'Bus', TRAVEL_TAXI: 'Taxi', TRAVEL_TRAIN: 'Train', TRAVEL_FLIGHT: 'Flight' }[type];
+        const from = p[1]||'', to = p[2]||'', site = p[3]||'', desc = p[4]||'';
+        return join([label, from && to ? `${from} → ${to}` : '', site, desc]);
+      }
+      if (type === 'TRAVEL_BIKE') {
+        const km = p[1]||'', from = p[2]||'', to = p[3]||'', site = p[4]||'', desc = p[5]||'';
+        return join(['Bike', km ? `${km} km` : '', from && to ? `${from} → ${to}` : '', site, desc]);
+      }
+      if (type === 'FOOD') return join(['Food', p[1]||'', p[2]||'']);
+      if (type === 'TRAVEL' || type === 'BUS') {
+        const from = p[1]||'', to = p[2]||'', site = p[3]||'', desc = p[4]||'';
+        return join(['Bus', from && to ? `${from} → ${to}` : '', site, desc]);
+      }
+      if (type === 'TAXI') {
+        const from = p[1]||'', to = p[2]||'', site = p[3]||'', desc = p[4]||'';
+        return join(['Taxi', from && to ? `${from} → ${to}` : '', site, desc]);
+      }
+      if (type === 'BIKE') {
+        const km = p[1]||'', site = p[2]||'', desc = p[3]||'';
+        return join(['Bike', km ? `${km} km` : '', site, desc]);
+      }
+      if (type === 'OTHER') return join([p[1]||'', p[2]||'', p[3]||'']);
+      if (type === 'ROOM_RENT') return join(['Hotel Room Rent', p[1]||'', p[2]||'']);
+      if (type === 'PRINTING_STATIONERY') return join(['Printing & Stationery', p[1]||'', p[2]||'']);
+      if (type === 'PETROL_DIESEL') return join(['Petrol / Diesel', p[1]||'', p[2]||'']);
+      if (type === 'REGULAR') return join([p[1]||'', p[2]||'']);
+      return raw; // unknown/legacy format — show as-is rather than hiding it
+    }
+
     function empRow(e) {
       const approvedAmt = e.approved_amount != null ? e.approved_amount : e.amount;
       const amtChanged = e.approved_amount != null && +e.approved_amount !== +e.amount;
@@ -4286,12 +4327,9 @@
                 deptTotal += Number(amt||0);
               }
               const statusTxt = e.status.replace('_',' ').toUpperCase();
-              // Use the same per-type parsing as the Excel/CSV exports — but unlike those
-              // (which have separate From/To columns), the PDF's compact line must fold
-              // From/To back in itself, or a travel entry's route disappears entirely.
-              const { from: _pdfFrom, to: _pdfTo, desc: _pdfNote } = parseExpenseDescription(e);
-              let desc = (_pdfFrom && _pdfTo) ? `${_pdfFrom} → ${_pdfTo}` : '';
-              if (_pdfNote) desc = desc ? `${desc} · ${_pdfNote}` : _pdfNote;
+              // Full per-type description (route/km/site/note) — mirrors what the
+              // dashboard List/Card view shows, not just the free-text note.
+              let desc = parseDescPlainText(e.description);
               const _siteCode = (siteWithCode(extractSite(e) || '').match(/LOC\d{3,}/i) || [])[0];
               if (_siteCode && !desc.includes(_siteCode)) desc += desc ? ` [${_siteCode}]` : `[${_siteCode}]`;
               if (!desc) desc = '—';
