@@ -1062,7 +1062,7 @@
       const type  = parts[0];
       if (['TRAVEL','TRAVEL_BUS','TRAVEL_TAXI','TRAVEL_TRAIN','TRAVEL_FLIGHT'].includes(type)) return parts[3] || '';
       if (type === 'TRAVEL_BIKE') return parts[4] || '';
-      if (['FOOD','REGULAR','ROOM_RENT','BUS','TAXI','BIKE'].includes(type)) return parts[1] || '';
+      if (['FOOD','REGULAR','ROOM_RENT','BUS','TAXI','BIKE','PRINTING_STATIONERY','PETROL_DIESEL'].includes(type)) return parts[1] || '';
       if (type === 'OTHER') return parts[2] || '';
       return e.users?.site_name || '';
     }
@@ -1080,6 +1080,8 @@
       else if (type === 'REGULAR') { d = parts[2] || ''; }
       else if (type === 'FOOD') { d = parts[2] || ''; }
       else if (type === 'ROOM_RENT') { d = parts[2] || ''; }
+      else if (type === 'PRINTING_STATIONERY') { d = parts[2] || ''; }
+      else if (type === 'PETROL_DIESEL') { d = parts[2] || ''; }
       return { from: f, to: t, desc: (d || '').trim() };
     }
 
@@ -2567,6 +2569,20 @@
         const site = escHtml(p[1]||''), desc = escHtml(p[2]||'');
         return [
           `<span style="font-size:.7rem;font-weight:700;color:#7c3aed;text-transform:uppercase">🏠 Hotel Room Rent</span>`,
+          site ? `📍 ${site}` : '', desc,
+        ].filter(Boolean).join(' &nbsp;·&nbsp; ');
+      }
+      if (type === 'PRINTING_STATIONERY') {
+        const site = escHtml(p[1]||''), desc = escHtml(p[2]||'');
+        return [
+          `<span style="font-size:.7rem;font-weight:700;color:#0891b2;text-transform:uppercase">🖨️ Printing & Stationery</span>`,
+          site ? `📍 ${site}` : '', desc,
+        ].filter(Boolean).join(' &nbsp;·&nbsp; ');
+      }
+      if (type === 'PETROL_DIESEL') {
+        const site = escHtml(p[1]||''), desc = escHtml(p[2]||'');
+        return [
+          `<span style="font-size:.7rem;font-weight:700;color:#ca8a04;text-transform:uppercase">⛽ Petrol / Diesel</span>`,
           site ? `📍 ${site}` : '', desc,
         ].filter(Boolean).join(' &nbsp;·&nbsp; ');
       }
