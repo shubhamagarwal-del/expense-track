@@ -3401,14 +3401,6 @@
         ];
       });
 
-      // Status-aware TOTAL row — so a glance (or a plain column-select-and-sum) at this
-      // sheet matches Sheet 3's Grand Total, instead of requiring the Approved Amount
-      // column to be summed correctly by eye around excluded-status rows.
-      const totalRow = new Array(headers.length).fill('');
-      totalRow[11] = '★ TOTAL (Approved — excludes rejected/audit-flagged/deleted/superseded)';
-      totalRow[13] = rows.reduce((sum, r) => sum + (Number(r[13]) || 0), 0);
-      rows.push([], totalRow);
-
       // Advance-outstanding footer notes on the main Expenses sheet too (this is the
       // sheet that opens by default) — actual payable amount is net of these; see the
       // Payment Sheet export for the netted bank-transfer amount.
@@ -4279,11 +4271,15 @@
                 deptTotal += Number(amt||0);
               }
               const statusTxt = e.status.replace('_',' ').toUpperCase();
-              // Use the same per-type parsing as the Excel/CSV exports (not a naive prefix-strip) so
-              // From/To/Site fields don't leak into the description text shown here.
-              let desc = parseExpenseDescription(e).desc;
+              // Use the same per-type parsing as the Excel/CSV exports — but unlike those
+              // (which have separate From/To columns), the PDF's single compact line must
+              // fold From/To back in itself, or a travel entry's route disappears entirely.
+              const { from: _pdfFrom, to: _pdfTo, desc: _pdfNote } = parseExpenseDescription(e);
+              let desc = (_pdfFrom && _pdfTo) ? `${_pdfFrom} → ${_pdfTo}` : '';
+              if (_pdfNote) desc = desc ? `${desc} · ${_pdfNote}` : _pdfNote;
               const _siteCode = (siteWithCode(extractSite(e) || '').match(/LOC\d{3,}/i) || [])[0];
-              if (_siteCode && !desc.includes(_siteCode)) desc += ` [${_siteCode}]`;
+              if (_siteCode && !desc.includes(_siteCode)) desc += desc ? ` [${_siteCode}]` : `[${_siteCode}]`;
+              if (!desc) desc = '—';
 
               // Single compact text line: Date | Category | Description ........... Rs. X.XX [STATUS]
               doc.setTextColor(0,0,0); doc.setFontSize(8.5);
