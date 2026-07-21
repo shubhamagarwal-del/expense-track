@@ -1125,6 +1125,7 @@
         refreshListView();
         loadCyclePayments().then(() => renderCycleBreakdown(expenses));
         loadAdvances().then(() => renderCycleBreakdown(expenses));
+        restoreUiStateAfterReload(); // no-op after the first call, or if nothing was saved
       } catch (err) {
         showMessage('Failed to load expenses: ' + err.message, 'error');
       }
@@ -1730,6 +1731,7 @@
         refreshListView();
         renderAdminCharts(expenses);
         renderActionQueue(); // keep the "Needs Action" badge/list fresh regardless of active view
+        restoreUiStateAfterReload(); // no-op after the first call, or if nothing was saved
       } catch (err) {
         showMessage('Failed to load expenses: ' + err.message, 'error');
       }
@@ -2470,6 +2472,76 @@
         refreshListView();
         renderAdminCharts(allExpensesFetched);
       }
+    }
+
+    // ─── AUTO-UPDATE STATE PRESERVATION ────────────────────────
+    // The service-worker auto-update (pwa-register.js) reloads the page whenever
+    // a new deploy is detected. A plain reload would drop the user back to the
+    // default view — so we snapshot the current filters/view/expand-state right
+    // before that reload, and restore it once on the next boot.
+    const _UI_STATE_KEY = '_dashUiState';
+
+    function saveUiStateForReload() {
+      try {
+        const val = id => document.getElementById(id)?.value || '';
+        const state = {
+          t: Date.now(),
+          hierarchyMode, actionQueueMode,
+          currentListFilter, hierStatusFilter,
+          scrollY: window.scrollY,
+          filters: {
+            'f-month': val('f-month'), 'f-cycle': val('f-cycle'),
+            'f-user-search': val('f-user-search'), 'f-manager': val('f-manager'),
+            'f-dept': val('f-dept'), 'f-employee': val('f-employee'),
+            'f-status': val('f-status'), 'f-payment-status': val('f-payment-status'),
+          },
+          hierExpanded: {
+            depts: [...hierExpanded.depts], mgrs: [...hierExpanded.mgrs],
+            emps: [...hierExpanded.emps], cycles: [...hierExpanded.cycles],
+          },
+        };
+        sessionStorage.setItem(_UI_STATE_KEY, JSON.stringify(state));
+      } catch {}
+    }
+    window.__saveStateBeforeReload = saveUiStateForReload;
+
+    let _uiStateRestoredOnce = false;
+    function restoreUiStateAfterReload() {
+      if (_uiStateRestoredOnce) return;
+      _uiStateRestoredOnce = true;
+      try {
+        const raw = sessionStorage.getItem(_UI_STATE_KEY);
+        if (!raw) return;
+        sessionStorage.removeItem(_UI_STATE_KEY);
+        const state = JSON.parse(raw);
+        // Ignore stale state (e.g. a leftover from a much earlier session) —
+        // this should only ever be a few seconds old.
+        if (!state || (Date.now() - state.t) > 60000) return;
+
+        Object.entries(state.filters || {}).forEach(([id, v]) => {
+          const el = document.getElementById(id);
+          if (el && v) el.value = v;
+        });
+        if (state.hierExpanded) {
+          hierExpanded.depts  = new Set(state.hierExpanded.depts  || []);
+          hierExpanded.mgrs   = new Set(state.hierExpanded.mgrs   || []);
+          hierExpanded.emps   = new Set(state.hierExpanded.emps   || []);
+          hierExpanded.cycles = new Set(state.hierExpanded.cycles || []);
+        }
+        currentListFilter = state.currentListFilter || currentListFilter;
+        hierStatusFilter   = state.hierStatusFilter   || hierStatusFilter;
+        recomputeActiveFilteredExpenses();
+        const isAdminRole = ['admin', 'super_admin', 'hr', 'audit'].includes(currentProfile?.role);
+        if (isAdminRole) {
+          setViewMode(state.actionQueueMode ? 'action' : (state.hierarchyMode ? 'hierarchy' : 'list'));
+        } else {
+          setListFilter(currentListFilter);
+        }
+
+        if (typeof state.scrollY === 'number' && state.scrollY > 0) {
+          setTimeout(() => window.scrollTo(0, state.scrollY), 100);
+        }
+      } catch {}
     }
 
     // ─── TEMPLATES ──────────────────────────────────────────────

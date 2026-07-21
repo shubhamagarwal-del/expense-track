@@ -37,7 +37,7 @@
       refreshing = true;
       if (window.__preventAutoReload) { window.__deferredSwReload = true; return; }
       // Brief toast before reload so the user knows what's happening
-      _showUpdateToast(() => window.location.reload());
+      _showUpdateToast(() => { window.__saveStateBeforeReload?.(); window.location.reload(); });
     });
 
     // Case C: SW activated and sent SW_UPDATED message
@@ -46,7 +46,7 @@
       if (event.data?.type === 'SW_UPDATED' && !refreshing) {
         refreshing = true;
         if (window.__preventAutoReload) { window.__deferredSwReload = true; return; }
-        _showUpdateToast(() => window.location.reload());
+        _showUpdateToast(() => { window.__saveStateBeforeReload?.(); window.location.reload(); });
       }
     });
 

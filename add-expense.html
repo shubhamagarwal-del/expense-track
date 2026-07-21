@@ -1443,7 +1443,7 @@
       document.getElementById('entry-panel').classList.remove('open');
       document.getElementById('drawer-overlay').classList.remove('active');
       window.__preventAutoReload = false;
-      if (window.__deferredSwReload) { window.__deferredSwReload = false; window.location.reload(); }
+      if (window.__deferredSwReload) { window.__deferredSwReload = false; window.__saveStateBeforeReload?.(); window.location.reload(); }
       Object.keys(_rowNewFiles).forEach(k => delete _rowNewFiles[k]);
     }
 

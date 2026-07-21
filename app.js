@@ -15,6 +15,28 @@ const DEPARTMENTS = [
 // (server-side, separate runtime — update both if this list changes).
 const DUE_EXCLUDED_STATUSES = ['rejected', 'l1_rejected', 'deleted', 'audit_review', 'audit_query', 'superseded'];
 
+// ── AUTO-UPDATE STATE PRESERVATION (generic scroll-position fallback) ───────
+// pwa-register.js calls window.__saveStateBeforeReload() right before a
+// service-worker-triggered reload, so the page can come back where the user
+// left it instead of resetting to the top. Pages with richer state (e.g.
+// dashboard.html's filters/view-mode/expand-state) define their own, fuller
+// version of this function after app.js loads, which simply replaces this one.
+window.__saveStateBeforeReload = function () {
+  try { sessionStorage.setItem('_scrollYForReload', JSON.stringify({ t: Date.now(), y: window.scrollY })); } catch {}
+};
+(function restoreScrollAfterReload() {
+  try {
+    const raw = sessionStorage.getItem('_scrollYForReload');
+    if (!raw) return;
+    sessionStorage.removeItem('_scrollYForReload');
+    const { t, y } = JSON.parse(raw);
+    if (Date.now() - t > 60000 || !y) return;
+    const restore = () => setTimeout(() => window.scrollTo(0, y), 50);
+    if (document.readyState === 'complete') restore();
+    else window.addEventListener('load', restore);
+  } catch {}
+})();
+
 // ── LANGUAGE (EN / HI) ──────────────────────────────────────
 // Covers only the important status messages/notices (locked entries, rejection/audit
 // reasons, the needs-attention banner, etc.) — not a full app-wide translation.
