@@ -4540,11 +4540,16 @@
       const mgrFilter = (document.getElementById('f-manager')?.value || '').trim();
 
       let filtered = expenses;
-      if (search) filtered = filtered.filter(e =>
-        (e.users?.name || '').toLowerCase().includes(search) ||
-        (e.users?.email || '').toLowerCase().includes(search) ||
-        (e.users?.emp_no || '').toLowerCase().includes(search)
-      );
+      if (search) filtered = filtered.filter(e => {
+        if ((e.users?.name || '').toLowerCase().includes(search)) return true;
+        if ((e.users?.email || '').toLowerCase().includes(search)) return true;
+        if ((e.users?.emp_no || '').toLowerCase().includes(search)) return true;
+        // Also match the department's Line Manager name — a manager who hasn't
+        // submitted any expenses of their own would otherwise never surface,
+        // since their whole team is only reachable via their employees' names.
+        const lms = getLM(e.users?.department);
+        return !!(lms && lms.some(m => (m.name || '').toLowerCase().includes(search)));
+      });
       if (mgrFilter) filtered = filtered.filter(e => {
         const lms = getLM(e.users?.department);
         return lms && lms.some(m => m.name === mgrFilter);
