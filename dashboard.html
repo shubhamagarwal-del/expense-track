@@ -11,6 +11,7 @@
   <script src="https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/jspdf-autotable@3.8.2/dist/jspdf.plugin.autotable.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/legacy/build/pdf.min.js"></script>
 
   <!-- PWA -->
   <link rel="manifest" href="/manifest.json" />
@@ -4243,13 +4244,34 @@
           });
         }
 
-        // ── Step 1: Collect unique image receipt paths ───────
+        // ── Render a PDF receipt's first page to a base64 image, same
+        // shape as blobToB64() above, so it can drop into the same imgMap
+        // and be embedded exactly like a photo receipt would be. ─────
+        async function pdfReceiptToB64(blob) {
+          try {
+            if (!window.pdfjsLib) return null;
+            const buf = await blob.arrayBuffer();
+            const pdfDoc = await window.pdfjsLib.getDocument({ data: buf }).promise;
+            const page = await pdfDoc.getPage(1);
+            const viewport = page.getViewport({ scale: 2 });
+            const canvas = document.createElement('canvas');
+            canvas.width = viewport.width;
+            canvas.height = viewport.height;
+            await page.render({ canvasContext: canvas.getContext('2d'), viewport }).promise;
+            return { b64: canvas.toDataURL('image/jpeg', 0.88), w: canvas.width, h: canvas.height };
+          } catch { return null; }
+        }
+        if (window.pdfjsLib && !window.pdfjsLib.GlobalWorkerOptions.workerSrc) {
+          window.pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/legacy/build/pdf.worker.min.js';
+        }
+
+        // ── Step 1: Collect unique receipt paths (images AND PDFs — PDF
+        // receipts get rendered to an image below so they can be embedded
+        // the same way, instead of a placeholder line). ─────
         const pathSet = new Set();
         expenses.forEach(e => {
           parseReceiptUrls(e.receipt_url).forEach(url => {
-            if (!url.toLowerCase().includes('.pdf')) {
-              const p = extractPath(url); if (p) pathSet.add(p);
-            }
+            const p = extractPath(url); if (p) pathSet.add(p);
           });
         });
         const allPaths = [...pathSet];
@@ -4277,7 +4299,7 @@
             try {
               const r = await fetch(signedMap[p]);
               const blob = await r.blob();
-              const result = await blobToB64(blob);
+              const result = p.toLowerCase().endsWith('.pdf') ? await pdfReceiptToB64(blob) : await blobToB64(blob);
               if (result) imgMap[p] = result;
             } catch {}
           }));
@@ -4440,26 +4462,30 @@
                 y += 4;
               }
 
-              // Receipt images — UNCHANGED size, plain border
+              // Receipt images — UNCHANGED size, plain border. PDF receipts are
+              // rendered to an image (see pdfReceiptToB64 above) and go through
+              // the exact same embedding path as a photo receipt.
               parseReceiptUrls(e.receipt_url).forEach(url => {
-                if (url.toLowerCase().includes('.pdf')) {
-                  doc.setFontSize(7); doc.setFont(undefined,'normal');
-                  doc.text('PDF Receipt — open in app to view', margin, y+4); y += 6;
-                } else {
-                  const p = extractPath(url);
-                  if (!p || !imgMap[p]) return;
-                  const { b64, w: natW, h: natH } = imgMap[p];
-                  const maxW = pageW-margin*2-10, maxH = 200;
-                  let dW = maxW, dH = maxW;
-                  if (natW>0 && natH>0) { const r=natH/natW; dH=Math.min(maxW*r,maxH); dW=dH/r; if(dW>maxW){dW=maxW;dH=maxW*r;} }
-                  if (y+dH+3 > 285) y = newPage();
-                  try {
-                    doc.addImage(b64,'JPEG',margin+5,y+1,dW,dH,undefined,'MEDIUM');
-                    doc.setDrawColor(0,0,0); doc.setLineWidth(0.2);
-                    doc.rect(margin+5,y+1,dW,dH);
-                    y += dH + 4;
-                  } catch {}
+                const p = extractPath(url);
+                const img = p && imgMap[p];
+                if (!img) {
+                  if (url.toLowerCase().includes('.pdf')) {
+                    doc.setFontSize(7); doc.setFont(undefined,'normal');
+                    doc.text('PDF Receipt — could not be rendered, open in app to view', margin, y+4); y += 6;
+                  }
+                  return;
                 }
+                const { b64, w: natW, h: natH } = img;
+                const maxW = pageW-margin*2-10, maxH = 200;
+                let dW = maxW, dH = maxW;
+                if (natW>0 && natH>0) { const r=natH/natW; dH=Math.min(maxW*r,maxH); dW=dH/r; if(dW>maxW){dW=maxW;dH=maxW*r;} }
+                if (y+dH+3 > 285) y = newPage();
+                try {
+                  doc.addImage(b64,'JPEG',margin+5,y+1,dW,dH,undefined,'MEDIUM');
+                  doc.setDrawColor(0,0,0); doc.setLineWidth(0.2);
+                  doc.rect(margin+5,y+1,dW,dH);
+                  y += dH + 4;
+                } catch {}
               });
 
               // Thin separator between expenses
