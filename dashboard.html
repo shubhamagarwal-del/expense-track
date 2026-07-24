@@ -4446,19 +4446,21 @@
               const rowHeight = 5 + descLines.length*3.3 + 1.5 + approvalLine + resubBlockH;
               if (y + rowHeight > 283) y = newPage();
 
-              // Light band behind every entry's header line, so each new entry
-              // has a clear visual start — especially after a tall receipt image,
-              // where the old plain separator line was easy to miss.
-              doc.setFillColor(243,244,246);
-              doc.rect(margin, y, pageW - margin*2, 5, 'F');
-              doc.setDrawColor(99,102,241); doc.setLineWidth(0.7);
-              doc.line(margin, y, margin, y + 5); // left accent tick
+              // Accent bar spans the WHOLE entry (header + description + approval
+              // + resubmitted-note) — a full card-style left border, not just a
+              // tick against the header — so each new entry has a clear visual
+              // start even after a tall receipt image made the old separator
+              // easy to miss. Rounded header band on top of it for a softer look.
+              doc.setFillColor(99,102,241);
+              doc.rect(margin, y, 1.1, rowHeight - 1, 'F');
+              doc.setFillColor(240,241,247);
+              doc.roundedRect(margin + 1.6, y, pageW - margin*2 - 1.6, 5, 0.8, 0.8, 'F');
 
               // Line 1: Date | Category ........... Rs. X.XX [STATUS]
               doc.setTextColor(0,0,0); doc.setFontSize(8.5);
               doc.setFont(undefined,'bold');
-              doc.text(formatDate(e.created_at), margin+2, y+4);
-              doc.text(e.category||'—', margin+25, y+4);
+              doc.text(formatDate(e.created_at), margin+3.5, y+4);
+              doc.text(e.category||'—', margin+26.5, y+4);
               const amtStr = `Rs. ${Number(amt).toLocaleString('en-IN',{minimumFractionDigits:2})}`;
               doc.text(amtStr, pageW-margin-22, y+4, {align:'right'});
               doc.setFont(undefined,'normal'); doc.setFontSize(7);
