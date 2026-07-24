@@ -4452,9 +4452,9 @@
               // colored block, not just a strip on the header line, even right
               // after a tall receipt image.
               doc.setFillColor(219,222,247);
-              doc.roundedRect(margin, y, pageW - margin*2, rowHeight - 1, 1, 1, 'F');
+              doc.roundedRect(margin, y, pageW - margin*2, rowHeight, 1, 1, 'F');
               doc.setFillColor(99,102,241);
-              doc.rect(margin, y, 1.1, rowHeight - 1, 'F');
+              doc.rect(margin, y, 1.1, rowHeight, 'F');
 
               // Line 1: Date | Category ........... Rs. X.XX [STATUS]
               doc.setTextColor(0,0,0); doc.setFontSize(8.5);
