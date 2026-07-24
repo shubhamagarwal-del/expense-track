@@ -4479,7 +4479,7 @@
                 let t = '';
                 if (e.l1_by_name) t += `L1: ${e.l1_by_name} (${e.l1_at?formatDate(e.l1_at):'—'})   `;
                 if (e.l2_by_name) t += `L2: ${e.l2_by_name} (${e.l2_at?formatDate(e.l2_at):'—'})`;
-                doc.text(t, margin, y+3);
+                doc.text(t, margin+2, y+3);
                 y += 4;
               }
 
