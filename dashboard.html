@@ -4244,22 +4244,27 @@
           });
         }
 
-        // ── Render a PDF receipt's first page to a base64 image, same
-        // shape as blobToB64() above, so it can drop into the same imgMap
-        // and be embedded exactly like a photo receipt would be. ─────
+        // ── Render EVERY page of a PDF receipt to a base64 image — a receipt
+        // can be a multi-page document (e.g. a bus-ticket PDF with terms and
+        // conditions on later pages), not just its first page. Returns an
+        // array (one entry per page) rather than blobToB64()'s single object. ─
         async function pdfReceiptToB64(blob) {
           try {
-            if (!window.pdfjsLib) return null;
+            if (!window.pdfjsLib) return [];
             const buf = await blob.arrayBuffer();
             const pdfDoc = await window.pdfjsLib.getDocument({ data: buf }).promise;
-            const page = await pdfDoc.getPage(1);
-            const viewport = page.getViewport({ scale: 2 });
-            const canvas = document.createElement('canvas');
-            canvas.width = viewport.width;
-            canvas.height = viewport.height;
-            await page.render({ canvasContext: canvas.getContext('2d'), viewport }).promise;
-            return { b64: canvas.toDataURL('image/jpeg', 0.88), w: canvas.width, h: canvas.height };
-          } catch { return null; }
+            const pages = [];
+            for (let i = 1; i <= pdfDoc.numPages; i++) {
+              const page = await pdfDoc.getPage(i);
+              const viewport = page.getViewport({ scale: 2 });
+              const canvas = document.createElement('canvas');
+              canvas.width = viewport.width;
+              canvas.height = viewport.height;
+              await page.render({ canvasContext: canvas.getContext('2d'), viewport }).promise;
+              pages.push({ b64: canvas.toDataURL('image/jpeg', 0.88), w: canvas.width, h: canvas.height });
+            }
+            return pages;
+          } catch { return []; }
         }
         if (window.pdfjsLib && !window.pdfjsLib.GlobalWorkerOptions.workerSrc) {
           window.pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/legacy/build/pdf.worker.min.js';
@@ -4299,8 +4304,9 @@
             try {
               const r = await fetch(signedMap[p]);
               const blob = await r.blob();
-              const result = p.toLowerCase().endsWith('.pdf') ? await pdfReceiptToB64(blob) : await blobToB64(blob);
-              if (result) imgMap[p] = result;
+              // imgMap[p] is always an array of pages — 1 entry for a photo receipt, N for a PDF.
+              const result = p.toLowerCase().endsWith('.pdf') ? await pdfReceiptToB64(blob) : [await blobToB64(blob)].filter(Boolean);
+              if (result.length) imgMap[p] = result;
             } catch {}
           }));
           setProg(`Processing images… ${Math.min(i+BATCH,fetchedPaths.length)}/${fetchedPaths.length}`, 30 + (Math.min(i+BATCH,fetchedPaths.length)/Math.max(fetchedPaths.length,1))*50);
@@ -4463,29 +4469,31 @@
               }
 
               // Receipt images — UNCHANGED size, plain border. PDF receipts are
-              // rendered to an image (see pdfReceiptToB64 above) and go through
-              // the exact same embedding path as a photo receipt.
+              // rendered to one image per page (see pdfReceiptToB64 above) and
+              // every page goes through the exact same embedding path a photo
+              // receipt uses, stacked one after another.
               parseReceiptUrls(e.receipt_url).forEach(url => {
                 const p = extractPath(url);
-                const img = p && imgMap[p];
-                if (!img) {
+                const pages = p && imgMap[p];
+                if (!pages || !pages.length) {
                   if (url.toLowerCase().includes('.pdf')) {
                     doc.setFontSize(7); doc.setFont(undefined,'normal');
                     doc.text('PDF Receipt — could not be rendered, open in app to view', margin, y+4); y += 6;
                   }
                   return;
                 }
-                const { b64, w: natW, h: natH } = img;
-                const maxW = pageW-margin*2-10, maxH = 200;
-                let dW = maxW, dH = maxW;
-                if (natW>0 && natH>0) { const r=natH/natW; dH=Math.min(maxW*r,maxH); dW=dH/r; if(dW>maxW){dW=maxW;dH=maxW*r;} }
-                if (y+dH+3 > 285) y = newPage();
-                try {
-                  doc.addImage(b64,'JPEG',margin+5,y+1,dW,dH,undefined,'MEDIUM');
-                  doc.setDrawColor(0,0,0); doc.setLineWidth(0.2);
-                  doc.rect(margin+5,y+1,dW,dH);
-                  y += dH + 4;
-                } catch {}
+                pages.forEach(({ b64, w: natW, h: natH }) => {
+                  const maxW = pageW-margin*2-10, maxH = 200;
+                  let dW = maxW, dH = maxW;
+                  if (natW>0 && natH>0) { const r=natH/natW; dH=Math.min(maxW*r,maxH); dW=dH/r; if(dW>maxW){dW=maxW;dH=maxW*r;} }
+                  if (y+dH+3 > 285) y = newPage();
+                  try {
+                    doc.addImage(b64,'JPEG',margin+5,y+1,dW,dH,undefined,'MEDIUM');
+                    doc.setDrawColor(0,0,0); doc.setLineWidth(0.2);
+                    doc.rect(margin+5,y+1,dW,dH);
+                    y += dH + 4;
+                  } catch {}
+                });
               });
 
               // Thin separator between expenses
