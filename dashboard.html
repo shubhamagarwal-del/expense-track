@@ -4438,7 +4438,12 @@
               doc.setFontSize(7.8);
               const descLines = doc.splitTextToSize(desc, pageW - margin*2 - 4);
               const approvalLine = (e.l1_by_name || e.l2_by_name) ? 4 : 0;
-              const rowHeight = 5 + descLines.length*3.3 + 1.5 + approvalLine;
+              // Resubmitted entries carry Audit's original reason forward — same
+              // amber note the dashboard shows, so it's not silently missing here.
+              doc.setFontSize(7.3);
+              const resubLines = e.resubmitted_note ? doc.splitTextToSize(`Resubmitted — was flagged by Audit: ${e.resubmitted_note}`, pageW - margin*2 - 6) : [];
+              const resubBlockH = resubLines.length ? resubLines.length*3.1 + 2.5 : 0;
+              const rowHeight = 5 + descLines.length*3.3 + 1.5 + approvalLine + resubBlockH;
               if (y + rowHeight > 283) y = newPage();
 
               // Line 1: Date | Category ........... Rs. X.XX [STATUS]
@@ -4466,6 +4471,20 @@
                 if (e.l2_by_name) t += `L2: ${e.l2_by_name} (${e.l2_at?formatDate(e.l2_at):'—'})`;
                 doc.text(t, margin, y+3);
                 y += 4;
+              }
+
+              // Resubmitted-entry note — amber box, matches the dashboard's ↻ badge.
+              if (resubLines.length) {
+                if (y + resubBlockH > 283) y = newPage();
+                doc.setFillColor(254,243,199);      // #fef3c7
+                doc.rect(margin, y, pageW - margin*2, resubBlockH, 'F');
+                doc.setDrawColor(245,158,11); doc.setLineWidth(0.6);
+                doc.line(margin, y, margin, y + resubBlockH); // left accent bar
+                doc.setTextColor(146,64,14);         // #92400e
+                doc.setFontSize(7.3); doc.setFont(undefined,'normal');
+                doc.text(resubLines, margin + 3, y + 3.2);
+                doc.setTextColor(0,0,0);
+                y += resubBlockH;
               }
 
               // Receipt images — UNCHANGED size, plain border. PDF receipts are
