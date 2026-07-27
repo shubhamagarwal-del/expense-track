@@ -1114,9 +1114,51 @@
       base = applyDeptSelectFilter(base);
       base = applyEmployeeSelectFilter(base);
       base = applyPaymentStatusFilter(base);
-
       return base;
     }
+
+    /** Day-wise Payment Sheet — sirf audit_cleared entries jinka audit_at us din ka hai */
+    function exportAuditClearedPaymentSheet() {
+      const dateVal = document.getElementById('audit-clear-date')?.value || '';
+      if (!dateVal) return showMessage('Pehle Audit clear date select karo.', 'error');
+      const filtered = allExpensesFetched.filter(e => {
+        if (e.status !== 'audit_cleared' || !e.audit_at) return false;
+        const d = new Date(e.audit_at);
+        const ds = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+        return ds === dateVal;
+      });
+      if (!filtered.length) {
+        return showMessage(`${dateVal} ko koi audit-cleared entry nahi mili.`, 'error');
+      }
+      const fmt = new Date(dateVal + 'T00:00:00').toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }).replace(/ /g, '-');
+      const restore = setExportLoading('btn-audit-pmt', 'Generating…');
+      setTimeout(() => {
+        try { performPaymentSheetExport(filtered, `PaymentSheet_AuditCleared_${fmt}.xlsx`); }
+        finally { restore(); }
+      }, 50);
+    }
+
+    /** Non-zero-only status count chips (Pending / HR Pending / HR Approved / Audit Review / Cleared / Approved / Rejected) for a list of expenses. */
+    function statusCountChips(entries) {
+      const pending    = entries.filter(e => e.status === 'pending').length;
+      const inReview   = entries.filter(e => e.status === 'l1_approved').length;
+      const hrPending  = entries.filter(e => e.status === 'hr_approved').length;
+      const auditFlag  = entries.filter(e => e.status === 'audit_review').length;
+      const cleared    = entries.filter(e => e.status === 'audit_cleared').length;
+      const approved   = entries.filter(e => e.status === 'approved').length;
+      const rejected   = entries.filter(e => e.status === 'rejected' || e.status === 'l1_rejected' || e.status === 'deleted' || e.status === 'superseded').length;
+      const chip = (bg, col, txt, title) => `<span title="${title}" style="background:${bg};color:${col};border-radius:5px;padding:1px 6px;font-size:.68rem;font-weight:700;white-space:nowrap">${txt}</span>`;
+      return [
+        pending   ? chip('#fef3c7', '#92400e', `⏳ Pending ${pending}`, 'Awaiting Manager (L1) approval') : '',
+        inReview  ? chip('#ede9fe', '#5b21b6', `🔍 HR Pending ${inReview}`, 'Approved by Manager, awaiting HR') : '',
+        hrPending ? chip('#d1fae5', '#065f46', `✓ HR Approved ${hrPending}`, 'Approved by HR, awaiting Audit') : '',
+        auditFlag ? chip('#fef3c7', '#92400e', `⚑ Audit Review ${auditFlag}`, 'Flagged by Audit back to HR') : '',
+        cleared   ? chip('#bbf7d0', '#14532d', `✓ Cleared ${cleared}`, 'Cleared by Audit — payment eligible') : '',
+        approved  ? chip('#dcfce7', '#166534', `✅ Approved ${approved}`, 'Fully approved') : '',
+        rejected  ? chip('#fee2e2', '#991b1b', `❌ Rejected ${rejected}`, 'Rejected / deleted / superseded') : '',
+      ].filter(Boolean).join('');
+    }
+
 
     async function loadEmployeeExpenses() {
       try {
@@ -1574,6 +1616,7 @@
             <button id="btn-view-action" onclick="setViewMode('action')" style="display:inline-flex;align-items:center;gap:.35rem;height:32px;padding:0 .8rem;border-radius:7px;border:none;background:transparent;color:#92400e;font-size:.8rem;font-weight:700;cursor:pointer">
               ⚡ Pending Approvals <span id="action-queue-count" style="background:#f59e0b;color:#fff;border-radius:10px;padding:0 6px;font-size:.72rem">0</span>
             </button>
+            <button id="btn-view-day" onclick="setViewMode('day')" style="display:inline-flex;align-items:center;gap:.35rem;height:32px;padding:0 .8rem;border-radius:7px;border:none;background:transparent;color:var(--text-2,#71717a);font-size:.8rem;font-weight:600;cursor:pointer">📅 Day wise</button>
           </div>
 
           <div style="display:flex;gap:.5rem;position:relative">
@@ -1618,6 +1661,19 @@
           <span id="action-hint"></span>
         </div>
         <div id="action-queue-list"></div>
+      </div>
+
+      <!-- ── Day-wise View — audit-clear-date-based Payment sheet ── -->
+      <div id="day-view" style="display:none">
+        <div style="background:var(--card-bg,#fff);border:1px solid var(--border);border-radius:16px;padding:1.25rem 1.4rem;margin-bottom:1rem;box-shadow:0 1px 2px rgba(16,24,40,.04)">
+          <div style="font-size:.9rem;font-weight:700;color:var(--text-1,#18181b);margin-bottom:.35rem">💳 Audit-cleared Payment Sheet</div>
+          <div style="font-size:.75rem;color:var(--text-muted);margin-bottom:1rem">Date select karo — us din jitni bhi entries Audit ne clear ki hain unka bank payment sheet download hoga.</div>
+          <div style="display:flex;align-items:center;gap:.6rem;flex-wrap:wrap">
+            <span style="font-size:.8rem;font-weight:600;color:var(--text-2,#52525b)">Audit clear date:</span>
+            <input class="form-input" type="date" id="audit-clear-date" onclick="try{this.showPicker()}catch{}" title="Jis din audit ne clear kiya" style="width:170px;height:38px;font-size:.82rem;border-radius:8px;padding:0 .7rem;cursor:pointer" />
+            <button onclick="exportAuditClearedPaymentSheet()" id="btn-audit-pmt" style="height:38px;padding:0 1.1rem;border-radius:8px;border:none;background:#047857;color:#fff;font-size:.82rem;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;gap:.4rem">💳 Download Payment Sheet</button>
+          </div>
+        </div>
       </div>
 
       <!-- ── List View ──────────────────────────────────────────── -->
@@ -1955,10 +2011,14 @@
                         </div>`).join('')}
                       </div>
 
-                      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 1rem;">
-                        <p style="font-weight:700; font-size:1.1rem">Cycle Breakdown</p>
+                      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 1rem; flex-wrap:wrap; gap:.5rem;">
+                        <div style="display:flex;align-items:center;gap:.5rem;flex-wrap:wrap">
+                          <p style="font-weight:700; font-size:1.1rem; margin:0">Cycle Breakdown</p>
+                          ${statusCountChips(g.entries)}
+                        </div>
                         <div style="display:flex; gap:0.5rem">
                           <button class="btn btn-primary btn-sm" onclick="approveEntireCycle('${safeKey}',this)" style="display:none">Approve Entire Cycle</button>
+                          ${(() => { const n = g.entries.filter(e => e.status === 'hr_approved').length; return currentProfile.role === 'audit' && n > 0 ? `<button class="btn btn-sm" onclick="bulkAuditClearCycle('${safeKey}',this)" title="Baaki bache hue ${n} HR-Approved entries ko ek saath Audit-clear karo" style="background:#14532d;color:#fff;border:none;border-radius:6px;padding:.35rem .75rem;font-size:.8rem;font-weight:700;cursor:pointer">🔍 Clear All (${n})</button>` : ''; })()}
                           <button class="btn btn-secondary btn-sm" onclick="exportCycleToExcel('${safeKey}')">Excel</button>
                           <button class="btn btn-secondary btn-sm" onclick="exportCycleToCSV('${safeKey}')" style="background:#0f172a; color:white; border:none">CSV</button>
                           <button class="btn btn-secondary btn-sm" onclick="exportCycleToPDF('${safeKey}')" style="background:#dc2626; color:white; border:none">PDF</button>
@@ -2270,6 +2330,7 @@
       if (document.getElementById('f-employee')) document.getElementById('f-employee').value = '';
       if (document.getElementById('f-status'))  document.getElementById('f-status').value = 'all';
       if (document.getElementById('f-payment-status')) document.getElementById('f-payment-status').value = 'all';
+      if (document.getElementById('audit-clear-date')) document.getElementById('audit-clear-date').value = '';
       activeFilteredExpenses = null;
       const spin = `<div class="loading-state"><div class="spinner"></div><span>Loading…</span></div>`;
       document.getElementById('admin-table').innerHTML = spin;
@@ -2278,6 +2339,7 @@
     }
 
     let actionQueueMode = false;
+    let dayViewMode = false;
 
     /** True if this expense is sitting at the stage where currentProfile's role must act on it. */
     function isActionableForRole(e) {
@@ -2439,6 +2501,11 @@
       const menu = document.getElementById('export-menu');
       if (!menu) return;
       menu.style.display = menu.style.display === 'none' ? 'block' : 'none';
+      // On narrow screens the right-anchored menu can poke past the left edge — flip it
+      if (menu.style.display === 'block') {
+        const r = menu.getBoundingClientRect();
+        if (r.left < 0) { menu.style.right = 'auto'; menu.style.left = '0'; }
+      }
     }
     document.addEventListener('click', (e) => {
       const menu = document.getElementById('export-menu');
@@ -2448,25 +2515,32 @@
     function setViewMode(mode) {
       actionQueueMode = mode === 'action';
       hierarchyMode = mode === 'hierarchy';
+      dayViewMode = mode === 'day';
       const hierView   = document.getElementById('hier-view');
       const listWrap   = document.getElementById('list-view-wrap');
       const actionView = document.getElementById('action-queue-view');
+      const dayView    = document.getElementById('day-view');
       const hierBtn    = document.getElementById('btn-view-hier');
       const listBtn    = document.getElementById('btn-view-list');
       const actionBtn  = document.getElementById('btn-view-action');
+      const dayBtn     = document.getElementById('btn-view-day');
 
-      if (hierView)   hierView.style.display   = (!actionQueueMode && hierarchyMode) ? 'block' : 'none';
-      if (listWrap)   listWrap.style.display   = (!actionQueueMode && !hierarchyMode) ? 'block' : 'none';
+      if (hierView)   hierView.style.display   = (!actionQueueMode && !dayViewMode && hierarchyMode) ? 'block' : 'none';
+      if (listWrap)   listWrap.style.display   = (!actionQueueMode && !dayViewMode && !hierarchyMode) ? 'block' : 'none';
       if (actionView) actionView.style.display = actionQueueMode ? 'block' : 'none';
+      if (dayView)    dayView.style.display    = dayViewMode ? 'block' : 'none';
       // Segmented-tab look: active tab gets a light tinted background + bold accent text.
-      const hierActive = !actionQueueMode && hierarchyMode;
-      const listActive = !actionQueueMode && !hierarchyMode;
+      const hierActive = !actionQueueMode && !dayViewMode && hierarchyMode;
+      const listActive = !actionQueueMode && !dayViewMode && !hierarchyMode;
       if (hierBtn) { hierBtn.style.background = hierActive ? 'var(--bg-2,#eef2ff)' : 'transparent'; hierBtn.style.color = hierActive ? 'var(--primary,#6366f1)' : 'var(--text-2,#71717a)'; }
       if (listBtn) { listBtn.style.background = listActive ? 'var(--bg-2,#eef2ff)' : 'transparent'; listBtn.style.color = listActive ? 'var(--primary,#6366f1)' : 'var(--text-2,#71717a)'; }
       if (actionBtn) { actionBtn.style.background = actionQueueMode ? '#fef3c7' : 'transparent'; actionBtn.style.color = '#92400e'; }
+      if (dayBtn) { dayBtn.style.background = dayViewMode ? 'var(--bg-2,#eef2ff)' : 'transparent'; dayBtn.style.color = dayViewMode ? 'var(--primary,#6366f1)' : 'var(--text-2,#71717a)'; dayBtn.style.fontWeight = dayViewMode ? '700' : '600'; }
 
       if (actionQueueMode) {
         renderActionQueue();
+      } else if (dayViewMode) {
+        // static view — date inputs + export buttons only, nothing to render
       } else if (hierarchyMode) {
         renderHierarchyView(activeFilteredExpenses !== null ? activeFilteredExpenses : allExpensesFetched);
       } else {
@@ -2487,7 +2561,7 @@
         const val = id => document.getElementById(id)?.value || '';
         const state = {
           t: Date.now(),
-          hierarchyMode, actionQueueMode,
+          hierarchyMode, actionQueueMode, dayViewMode,
           currentListFilter, hierStatusFilter,
           scrollY: window.scrollY,
           filters: {
@@ -2495,6 +2569,7 @@
             'f-user-search': val('f-user-search'), 'f-manager': val('f-manager'),
             'f-dept': val('f-dept'), 'f-employee': val('f-employee'),
             'f-status': val('f-status'), 'f-payment-status': val('f-payment-status'),
+            'audit-clear-date': val('audit-clear-date'),
           },
           hierExpanded: {
             depts: [...hierExpanded.depts], mgrs: [...hierExpanded.mgrs],
@@ -2534,7 +2609,7 @@
         recomputeActiveFilteredExpenses();
         const isAdminRole = ['admin', 'super_admin', 'hr', 'audit'].includes(currentProfile?.role);
         if (isAdminRole) {
-          setViewMode(state.actionQueueMode ? 'action' : (state.hierarchyMode ? 'hierarchy' : 'list'));
+          setViewMode(state.actionQueueMode ? 'action' : state.dayViewMode ? 'day' : (state.hierarchyMode ? 'hierarchy' : 'list'));
         } else {
           setListFilter(currentListFilter);
         }
@@ -3134,6 +3209,49 @@
         showMessage(err.message, 'error');
       } finally {
         setLoading(btn, false);
+      }
+    }
+
+    /** Audit-only bulk clear — sabhi `hr_approved` entries is cycle mein audit_cleared kar deta hai.
+     *  Workflow: audit pehle bad entries flag karega (per-expense action), fir jo baaki bachengi
+     *  woh sab `hr_approved` hongi — ek click mein sab clear. */
+    async function bulkAuditClearCycle(safeKey, triggerBtn) {
+      if (currentProfile.role !== 'audit') return;
+      const [userId, monthYear, cycleText] = safeKey.split('|');
+      const toClear = allExpensesFetched.filter(e => {
+        if (e.status !== 'hr_approved' || e.user_id !== userId) return false;
+        const d = new Date(e.created_at);
+        const mY = d.toLocaleString('default', { month: 'long', year: 'numeric' });
+        const cT = d.getDate() <= 15 ? '1st - 15th' : '16th - End';
+        return mY === monthYear && cT === cycleText;
+      });
+      if (!toClear.length) { showMessage('Is cycle mein koi HR-Approved entry nahi bachi.', 'info'); return; }
+      if (!confirm(`Is cycle ki ${toClear.length} HR-Approved entries ko Audit Clear kar dein?\n\nJo flag karni thi wo pehle kar li? Ye action reversible nahi hai — sab entries "audit_cleared" ho jayengi.`)) return;
+
+      const btn = triggerBtn || event?.currentTarget || null;
+      const origText = btn?.innerHTML;
+      if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = `<span style="display:inline-flex;align-items:center;gap:.35rem"><span style="width:12px;height:12px;border:2px solid rgba(255,255,255,.4);border-top-color:white;border-radius:50%;display:inline-block;animation:spin .7s linear infinite"></span>Clearing ${toClear.length}…</span>`;
+      }
+      try {
+        const { data: { session } } = await db.auth.getSession();
+        const token = session?.access_token;
+        if (!token) throw new Error('Not authenticated');
+        const res = await fetch('/api/approve-expense', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+          body: JSON.stringify({ expense_ids: toClear.map(e => e.id) })
+        });
+        const json = await res.json();
+        if (!res.ok) throw new Error(json.error || 'Bulk audit clear failed');
+        const { approved, skipped, elapsed_ms } = json;
+        const elapsed = elapsed_ms < 1000 ? `${elapsed_ms}ms` : `${(elapsed_ms/1000).toFixed(1)}s`;
+        showMessage(`✅ ${approved} entries Audit Cleared${skipped ? ` (${skipped} skipped)` : ''} · ${elapsed}`, 'success');
+        await loadAdminExpenses();
+      } catch (err) {
+        showMessage(err.message, 'error');
+        if (btn) { btn.disabled = false; btn.innerHTML = origText; }
       }
     }
 
@@ -4016,7 +4134,6 @@
       setTimeout(() => {
         try {
           const [yr, mo] = monthVal.split('-').map(Number);
-          // Start from current export data (respects status/search/manager filters) then narrow to month
           const base = getExportData();
           const filtered = base.filter(e => {
             const d = new Date(e.created_at);
@@ -5086,10 +5203,17 @@
                 <span style="font-weight:700;font-size:.85rem">${escHtml(g.mY)}</span>
                 <span style="background:var(--primary);color:white;border-radius:5px;padding:0 7px;font-size:.68rem;font-weight:700">${escHtml(g.cT)}</span>
                 <span style="font-size:.72rem;color:var(--text-muted)">${g.entries.length} entries · ${formatCurrency(gTotal)}</span>
+                ${statusCountChips(g.entries)}
+                ${(() => {
+                  const gNeedsAudit = g.entries.filter(e => ['hr_approved','approved'].includes(e.status)).length;
+                  const gCompletedAudit = g.entries.filter(e => ['audit_cleared','audit_review','audit_query'].includes(e.status)).length;
+                  return `${currentProfile.role === 'audit' && gNeedsAudit ? `<span title="Awaiting your Clear/Flag action" style="background:#fee2e2;color:#991b1b;border-radius:5px;padding:0 6px;font-size:.68rem;font-weight:700">🔍${gNeedsAudit} Needs Audit</span>` : ''}${currentProfile.role === 'audit' && gCompletedAudit ? `<span title="Already Cleared or Flagged by you" style="background:#dbeafe;color:#1d4ed8;border-radius:5px;padding:0 6px;font-size:.68rem;font-weight:700">✓${gCompletedAudit} Audit Done</span>` : ''}`;
+                })()}
                 <span style="background:#dcfce7;color:#166534;border-radius:5px;padding:0 7px;font-size:.68rem;font-weight:700" title="Paid via bank">💰 Paid: ${formatCurrency(gPaid)}</span>${gPend > 0.005 ? `<span style="background:#fef3c7;color:#92400e;border-radius:5px;padding:0 7px;font-size:.68rem;font-weight:700" title="Still pending">⏳ Due: ${formatCurrency(gPend)}</span>` : `<span style="background:#dcfce7;color:#166534;border-radius:5px;padding:0 7px;font-size:.68rem;font-weight:700">✓ Fully paid</span>`}
               </div>
               <div style="display:flex;gap:.3rem;flex-wrap:wrap">
                 <button class="btn btn-primary btn-sm" style="font-size:.7rem;padding:.2rem .55rem;border-radius:7px;display:none" onclick="approveEntireCycle('${safeKey}',this)">✓ Approve Cycle</button>
+                ${(() => { const n = g.entries.filter(e => e.status === 'hr_approved').length; return currentProfile.role === 'audit' && n > 0 ? `<button class="btn btn-sm" onclick="bulkAuditClearCycle('${safeKey}',this)" title="Baaki bache hue ${n} HR-Approved entries ko ek saath Audit-clear karo" style="background:#14532d;color:#fff;border:none;border-radius:7px;padding:.2rem .55rem;font-size:.7rem;font-weight:700;cursor:pointer">🔍 Clear All (${n})</button>` : ''; })()}
                 <button class="btn btn-secondary btn-sm" style="font-size:.7rem;padding:.2rem .55rem;border-radius:7px" onclick="exportCycleToExcel('${safeKey}')">Excel</button>
                 <button class="btn btn-secondary btn-sm" style="font-size:.7rem;padding:.2rem .55rem;border-radius:7px;background:#0f172a;color:white;border:none" onclick="exportCycleToCSV('${safeKey}')">CSV</button>
                 <button class="btn btn-secondary btn-sm" style="font-size:.7rem;padding:.2rem .55rem;border-radius:7px;background:#dc2626;color:white;border:none" onclick="exportCycleToPDF('${safeKey}')">PDF</button>
