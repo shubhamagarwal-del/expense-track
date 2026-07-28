@@ -1774,6 +1774,13 @@
         loadExpenseViews(idsWithReceipts).then(() => refreshListView(true));
         // Load recorded cycle payments (Paid/Pending display)
         loadCyclePayments().then(() => refreshListView(true));
+        // Load which cycles have already been pushed to Accounts Portal (for Push button status)
+        if (['audit', 'super_admin', 'hr'].includes(currentProfile.role)) {
+          loadPortalClaims().then(() => {
+            if (hierarchyMode) renderHierarchyView(activeFilteredExpenses !== null ? activeFilteredExpenses : allExpensesFetched);
+            else refreshListView(true);
+          });
+        }
         // Load Audit's manual "checked for payment" markers (Audit / Super Admin only)
         if (['audit', 'super_admin'].includes(currentProfile.role)) {
           loadAuditChecks().then(() => {
@@ -2023,6 +2030,7 @@
                           <button class="btn btn-secondary btn-sm" onclick="exportCycleToCSV('${safeKey}')" style="background:#0f172a; color:white; border:none">CSV</button>
                           <button class="btn btn-secondary btn-sm" onclick="exportCycleToPDF('${safeKey}')" style="background:#dc2626; color:white; border:none">PDF</button>
                           <button class="btn btn-secondary btn-sm" onclick="exportCycleToPaymentSheet('${safeKey}')" style="background:#047857; color:white; border:none" title="Bank payment sheet">Payment</button>
+                          ${(['super_admin','audit','hr'].includes(currentProfile.role) && cycleHasCleared(safeKey)) ? (() => { const c = portalClaimsByKey[safeKey]; return `<button class="btn btn-sm" onclick="pushCycleToAccounts('${safeKey}',this)" title="${c ? 'Already pushed — click to push again' : 'Push audit-cleared report (Excel + PDF) to Accounts Portal'}" style="background:${c ? '#334155' : '#4f46e5'}; color:#fff; border:none" >${c ? '✓ Pushed' : '📤 Push to Accounts'}</button>`; })() : ''}
                         </div>
                       </div>
 
@@ -3809,6 +3817,156 @@
       performExcelExport(filtered, `ExpenseReport_${name}_${monthYear}_${cycleText}.xlsx`);
     }
 
+    // ─── ACCOUNTS PORTAL — ONE-CLICK EXPENSE PUSH ──────────────────────
+    let portalClaimsByKey = {};
+    async function loadPortalClaims() {
+      try {
+        const token = (await db.auth.getSession()).data.session?.access_token;
+        const res = await fetch('/api/receipt-url?portal_claims=1', { headers: { Authorization: `Bearer ${token}` } });
+        if (!res.ok) return;
+        const body = await res.json();
+        portalClaimsByKey = {};
+        (body.portal_claims || []).forEach(c => {
+          portalClaimsByKey[`${c.user_id}|${c.month_year}|${c.cycle_text}`] = c;
+        });
+      } catch (_) { /* non-fatal */ }
+    }
+
+    /** Cycle lines that go into a claim: cleared + query only (portal skips query itself). */
+    function claimLinesForCycle(safeKey) {
+      const [userId, monthYear, cycleText] = safeKey.split('|');
+      return allExpensesFetched.filter(e => {
+        const date = new Date(e.created_at);
+        const mY = date.toLocaleString('default', { month: 'long', year: 'numeric' });
+        const cT = (date.getDate() <= 15 ? 1 : 2) === 1 ? '1st - 15th' : '16th - End';
+        return e.user_id === userId && mY === monthYear && cT === cycleText
+          && ['audit_cleared', 'audit_query'].includes(e.status);
+      });
+    }
+
+    /** True if a cycle has at least one audit_cleared line (⇒ pushable). */
+    function cycleHasCleared(safeKey) {
+      return claimLinesForCycle(safeKey).some(e => e.status === 'audit_cleared');
+    }
+
+    /** Excel per the Accounts-portal column CONTRACT (Part 2). Returns base64. */
+    function buildClaimExcelBase64(lines) {
+      const headers = [
+        'Name', 'Emp No', 'Department', 'Cycle', 'Date', 'Category',
+        'From (Travel)', 'To (Travel)', 'Description',
+        'Submitted Amount', 'Approved Amount', 'Site', 'Status',
+        'Bank Holder', 'Bank Name', 'Bank IFSC', 'Bank Account',
+      ];
+      const sorted = [...lines].sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
+      const rows = sorted.map(e => {
+        const u = e.users || {};
+        const { from: f, to: t, desc: d } = parseExpenseDescription(e);
+        const date = new Date(e.created_at);
+        const cycle = date.getDate() <= 15 ? '1st-15th' : '16th-End';
+        const site = siteWithCode(extractSite(e) || u.site_name || '');
+        const approved = e.approved_amount != null ? +e.approved_amount : +e.amount;
+        return [
+          u.name || '', u.emp_no || '', u.department || '', cycle, formatDate(e.created_at),
+          e.category || '', f || '', t || '', d || '',
+          Number(e.amount) || 0, Number(approved) || 0, site, e.status,
+          u.bank_holder || '', u.bank_name || '', u.bank_ifsc || '', u.bank_account || '',
+        ];
+      });
+      const ws = XLSX.utils.aoa_to_sheet([headers, ...rows]);
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, 'Expenses');
+      return XLSX.write(wb, { bookType: 'xlsx', type: 'base64' });
+    }
+
+    /** Reconcile PDF per the CONTRACT (Part 3), from the SAME data as the Excel. Returns base64. */
+    function buildClaimPdfBase64(lines, headerText) {
+      const jspdfLib = window.jspdf || window.jsPDF;
+      const { jsPDF } = jspdfLib;
+      const doc = new jsPDF({ unit: 'pt', format: 'a4' });
+      const M = 40; let y = 50;
+      const pageH = doc.internal.pageSize.getHeight();
+      const pageW = doc.internal.pageSize.getWidth();
+      doc.setFontSize(13); doc.setFont(undefined, 'bold');
+      doc.text(headerText || 'Expense Report', M, y); y += 22;
+      doc.setFontSize(9); doc.setFont(undefined, 'normal');
+
+      const sorted = [...lines].sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
+      const money = n => 'Rs. ' + (Number(n) || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+      let total = 0;
+      sorted.forEach(e => {
+        const u = e.users || {};
+        const { from: f, to: t, desc: d } = parseExpenseDescription(e);
+        const site = siteWithCode(extractSite(e) || u.site_name || '');
+        const approved = e.approved_amount != null ? +e.approved_amount : +e.amount;
+        const tag = e.status === 'audit_cleared' ? '[AUDIT CLEARED]' : '[AUDIT QUERY]';
+        if (e.status === 'audit_cleared') total += approved;
+        const parts = [formatDate(e.created_at), e.category || '', site,
+          [f, t].filter(Boolean).join(' -> '), d || ''].filter(Boolean).join('  ');
+        const line = `${parts}  ${money(approved)}  ${tag}`;
+        const wrapped = doc.splitTextToSize(line, pageW - 2 * M);
+        if (y + wrapped.length * 12 > pageH - 40) { doc.addPage(); y = 50; }
+        doc.text(wrapped, M, y); y += wrapped.length * 12 + 3;
+      });
+      y += 8;
+      if (y > pageH - 40) { doc.addPage(); y = 50; }
+      doc.setFont(undefined, 'bold');
+      doc.text(`Total (Audit Cleared): ${money(total)}`, M, y);
+      return doc.output('datauristring').split(',')[1];
+    }
+
+    async function pushCycleToAccounts(safeKey, btn) {
+      const [userId, monthYear, cycleText] = safeKey.split('|');
+      const lines = claimLinesForCycle(safeKey);
+      const cleared = lines.filter(e => e.status === 'audit_cleared');
+      if (!cleared.length) return showMessage('No audit-cleared lines in this cycle to push.', 'error');
+
+      const u = lines[0]?.users || {};
+      const name = u.name || 'Employee';
+      if (!u.emp_no) return showMessage(`${name}: Emp No missing — Accounts portal will reject. Fix the employee's Emp No first.`, 'error');
+
+      const cycleContract = cycleText.includes('1st') ? '1st-15th' : '16th-End';
+      const already = portalClaimsByKey[safeKey];
+      const queryCount = lines.length - cleared.length;
+      const confirmMsg = already
+        ? `This cycle was already pushed (${already.status}). Push again?`
+        : `Push ${name} — ${monthYear} ${cycleText} to Accounts Portal?\n\n${cleared.length} audit-cleared line(s)${queryCount ? ` (+${queryCount} query line(s), portal will skip)` : ''}.`;
+      if (!confirm(confirmMsg)) return;
+
+      const orig = btn ? btn.innerHTML : '';
+      if (btn) { btn.disabled = true; btn.innerHTML = 'Pushing…'; }
+      try {
+        const submittedTotal = cleared.reduce((s, e) => s + (Number(e.amount) || 0), 0);
+        const approvedTotal = cleared.reduce((s, e) => s + (e.approved_amount != null ? +e.approved_amount : +e.amount), 0);
+        const fnameBase = `${(u.emp_no || 'EMP')}_${monthYear.replace(/\s+/g, '_')}_${cycleContract}`;
+        const excel_b64 = buildClaimExcelBase64(lines);
+        const pdf_b64 = buildClaimPdfBase64(lines, `${name} (${u.emp_no}) — ${monthYear} ${cycleText}`);
+
+        const token = (await db.auth.getSession()).data.session?.access_token;
+        const res = await fetch('/api/receipt-url', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+          body: JSON.stringify({ push_claim: {
+            excel_b64, pdf_b64, month: monthYear, cycle: cycleContract, filename_base: fnameBase,
+            user_id: userId, employee_number: u.emp_no, employee_name: name,
+            lines: cleared.length, submitted_total: submittedTotal, approved_total: approvedTotal,
+          } })
+        });
+        const body = await res.json();
+        if (!res.ok) throw new Error(body.error || 'Push failed');
+        if (body.already_exists) {
+          showMessage(`ℹ️ Already pushed — claim already exists for ${monthYear} ${cycleText}.`, 'success');
+        } else {
+          const disc = body.discrepancy ? ' ⚠️ discrepancy flagged' : '';
+          showMessage(`✅ Pushed — ${body.lines} line(s), ₹${Number(body.approved_total || approvedTotal).toLocaleString('en-IN')} (claim ${String(body.claim_id || '').slice(0, 8)})${disc}`, 'success');
+        }
+        await loadPortalClaims();
+      } catch (err) {
+        showMessage('Push failed: ' + err.message, 'error');
+      } finally {
+        if (btn) { btn.disabled = false; btn.innerHTML = orig; }
+      }
+    }
+
     // ─── PAYMENT SHEET EXPORT ────────────────────────────────────
     // Generates the bank-ready payment sheet:
     //   305957 | STOCKWELL SOLAR SERVICES PVT LTD | 38115536075 |
@@ -5219,6 +5377,7 @@
                 <button class="btn btn-secondary btn-sm" style="font-size:.7rem;padding:.2rem .55rem;border-radius:7px;background:#dc2626;color:white;border:none" onclick="exportCycleToPDF('${safeKey}')">PDF</button>
                 <button class="btn btn-secondary btn-sm" style="font-size:.7rem;padding:.2rem .55rem;border-radius:7px;background:#047857;color:white;border:none" onclick="exportCycleToPaymentSheet('${safeKey}')">Payment</button>
                 ${['admin','super_admin','hr','audit'].includes(currentProfile.role) ? `<button class="btn btn-secondary btn-sm" style="font-size:.7rem;padding:.2rem .55rem;border-radius:7px;background:#0e7490;color:white;border:none" onclick="showPaymentHistory('${user.id}','${escHtml(g.mY)}','${escHtml(g.cT)}')">📜 History</button>` : ''}
+                ${(['super_admin','audit','hr'].includes(currentProfile.role) && cycleHasCleared(safeKey)) ? (() => { const c = portalClaimsByKey[safeKey]; return `<button class="btn btn-sm" onclick="pushCycleToAccounts('${safeKey}',this)" title="${c ? 'Already pushed — click to push again' : 'Push audit-cleared report (Excel + PDF) to Accounts Portal'}" style="background:${c ? '#334155' : '#4f46e5'};color:#fff;border:none;border-radius:7px;padding:.2rem .55rem;font-size:.7rem;font-weight:700;cursor:pointer">${c ? '✓ Pushed' : '📤 Push to Accounts'}</button>`; })() : ''}
               </div>
             </div>
             <div id="hnode-${cycId}" style="display:${cycOpen?'block':'none'};overflow-x:auto">

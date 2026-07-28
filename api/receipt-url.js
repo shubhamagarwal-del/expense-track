@@ -102,6 +102,18 @@ export default async function handler(req, res) {
       return res.status(200).json({ portal_advances: data || [] });
     }
 
+    // ?portal_claims=1 → claims already pushed to Accounts Portal (for per-cycle "Pushed" status).
+    if (req.query?.portal_claims) {
+      if (!['admin','hr','audit','super_admin'].includes(profile.role)) {
+        return res.status(403).json({ error: 'Not authorised' });
+      }
+      const { data, error } = await supabaseAdmin
+        .from('accounts_portal_claims')
+        .select('user_id, month_year, cycle_text, claim_id, status, lines, approved_total, pushed_at, pushed_by_name');
+      if (error) return res.status(500).json({ error: error.message });
+      return res.status(200).json({ portal_claims: data || [] });
+    }
+
     // ?advances=1 → employee advance ledger (for Advance/Due display).
     // Audit/Super Admin get everyone's; an employee only ever gets their own.
     // Each row also gets `recovered_amount`/`remaining` computed from its recovery log,
@@ -196,6 +208,15 @@ export default async function handler(req, res) {
         return res.status(403).json({ error: 'Only Super Admin, Audit, or HR can sync portal advances' });
       }
       return await reconcilePortalAdvances(res, supabaseAdmin);
+    }
+
+    // ── POST { push_claim: {...} } → push an audit-cleared cycle report (Excel + PDF) to Accounts Portal ──
+    if (req.body?.push_claim) {
+      const { data: profile } = await supabaseAdmin.from('users').select('role, name').eq('id', user.id).single();
+      if (!profile || !['super_admin', 'audit', 'hr'].includes(profile.role)) {
+        return res.status(403).json({ error: 'Only Super Admin, Audit, or HR can push claims' });
+      }
+      return await pushClaimToPortal(req, res, supabaseAdmin, user, profile);
     }
 
     // ── POST { audit_check_ids: [...], checked: true|false } → Audit's manual "checked for payment" marker ──
@@ -810,4 +831,91 @@ async function reconcilePortalAdvances(res, db) {
   }
 
   return res.status(200).json(summary);
+}
+
+
+// ═════════════════════════════════════════════════════════════════════
+// Accounts Portal EXPENSE-PUSH integration (sender side)
+// One-click push of an audit-cleared cycle report (Excel + PDF) to the
+// Accounts Portal's upload endpoint. See EMPLOYEE_EXPENSES_PUSH_INTEGRATION_PLAN.
+// The x-api-key stays server-side; the browser sends base64 Excel/PDF here.
+// ═════════════════════════════════════════════════════════════════════
+async function pushClaimToPortal(req, res, db, actingUser, actingProfile) {
+  const p = req.body?.push_claim || {};
+  const {
+    excel_b64, pdf_b64, month, cycle, filename_base,
+    user_id, employee_number, employee_name,
+    lines: cLines, submitted_total, approved_total,
+  } = p;
+
+  if (!excel_b64) return res.status(400).json({ error: 'excel_b64 is required' });
+
+  const baseUrl = process.env.ACCOUNTS_PORTAL_BASE_URL || process.env.ACCOUNTS2026_BASE_URL || 'https://accounts-2026.vercel.app';
+  const apiKey = process.env.ACCOUNTS_PORTAL_API_KEY || process.env.ACCOUNTS2026_API_KEY;
+  if (!apiKey) return res.status(500).json({ error: 'Accounts portal API key is not set (ACCOUNTS2026_API_KEY)' });
+
+  const base = (filename_base || 'claim').replace(/[^a-z0-9._-]/gi, '_');
+
+  // Build multipart body (Node 18+/Vercel: global FormData + Blob)
+  const form = new FormData();
+  const excelBuf = Buffer.from(excel_b64, 'base64');
+  form.append('excel', new Blob([excelBuf], {
+    type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+  }), `${base}.xlsx`);
+  if (pdf_b64) {
+    const pdfBuf = Buffer.from(pdf_b64, 'base64');
+    form.append('pdf', new Blob([pdfBuf], { type: 'application/pdf' }), `${base}.pdf`);
+  }
+  if (month) form.append('month', month);
+  if (cycle) form.append('cycle', cycle);
+
+  let portalRes, portalJson;
+  try {
+    portalRes = await fetch(`${baseUrl}/api/external/employee-expenses/upload`, {
+      method: 'POST',
+      headers: { 'x-api-key': apiKey },
+      body: form,
+    });
+    const text = await portalRes.text();
+    try { portalJson = JSON.parse(text); } catch { portalJson = { raw: text }; }
+  } catch (err) {
+    return res.status(502).json({ error: 'Could not reach Accounts portal: ' + (err.message ?? err) });
+  }
+
+  const httpStatus = portalRes.status;
+
+  // ── 200: claim created → record locally, return summary ──
+  if (httpStatus === 200 && portalJson?.ok) {
+    await recordClaim(db, {
+      user_id, employee_number, employee_name,
+      month_year: month || portalJson.month, cycle_text: cycle || portalJson.cycle,
+      claim_id: portalJson.claim_id, status: 'pushed',
+      lines: portalJson.lines ?? cLines, submitted_total, approved_total: portalJson.approved_total ?? approved_total,
+      pushed_by: actingUser.id, pushed_by_name: actingProfile.name, response: portalJson,
+    });
+    return res.status(200).json({ ok: true, ...portalJson });
+  }
+
+  // ── 409: already pushed → treat as success (idempotent) ──
+  if (httpStatus === 409) {
+    await recordClaim(db, {
+      user_id, employee_number, employee_name,
+      month_year: month, cycle_text: cycle,
+      claim_id: portalJson?.claim_id || null, status: 'already_exists',
+      lines: cLines, submitted_total, approved_total,
+      pushed_by: actingUser.id, pushed_by_name: actingProfile.name, response: portalJson,
+    });
+    return res.status(200).json({ ok: true, already_exists: true, ...portalJson });
+  }
+
+  // ── 401/400/422/500: surface the portal's message verbatim ──
+  const msg = portalJson?.error || portalJson?.message || portalJson?.raw || `Accounts portal returned HTTP ${httpStatus}`;
+  return res.status(httpStatus === 401 ? 502 : httpStatus).json({ error: msg, portal_status: httpStatus, portal: portalJson });
+}
+
+async function recordClaim(db, row) {
+  try {
+    await db.from('accounts_portal_claims')
+      .upsert({ ...row, pushed_at: new Date().toISOString() }, { onConflict: 'user_id,month_year,cycle_text' });
+  } catch (_) { /* tracking is best-effort; never block the push result on it */ }
 }
