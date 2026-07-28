@@ -1775,7 +1775,7 @@
         // Load recorded cycle payments (Paid/Pending display)
         loadCyclePayments().then(() => refreshListView(true));
         // Load which cycles have already been pushed to Accounts Portal (for Push button status)
-        if (['audit', 'super_admin', 'hr'].includes(currentProfile.role)) {
+        if (['audit', 'super_admin'].includes(currentProfile.role)) {
           loadPortalClaims().then(() => {
             if (hierarchyMode) renderHierarchyView(activeFilteredExpenses !== null ? activeFilteredExpenses : allExpensesFetched);
             else refreshListView(true);
@@ -2030,7 +2030,7 @@
                           <button class="btn btn-secondary btn-sm" onclick="exportCycleToCSV('${safeKey}')" style="background:#0f172a; color:white; border:none">CSV</button>
                           <button class="btn btn-secondary btn-sm" onclick="exportCycleToPDF('${safeKey}')" style="background:#dc2626; color:white; border:none">PDF</button>
                           <button class="btn btn-secondary btn-sm" onclick="exportCycleToPaymentSheet('${safeKey}')" style="background:#047857; color:white; border:none" title="Bank payment sheet">Payment</button>
-                          ${(['super_admin','audit','hr'].includes(currentProfile.role) && cycleHasCleared(safeKey)) ? (() => { const c = portalClaimsByKey[safeKey]; return `<button class="btn btn-sm" onclick="pushCycleToAccounts('${safeKey}',this)" title="${c ? 'Already pushed — click to push again' : 'Push audit-cleared report (Excel + PDF) to Accounts Portal'}" style="background:${c ? '#334155' : '#4f46e5'}; color:#fff; border:none" >${c ? '✓ Pushed' : '📤 Push to Accounts'}</button>`; })() : ''}
+                          ${(['super_admin','audit'].includes(currentProfile.role) && cycleHasCleared(safeKey)) ? (() => { const c = portalClaimsByKey[safeKey]; return `<button class="btn btn-sm" onclick="pushCycleToAccounts('${safeKey}',this)" title="${c ? 'Already pushed — click to push again' : 'Push audit-cleared report (Excel + PDF) to Accounts Portal'}" style="background:${c ? '#334155' : '#4f46e5'}; color:#fff; border:none" >${c ? '✓ Pushed' : '📤 Push to Accounts'}</button>`; })() : ''}
                         </div>
                       </div>
 
@@ -5377,7 +5377,7 @@
                 <button class="btn btn-secondary btn-sm" style="font-size:.7rem;padding:.2rem .55rem;border-radius:7px;background:#dc2626;color:white;border:none" onclick="exportCycleToPDF('${safeKey}')">PDF</button>
                 <button class="btn btn-secondary btn-sm" style="font-size:.7rem;padding:.2rem .55rem;border-radius:7px;background:#047857;color:white;border:none" onclick="exportCycleToPaymentSheet('${safeKey}')">Payment</button>
                 ${['admin','super_admin','hr','audit'].includes(currentProfile.role) ? `<button class="btn btn-secondary btn-sm" style="font-size:.7rem;padding:.2rem .55rem;border-radius:7px;background:#0e7490;color:white;border:none" onclick="showPaymentHistory('${user.id}','${escHtml(g.mY)}','${escHtml(g.cT)}')">📜 History</button>` : ''}
-                ${(['super_admin','audit','hr'].includes(currentProfile.role) && cycleHasCleared(safeKey)) ? (() => { const c = portalClaimsByKey[safeKey]; return `<button class="btn btn-sm" onclick="pushCycleToAccounts('${safeKey}',this)" title="${c ? 'Already pushed — click to push again' : 'Push audit-cleared report (Excel + PDF) to Accounts Portal'}" style="background:${c ? '#334155' : '#4f46e5'};color:#fff;border:none;border-radius:7px;padding:.2rem .55rem;font-size:.7rem;font-weight:700;cursor:pointer">${c ? '✓ Pushed' : '📤 Push to Accounts'}</button>`; })() : ''}
+                ${(['super_admin','audit'].includes(currentProfile.role) && cycleHasCleared(safeKey)) ? (() => { const c = portalClaimsByKey[safeKey]; return `<button class="btn btn-sm" onclick="pushCycleToAccounts('${safeKey}',this)" title="${c ? 'Already pushed — click to push again' : 'Push audit-cleared report (Excel + PDF) to Accounts Portal'}" style="background:${c ? '#334155' : '#4f46e5'};color:#fff;border:none;border-radius:7px;padding:.2rem .55rem;font-size:.7rem;font-weight:700;cursor:pointer">${c ? '✓ Pushed' : '📤 Push to Accounts'}</button>`; })() : ''}
               </div>
             </div>
             <div id="hnode-${cycId}" style="display:${cycOpen?'block':'none'};overflow-x:auto">

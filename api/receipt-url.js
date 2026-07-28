@@ -213,8 +213,8 @@ export default async function handler(req, res) {
     // ── POST { push_claim: {...} } → push an audit-cleared cycle report (Excel + PDF) to Accounts Portal ──
     if (req.body?.push_claim) {
       const { data: profile } = await supabaseAdmin.from('users').select('role, name').eq('id', user.id).single();
-      if (!profile || !['super_admin', 'audit', 'hr'].includes(profile.role)) {
-        return res.status(403).json({ error: 'Only Super Admin, Audit, or HR can push claims' });
+      if (!profile || !['super_admin', 'audit'].includes(profile.role)) {
+        return res.status(403).json({ error: 'Only Super Admin or Audit can push claims' });
       }
       return await pushClaimToPortal(req, res, supabaseAdmin, user, profile);
     }
