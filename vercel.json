@@ -6,7 +6,7 @@
   ],
   "crons": [
     { "path": "/api/receipt-url?cron_sync=accounts",         "schedule": "0 9 * * *" },
-    { "path": "/api/receipt-url?cron_sync=portal_advances",  "schedule": "0 * * * *" }
+    { "path": "/api/receipt-url?cron_sync=portal_advances",  "schedule": "30 9 * * *" }
   ],
   "headers": [
     {
