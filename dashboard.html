@@ -1187,6 +1187,14 @@
     const _debouncedRefresh = debounce(_doRefreshListView, 200);
     function refreshListView(skipCharts = false) { _debouncedRefresh(skipCharts); }
 
+    // On a full load several supplementary fetches (cycle payments, audit checks,
+    // advances, portal claims…) each used to fire their own ~150ms hierarchy render.
+    // Route them through one debounced re-render so they coalesce into a single paint.
+    const _coalesceHierRerender = debounce(() => {
+      if (hierarchyMode) renderHierarchyView(activeFilteredExpenses !== null ? activeFilteredExpenses : allExpensesFetched);
+      else refreshListView(true);
+    }, 200);
+
     function _doRefreshListView(skipCharts = false) {
       const search = document.getElementById('f-user-search')?.value.toLowerCase().trim() || '';
       // Respect an active Month/Cycle filter (set by applyCycleFilter) instead of
@@ -1771,26 +1779,17 @@
         updateAdminStats(expenses);
         // Load receipt view audit for expenses that actually have receipts
         const idsWithReceipts = expenses.filter(e => e.receipt_url).map(e => e.id);
-        loadExpenseViews(idsWithReceipts).then(() => refreshListView(true));
+        loadExpenseViews(idsWithReceipts).then(_coalesceHierRerender);
         // Load recorded cycle payments (Paid/Pending display)
-        loadCyclePayments().then(() => refreshListView(true));
+        loadCyclePayments().then(_coalesceHierRerender);
         // Load which cycles have already been pushed to Accounts Portal (for Push button status)
         if (['audit', 'super_admin'].includes(currentProfile.role)) {
-          loadPortalClaims().then(() => {
-            if (hierarchyMode) renderHierarchyView(activeFilteredExpenses !== null ? activeFilteredExpenses : allExpensesFetched);
-            else refreshListView(true);
-          });
+          loadPortalClaims().then(_coalesceHierRerender);
         }
         // Load Audit's manual "checked for payment" markers (Audit / Super Admin only)
         if (['audit', 'super_admin'].includes(currentProfile.role)) {
-          loadAuditChecks().then(() => {
-            if (hierarchyMode) renderHierarchyView(activeFilteredExpenses !== null ? activeFilteredExpenses : allExpensesFetched);
-            else refreshListView(true);
-          });
-          loadAdvances().then(() => {
-            if (hierarchyMode) renderHierarchyView(activeFilteredExpenses !== null ? activeFilteredExpenses : allExpensesFetched);
-            else refreshListView(true);
-          });
+          loadAuditChecks().then(_coalesceHierRerender);
+          loadAdvances().then(_coalesceHierRerender);
         }
         refreshListView();
         renderAdminCharts(expenses);
