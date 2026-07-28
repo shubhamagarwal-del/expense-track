@@ -32,6 +32,30 @@ export default async function handler(req, res) {
     return await syncAccounts2026(res, supabaseAdmin);
   }
 
+  // ── Cron-triggered Accounts Portal ADVANCES reconciliation (missed webhooks recovery) ──
+  if (req.method === 'GET' && req.query?.cron_sync === 'portal_advances') {
+    const cronAuth = req.headers.authorization;
+    if (!process.env.CRON_SECRET || cronAuth !== `Bearer ${process.env.CRON_SECRET}`) {
+      return res.status(401).json({ error: 'Unauthorized cron request' });
+    }
+    const supabaseAdmin = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
+    return await reconcilePortalAdvances(res, supabaseAdmin);
+  }
+
+  // ── Accounts Portal webhook (no user token — auth via x-api-key) ────────
+  // POST /api/receipt-url?accounts_hook=1
+  //   Header:  x-api-key: <ACCOUNTS_PORTAL_API_KEY>
+  //   Body:    { advance_id, event, employee_number, amount, ... } per integration spec
+  // Must respond 200 within 5s; sender does not retry on failure (reconciliation cron covers gaps).
+  if (req.method === 'POST' && req.query?.accounts_hook === '1') {
+    const apiKey = req.headers['x-api-key'];
+    if (!process.env.ACCOUNTS_PORTAL_API_KEY || apiKey !== process.env.ACCOUNTS_PORTAL_API_KEY) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+    const supabaseAdmin = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
+    return await handleAccountsPortalWebhook(req, res, supabaseAdmin);
+  }
+
   const authHeader = req.headers.authorization;
   if (!authHeader?.startsWith('Bearer ')) return res.status(401).json({ error: 'Unauthorized' });
   const token = authHeader.split(' ')[1];
@@ -59,6 +83,20 @@ export default async function handler(req, res) {
         .select('expense_id, checked_by_name, checked_at');
       if (error) return res.status(500).json({ error: error.message });
       return res.status(200).json({ checks: data || [] });
+    }
+
+    // ?portal_advances=1 → mirror of Accounts Portal advances (read-only).
+    // Admins/HR/Audit/Super Admin get all; an employee only gets their own matched rows.
+    if (req.query?.portal_advances) {
+      let q = supabaseAdmin
+        .from('accounts_portal_advances')
+        .select('id, advance_id, event, employee_number, employee_name, amount, advance_date, narration, bank_reference, bank, outstanding_after, matched_employee_id, received_at')
+        .order('advance_date', { ascending: false })
+        .order('received_at', { ascending: false });
+      if (!['admin','hr','audit','super_admin'].includes(profile.role)) q = q.eq('matched_employee_id', user.id);
+      const { data, error } = await q;
+      if (error) return res.status(500).json({ error: error.message });
+      return res.status(200).json({ portal_advances: data || [] });
     }
 
     // ?advances=1 → employee advance ledger (for Advance/Due display).
@@ -146,6 +184,15 @@ export default async function handler(req, res) {
         return res.status(403).json({ error: 'Only a Super Admin or Audit can sync from accounts-2026' });
       }
       return await syncAccounts2026(res, supabaseAdmin);
+    }
+
+    // ── POST { sync_portal_advances: true } → manual reconciliation trigger for Accounts Portal advances ──
+    if (req.body?.sync_portal_advances) {
+      const { data: profile } = await supabaseAdmin.from('users').select('role').eq('id', user.id).single();
+      if (!profile || !['super_admin', 'audit', 'hr'].includes(profile.role)) {
+        return res.status(403).json({ error: 'Only Super Admin, Audit, or HR can sync portal advances' });
+      }
+      return await reconcilePortalAdvances(res, supabaseAdmin);
     }
 
     // ── POST { audit_check_ids: [...], checked: true|false } → Audit's manual "checked for payment" marker ──
@@ -606,4 +653,157 @@ async function autoRecoverAdvanceGap(db, userId, gapAmount) {
     budget -= take;
   }
   return gapAmount - budget; // total actually recovered
+}
+
+// ═════════════════════════════════════════════════════════════════════
+// Accounts Portal ADVANCES integration
+// Source of truth: accounts-2026.vercel.app (Stockwell Solar ERP).
+// - Webhook  (handleAccountsPortalWebhook) — realtime, per-event, idempotent by advance_id.
+// - Reconcile (reconcilePortalAdvances)   — cron pull to recover missed webhooks.
+// Both write to public.accounts_portal_advances (migration 17). See EMPLOYEE_ADVANCES_INTEGRATION_PLAN.
+// ═════════════════════════════════════════════════════════════════════
+
+async function matchEmployeeIdByEmpNo(db, employee_number) {
+  if (!employee_number) return null;
+  const trimmed = String(employee_number).trim();
+  if (!trimmed) return null;
+  const { data } = await db
+    .from('users')
+    .select('id')
+    .ilike('emp_no', trimmed)
+    .limit(1)
+    .maybeSingle();
+  return data?.id || null;
+}
+
+function normalizeAdvanceEvent(evt) {
+  // Accounts Portal sends "employee_advance.given" / "employee_advance.refunded"
+  const s = String(evt || '').toLowerCase();
+  if (s.includes('refund')) return 'refunded';
+  return 'given';
+}
+
+async function handleAccountsPortalWebhook(req, res, db) {
+  const b = req.body || {};
+  const {
+    event,
+    advance_id,
+    employee_name,
+    employee_number,
+    recipient_id,
+    amount,
+    date: advance_date,
+    narration,
+    bank_reference,
+    bank,
+    outstanding_after,
+  } = b;
+
+  if (!advance_id || !employee_number || amount == null) {
+    return res.status(400).json({ error: 'advance_id, employee_number, amount are required' });
+  }
+
+  const normalizedEvent = normalizeAdvanceEvent(event);
+  const matched_employee_id = await matchEmployeeIdByEmpNo(db, employee_number);
+
+  const row = {
+    advance_id: String(advance_id),
+    event: normalizedEvent,
+    employee_number: employee_number || null,
+    employee_name: employee_name || null,
+    recipient_id: recipient_id || null,
+    amount: Number(amount) || 0,
+    advance_date: advance_date || null,
+    narration: narration || null,
+    bank_reference: bank_reference || null,
+    bank: bank || null,
+    outstanding_after: outstanding_after == null ? null : Number(outstanding_after),
+    matched_employee_id,
+    raw_payload: b,
+  };
+
+  // Idempotent: same advance_id → update in place (keeps latest fields, no duplicate row)
+  const { error } = await db
+    .from('accounts_portal_advances')
+    .upsert(row, { onConflict: 'advance_id' });
+  if (error) return res.status(500).json({ error: error.message });
+
+  return res.status(200).json({ ok: true, matched: !!matched_employee_id });
+}
+
+async function reconcilePortalAdvances(res, db) {
+  const baseUrl = process.env.ACCOUNTS_PORTAL_BASE_URL || 'https://accounts-2026.vercel.app';
+  const apiKey = process.env.ACCOUNTS_PORTAL_API_KEY;
+  if (!apiKey) {
+    return res.status(500).json({ error: 'ACCOUNTS_PORTAL_API_KEY env var is not set' });
+  }
+
+  let payload;
+  try {
+    const r = await fetch(`${baseUrl}/api/external/employee-advances?only_outstanding=false&include_entries=true`, {
+      headers: { 'x-api-key': apiKey }
+    });
+    if (r.status === 401) return res.status(502).json({ error: 'Accounts portal rejected the API key (401)' });
+    if (!r.ok) return res.status(502).json({ error: `Accounts portal returned HTTP ${r.status}` });
+    payload = await r.json();
+  } catch (err) {
+    return res.status(502).json({ error: 'Could not reach accounts portal: ' + (err.message ?? err) });
+  }
+
+  const employees = payload?.data || [];
+  // Preload our users table once for emp_no matching
+  const { data: users } = await db.from('users').select('id, emp_no').not('emp_no', 'is', null);
+  const byEmpNo = new Map((users || []).map(u => [String(u.emp_no).trim().toLowerCase(), u.id]));
+
+  // Existing advance_ids we already know about, so we skip pure no-ops
+  const { data: existing } = await db.from('accounts_portal_advances').select('advance_id');
+  const knownIds = new Set((existing || []).map(r => r.advance_id));
+
+  const rowsToUpsert = [];
+  const summary = { employees: employees.length, upserted: 0, unmatched: 0, skipped_existing: 0 };
+
+  for (const emp of employees) {
+    const matched_employee_id = byEmpNo.get(String(emp.employee_number || '').trim().toLowerCase()) || null;
+    if (!matched_employee_id) summary.unmatched++;
+
+    // Portal returns per-employee aggregate. Line-wise trail is in `entries` when include_entries=true.
+    const entries = Array.isArray(emp.entries) ? emp.entries : [];
+    for (const e of entries) {
+      // Portal doesn't guarantee an entry-level id — synthesise a stable one so the
+      // upsert stays idempotent across reconciliations.
+      const type = String(e.type || '').toUpperCase();
+      if (type !== 'ADVANCE' && type !== 'REFUND') continue; // CLAIM_ADJUST is handled elsewhere
+      const eventNorm = type === 'REFUND' ? 'refunded' : 'given';
+      const bankRef = e.bank_reference || '';
+      const synthId = `ACCT-${emp.recipient_id || emp.employee_number}-${e.date || ''}-${eventNorm}-${Math.round(Number(e.amount || 0) * 100)}-${bankRef}`;
+
+      if (knownIds.has(synthId)) { summary.skipped_existing++; continue; }
+      rowsToUpsert.push({
+        advance_id: synthId,
+        event: eventNorm,
+        employee_number: emp.employee_number || null,
+        employee_name: emp.employee_name || null,
+        recipient_id: emp.recipient_id || null,
+        amount: Number(e.amount) || 0,
+        advance_date: e.date || null,
+        narration: e.narration || null,
+        bank_reference: bankRef || null,
+        bank: e.bank || null,
+        outstanding_after: emp.outstanding == null ? null : Number(emp.outstanding),
+        matched_employee_id,
+        raw_payload: { source: 'reconcile', employee: emp, entry: e },
+      });
+      knownIds.add(synthId);
+    }
+  }
+
+  if (rowsToUpsert.length) {
+    const { error } = await db
+      .from('accounts_portal_advances')
+      .upsert(rowsToUpsert, { onConflict: 'advance_id' });
+    if (error) return res.status(500).json({ error: error.message });
+    summary.upserted = rowsToUpsert.length;
+  }
+
+  return res.status(200).json(summary);
 }

@@ -163,6 +163,18 @@
         <div id="adv-table-wrap" style="background:var(--card-bg,#fff);border:1px solid var(--border);border-radius:14px;overflow:hidden">
           <div class="loading-state"><div class="spinner"></div><span>Loading advances…</span></div>
         </div>
+
+        <!-- ── Accounts Portal Advances (external, read-only mirror) ── -->
+        <div style="margin-top:2rem;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:.5rem">
+          <div>
+            <h2 style="margin:0;font-size:1.1rem;font-weight:800">🏦 Accounts Portal Advances</h2>
+            <p style="margin:.15rem 0 0;color:var(--text-muted);font-size:.8rem">Automatic sync from Accounts Portal (bank-transfer advances). Source of truth: accounts-2026.vercel.app — read only.</p>
+          </div>
+          <button id="btn-sync-portal-adv" class="btn btn-secondary" onclick="syncPortalAdvances()" style="height:34px;font-size:.78rem;font-weight:600;border-radius:8px;padding:0 .9rem;white-space:nowrap">🔄 Sync now</button>
+        </div>
+        <div id="portal-adv-wrap" style="margin-top:.75rem;background:var(--card-bg,#fff);border:1px solid var(--border);border-radius:14px;overflow:hidden">
+          <div class="loading-state"><div class="spinner"></div><span>Loading portal advances…</span></div>
+        </div>
       </main>
     </div>
   </div>
@@ -225,7 +237,107 @@
 
       await loadAdvances();
       loadEmployeesForPicker();
+      loadPortalAdvances();
     })();
+
+    // ── Accounts Portal Advances (external mirror — read only) ──
+    let portalAdvRows = [];
+    async function loadPortalAdvances() {
+      const wrap = document.getElementById('portal-adv-wrap');
+      try {
+        const token = (await db.auth.getSession()).data.session?.access_token;
+        const res = await fetch('/api/receipt-url?portal_advances=1', { headers: { Authorization: `Bearer ${token}` } });
+        const body = await res.json();
+        if (!res.ok) throw new Error(body.error || 'Failed to load portal advances');
+        portalAdvRows = body.portal_advances || [];
+        renderPortalAdvances();
+      } catch (err) {
+        wrap.innerHTML = `<div style="padding:1rem;color:#991b1b;font-size:.85rem">Error: ${err.message}</div>`;
+      }
+    }
+
+    function renderPortalAdvances() {
+      const wrap = document.getElementById('portal-adv-wrap');
+      if (!portalAdvRows.length) {
+        wrap.innerHTML = `<div style="padding:1.5rem;text-align:center;color:var(--text-muted);font-size:.85rem">No Accounts Portal advances synced yet. Click "🔄 Sync now" to pull.</div>`;
+        return;
+      }
+
+      // Group by employee, compute per-employee outstanding (given - refunded)
+      const byEmp = {};
+      portalAdvRows.forEach(r => {
+        const key = r.employee_number || r.employee_name || 'Unknown';
+        if (!byEmp[key]) byEmp[key] = { key, employee_number: r.employee_number, employee_name: r.employee_name, matched: !!r.matched_employee_id, entries: [], given: 0, refunded: 0, latestOutstanding: null, latestDate: null };
+        byEmp[key].entries.push(r);
+        if (r.event === 'given') byEmp[key].given += Number(r.amount) || 0;
+        if (r.event === 'refunded') byEmp[key].refunded += Number(r.amount) || 0;
+        if (r.outstanding_after != null) {
+          if (byEmp[key].latestDate == null || (r.advance_date && r.advance_date > byEmp[key].latestDate)) {
+            byEmp[key].latestOutstanding = Number(r.outstanding_after);
+            byEmp[key].latestDate = r.advance_date;
+          }
+        }
+      });
+      const emps = Object.values(byEmp).sort((a, b) => (b.latestDate || '').localeCompare(a.latestDate || ''));
+      const grandOutstanding = emps.reduce((s, e) => s + (e.latestOutstanding != null ? e.latestOutstanding : (e.given - e.refunded)), 0);
+      const fmt = n => '₹' + Number(n || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+      wrap.innerHTML = `
+        <div style="padding:.9rem 1rem;background:var(--bg-2,#f5f3ff);border-bottom:1px solid var(--border);display:flex;justify-content:space-between;flex-wrap:wrap;gap:.5rem">
+          <span style="font-size:.78rem;font-weight:700;color:var(--text-2,#52525b)">${emps.length} employee${emps.length !== 1 ? 's' : ''} · ${portalAdvRows.length} entr${portalAdvRows.length !== 1 ? 'ies' : 'y'}</span>
+          <span style="font-size:.85rem;font-weight:800;color:#92400e">Total Outstanding: ${fmt(grandOutstanding)}</span>
+        </div>
+        <div style="overflow-x:auto">
+          <table style="width:100%;border-collapse:collapse;font-size:.82rem">
+            <thead style="background:var(--bg-2,#f4f4f5)">
+              <tr>
+                <th style="text-align:left;padding:.6rem .8rem;font-weight:700">Employee</th>
+                <th style="text-align:right;padding:.6rem .8rem;font-weight:700">Given</th>
+                <th style="text-align:right;padding:.6rem .8rem;font-weight:700">Refunded</th>
+                <th style="text-align:right;padding:.6rem .8rem;font-weight:700">Outstanding</th>
+                <th style="text-align:left;padding:.6rem .8rem;font-weight:700">Last activity</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${emps.map(e => `
+                <tr style="border-top:1px solid var(--border)">
+                  <td style="padding:.55rem .8rem">
+                    <div style="font-weight:600">${(e.employee_name || '—').replace(/</g,'&lt;')}</div>
+                    <div style="font-size:.72rem;color:var(--text-muted)">${(e.employee_number || '').replace(/</g,'&lt;')} ${e.matched ? '' : '<span title="No matching employee in ExpenseTrack" style="color:#991b1b;font-weight:700">· UNMATCHED</span>'}</div>
+                  </td>
+                  <td style="padding:.55rem .8rem;text-align:right;color:#166534;font-weight:600">${fmt(e.given)}</td>
+                  <td style="padding:.55rem .8rem;text-align:right;color:#7c3aed">${fmt(e.refunded)}</td>
+                  <td style="padding:.55rem .8rem;text-align:right;font-weight:700;color:#92400e">${fmt(e.latestOutstanding != null ? e.latestOutstanding : (e.given - e.refunded))}</td>
+                  <td style="padding:.55rem .8rem;color:var(--text-muted)">${e.latestDate || '—'}</td>
+                </tr>`).join('')}
+            </tbody>
+          </table>
+        </div>`;
+    }
+
+    async function syncPortalAdvances() {
+      const btn = document.getElementById('btn-sync-portal-adv');
+      const orig = btn.innerHTML;
+      btn.disabled = true;
+      btn.innerHTML = 'Syncing…';
+      try {
+        const token = (await db.auth.getSession()).data.session?.access_token;
+        const res = await fetch('/api/receipt-url', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+          body: JSON.stringify({ sync_portal_advances: true })
+        });
+        const body = await res.json();
+        if (!res.ok) throw new Error(body.error || 'Sync failed');
+        showMessage(`✅ Synced ${body.upserted || 0} entries (${body.employees || 0} employees, ${body.unmatched || 0} unmatched)`, 'success');
+        await loadPortalAdvances();
+      } catch (err) {
+        showMessage('Sync failed: ' + err.message, 'error');
+      } finally {
+        btn.disabled = false;
+        btn.innerHTML = orig;
+      }
+    }
 
     async function loadAdvances() {
       try {
