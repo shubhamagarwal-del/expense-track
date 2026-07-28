@@ -3256,7 +3256,7 @@
         const { approved, skipped, elapsed_ms } = json;
         const elapsed = elapsed_ms < 1000 ? `${elapsed_ms}ms` : `${(elapsed_ms/1000).toFixed(1)}s`;
         showMessage(`✅ ${approved} entries Audit Cleared${skipped ? ` (${skipped} skipped)` : ''} · ${elapsed}`, 'success');
-        await loadAdminExpenses();
+        applyAuditChangeLocal(toClear.map(e => e.id), { status: 'audit_cleared', audit_by_name: currentProfile.name, audit_at: new Date().toISOString() });
       } catch (err) {
         showMessage(err.message, 'error');
         if (btn) { btn.disabled = false; btn.innerHTML = origText; }
@@ -3404,6 +3404,19 @@
     }
 
     // ── AUDIT ACTIONS ────────────────────────────────────────────
+    /** Fast post-action update: patch the changed expense(s) in allExpensesFetched and re-render
+     *  the current view ONCE — instead of re-fetching all rows and re-rendering 6×. The change is
+     *  deterministic (we know the new status), so local state stays correct until the next full load. */
+    function applyAuditChangeLocal(ids, changes) {
+      const idset = new Set(Array.isArray(ids) ? ids : [ids]);
+      allExpensesFetched.forEach(e => { if (idset.has(e.id)) Object.assign(e, changes); });
+      recomputeActiveFilteredExpenses();
+      updateAdminStats(allExpensesFetched);
+      renderActionQueue();
+      if (hierarchyMode) renderHierarchyView(activeFilteredExpenses !== null ? activeFilteredExpenses : allExpensesFetched);
+      else refreshListView(true);
+    }
+
     async function auditClearExpense(expenseId) {
       if (!confirm('Mark this expense as Audit Cleared?')) return;
       try {
@@ -3416,7 +3429,7 @@
         const json = await res.json();
         if (!res.ok) throw new Error(json.error || 'Failed');
         showMessage('Expense audit cleared ✓', 'success');
-        await loadAdminExpenses();
+        applyAuditChangeLocal(expenseId, { status: 'audit_cleared', audit_by_name: currentProfile.name, audit_at: new Date().toISOString() });
       } catch (err) { showMessage(err.message, 'error'); }
     }
 
@@ -3471,7 +3484,7 @@
         if (!res.ok) throw new Error(json.error || 'Failed');
         document.getElementById('_audit-flag-modal')?.remove();
         showMessage(target === 'audit_query' ? 'Expense sent back to the employee for correction' : 'Expense flagged for HR review', 'info');
-        await loadAdminExpenses();
+        applyAuditChangeLocal(expenseId, { status: target, audit_note: reason, audit_by_name: currentProfile.name, audit_at: new Date().toISOString() });
       } catch (err) { showMessage(err.message, 'error'); }
     }
 
@@ -3528,7 +3541,7 @@
         const json = await res.json();
         if (!res.ok) throw new Error(json.error || 'Failed');
         showMessage('Category updated', 'success');
-        await loadAdminExpenses();
+        applyAuditChangeLocal(expenseId, { category });
       } catch (err) { showMessage(err.message, 'error'); }
     }
 
