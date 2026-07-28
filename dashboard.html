@@ -5305,8 +5305,12 @@
       });
       const sorted = Object.values(groups).sort((a,b) => new Date(b.entries[0].created_at) - new Date(a.entries[0].created_at));
 
+      // Audit doesn't need the employee/bank/site-wise detail — only the expense lines to
+      // clear/flag. Hiding these for Audit also skips the (heavier) site-wise summary render.
+      const showEmpDetail = currentProfile.role !== 'audit';
       return `
       <div style="padding:.875rem 1rem">
+        ${showEmpDetail ? `
         <!-- Employee info -->
         <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:.625rem;background:var(--card-bg,#fff);border:1px solid var(--border);border-radius:10px;padding:.875rem;margin-bottom:.75rem;font-size:.8rem">
           ${[['👤 Name',user.name],['🆔 Emp No',user.emp_no],['📧 Email',user.email],
@@ -5352,6 +5356,7 @@
             </div>
           </div>`;
         })()}
+        ` : ''}
         <!-- Cycle groups -->
         ${sorted.map(g => {
           const safeKey = `${user.id}|${g.mY}|${g.cT}`;
