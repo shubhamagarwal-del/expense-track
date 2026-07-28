@@ -49,7 +49,10 @@ export default async function handler(req, res) {
   // Must respond 200 within 5s; sender does not retry on failure (reconciliation cron covers gaps).
   if (req.method === 'POST' && req.query?.accounts_hook === '1') {
     const apiKey = req.headers['x-api-key'];
-    if (!process.env.ACCOUNTS_PORTAL_API_KEY || apiKey !== process.env.ACCOUNTS_PORTAL_API_KEY) {
+    // Reuse the same Accounts-portal key the reimbursements sync already uses
+    // (ACCOUNTS2026_API_KEY, set in prod). ACCOUNTS_PORTAL_API_KEY is an optional override.
+    const expectedKey = process.env.ACCOUNTS_PORTAL_API_KEY || process.env.ACCOUNTS2026_API_KEY;
+    if (!expectedKey || apiKey !== expectedKey) {
       return res.status(401).json({ error: 'Unauthorized' });
     }
     const supabaseAdmin = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
@@ -732,10 +735,11 @@ async function handleAccountsPortalWebhook(req, res, db) {
 }
 
 async function reconcilePortalAdvances(res, db) {
-  const baseUrl = process.env.ACCOUNTS_PORTAL_BASE_URL || 'https://accounts-2026.vercel.app';
-  const apiKey = process.env.ACCOUNTS_PORTAL_API_KEY;
+  // Same Accounts portal + key the reimbursements sync already uses (ACCOUNTS2026_*).
+  const baseUrl = process.env.ACCOUNTS_PORTAL_BASE_URL || process.env.ACCOUNTS2026_BASE_URL || 'https://accounts-2026.vercel.app';
+  const apiKey = process.env.ACCOUNTS_PORTAL_API_KEY || process.env.ACCOUNTS2026_API_KEY;
   if (!apiKey) {
-    return res.status(500).json({ error: 'ACCOUNTS_PORTAL_API_KEY env var is not set' });
+    return res.status(500).json({ error: 'Accounts portal API key is not set (ACCOUNTS2026_API_KEY)' });
   }
 
   let payload;
