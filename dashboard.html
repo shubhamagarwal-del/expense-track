@@ -1829,7 +1829,7 @@
           : role === 'hr'
           ? expenses.filter(e => e.status === 'l1_approved' || e.status === 'audit_review').length
           : role === 'audit'
-          ? expenses.filter(e => e.status === 'hr_approved').length
+          ? expenses.filter(e => e.status === 'hr_approved' || e.status === 'approved').length
           : expenses.filter(e => e.status === 'pending' || e.status === 'l1_approved').length;
         const approvedAmt = expenses
           .filter(e => ['approved','hr_approved','audit_cleared'].includes(e.status))
@@ -2025,7 +2025,7 @@
                         </div>
                         <div style="display:flex; gap:0.5rem">
                           <button class="btn btn-primary btn-sm" onclick="approveEntireCycle('${safeKey}',this)" style="display:none">Approve Entire Cycle</button>
-                          ${(() => { const n = g.entries.filter(e => e.status === 'hr_approved').length; return currentProfile.role === 'audit' && n > 0 ? `<button class="btn btn-sm" onclick="bulkAuditClearCycle('${safeKey}',this)" title="Baaki bache hue ${n} HR-Approved entries ko ek saath Audit-clear karo" style="background:#14532d;color:#fff;border:none;border-radius:6px;padding:.35rem .75rem;font-size:.8rem;font-weight:700;cursor:pointer">🔍 Clear All (${n})</button>` : ''; })()}
+                          ${(() => { const n = g.entries.filter(e => e.status === 'hr_approved' || e.status === 'approved').length; return currentProfile.role === 'audit' && n > 0 ? `<button class="btn btn-sm" onclick="bulkAuditClearCycle('${safeKey}',this)" title="Baaki bache hue ${n} entries (Needs Audit) ko ek saath Audit-clear karo" style="background:#14532d;color:#fff;border:none;border-radius:6px;padding:.35rem .75rem;font-size:.8rem;font-weight:700;cursor:pointer">🔍 Clear All (${n})</button>` : ''; })()}
                           <button class="btn btn-secondary btn-sm" onclick="exportCycleToExcel('${safeKey}')">Excel</button>
                           <button class="btn btn-secondary btn-sm" onclick="exportCycleToCSV('${safeKey}')" style="background:#0f172a; color:white; border:none">CSV</button>
                           <button class="btn btn-secondary btn-sm" onclick="exportCycleToPDF('${safeKey}')" style="background:#dc2626; color:white; border:none">PDF</button>
@@ -3227,14 +3227,14 @@
       if (currentProfile.role !== 'audit') return;
       const [userId, monthYear, cycleText] = safeKey.split('|');
       const toClear = allExpensesFetched.filter(e => {
-        if (e.status !== 'hr_approved' || e.user_id !== userId) return false;
+        if (!(e.status === 'hr_approved' || e.status === 'approved') || e.user_id !== userId) return false;
         const d = new Date(e.created_at);
         const mY = d.toLocaleString('default', { month: 'long', year: 'numeric' });
         const cT = d.getDate() <= 15 ? '1st - 15th' : '16th - End';
         return mY === monthYear && cT === cycleText;
       });
-      if (!toClear.length) { showMessage('Is cycle mein koi HR-Approved entry nahi bachi.', 'info'); return; }
-      if (!confirm(`Is cycle ki ${toClear.length} HR-Approved entries ko Audit Clear kar dein?\n\nJo flag karni thi wo pehle kar li? Ye action reversible nahi hai — sab entries "audit_cleared" ho jayengi.`)) return;
+      if (!toClear.length) { showMessage('Is cycle mein koi pending-audit entry nahi bachi.', 'info'); return; }
+      if (!confirm(`Is cycle ki ${toClear.length} entries (Needs Audit) ko Audit Clear kar dein?\n\nJo flag karni thi wo pehle kar li? Ye action reversible nahi hai — sab entries "audit_cleared" ho jayengi.`)) return;
 
       const btn = triggerBtn || event?.currentTarget || null;
       const origText = btn?.innerHTML;
@@ -5371,7 +5371,7 @@
               </div>
               <div style="display:flex;gap:.3rem;flex-wrap:wrap">
                 <button class="btn btn-primary btn-sm" style="font-size:.7rem;padding:.2rem .55rem;border-radius:7px;display:none" onclick="approveEntireCycle('${safeKey}',this)">✓ Approve Cycle</button>
-                ${(() => { const n = g.entries.filter(e => e.status === 'hr_approved').length; return currentProfile.role === 'audit' && n > 0 ? `<button class="btn btn-sm" onclick="bulkAuditClearCycle('${safeKey}',this)" title="Baaki bache hue ${n} HR-Approved entries ko ek saath Audit-clear karo" style="background:#14532d;color:#fff;border:none;border-radius:7px;padding:.2rem .55rem;font-size:.7rem;font-weight:700;cursor:pointer">🔍 Clear All (${n})</button>` : ''; })()}
+                ${(() => { const n = g.entries.filter(e => e.status === 'hr_approved' || e.status === 'approved').length; return currentProfile.role === 'audit' && n > 0 ? `<button class="btn btn-sm" onclick="bulkAuditClearCycle('${safeKey}',this)" title="Baaki bache hue ${n} entries (Needs Audit) ko ek saath Audit-clear karo" style="background:#14532d;color:#fff;border:none;border-radius:7px;padding:.2rem .55rem;font-size:.7rem;font-weight:700;cursor:pointer">🔍 Clear All (${n})</button>` : ''; })()}
                 <button class="btn btn-secondary btn-sm" style="font-size:.7rem;padding:.2rem .55rem;border-radius:7px" onclick="exportCycleToExcel('${safeKey}')">Excel</button>
                 <button class="btn btn-secondary btn-sm" style="font-size:.7rem;padding:.2rem .55rem;border-radius:7px;background:#0f172a;color:white;border:none" onclick="exportCycleToCSV('${safeKey}')">CSV</button>
                 <button class="btn btn-secondary btn-sm" style="font-size:.7rem;padding:.2rem .55rem;border-radius:7px;background:#dc2626;color:white;border:none" onclick="exportCycleToPDF('${safeKey}')">PDF</button>
