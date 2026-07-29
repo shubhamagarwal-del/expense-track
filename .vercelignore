@@ -1,0 +1,20 @@
+# Secrets / local env — never upload
+.env
+.env.*
+.vercel
+.claude
+
+# Dependencies (Vercel installs from package.json)
+node_modules
+
+# Internal/temp files — backups, update logs, one-off scripts (contain data; not for prod)
+_*
+
+# Local scripts / logs
+server.err
+*.err
+*.log
+generate_receipt_fraud_pdf.py
+
+# Migrations (schema only; run manually in Supabase, not needed at runtime)
+migration

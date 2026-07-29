@@ -1,0 +1,294 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ExpenseTrack — Check-ins</title>
+  <link rel="stylesheet" href="style.css" />
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <link rel="manifest" href="/manifest.json" />
+  <meta name="theme-color" content="#6366f1" />
+  <link rel="shortcut icon" href="/favicon.ico" />
+  <link rel="icon" type="image/png" sizes="192x192" href="/icon-192.png" />
+  <script src="/pwa-register.js" defer></script>
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <style>
+    :root { --text-muted: #64748b; --card-bg: #ffffff; --bg-2: #f4f4f5; }
+    .form-input, .form-select { width: 100%; border: 1px solid var(--border); border-radius: 8px; padding: 0 .6rem; font-family: inherit; font-size: .85rem; background: #fff; color: var(--text-1); }
+    .form-input:focus, .form-select:focus { outline: none; border-color: var(--primary); }
+    .loading-state { display: flex; align-items: center; justify-content: center; gap: .6rem; padding: 2rem; color: var(--text-muted); font-size: .88rem; }
+    .spinner { width: 18px; height: 18px; border: 2px solid var(--border); border-top-color: var(--primary); border-radius: 50%; animation: spin .7s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+  </style>
+</head>
+
+<body>
+  <div class="app-layout">
+    <div class="sidebar-overlay" id="sidebar-overlay" onclick="closeSidebar()"></div>
+    <nav class="sidebar" id="sidebar">
+      <div class="sidebar-logo">
+        <div class="logo-icon"><img src="/icon-192.png" alt="ExpenseTrack" /></div>
+        <span class="logo-text">ExpenseTrack</span>
+      </div>
+      <div class="sidebar-nav">
+        <p class="sidebar-nav-label">Menu</p>
+        <a href="dashboard.html" class="sidebar-link">
+          <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" /></svg>
+          Dashboard
+        </a>
+        <a href="attendance-checkins.html" class="sidebar-link active">
+          <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M17.657 16.657L13.414 20.9a2 2 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" /><path stroke-linecap="round" stroke-linejoin="round" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
+          Site Check-ins
+        </a>
+        <a href="profile.html" class="sidebar-link">
+          <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" /></svg>
+          My Profile
+        </a>
+        <a href="#" onclick="logout();return false" class="sidebar-link">
+          <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" /></svg>
+          Sign Out
+        </a>
+      </div>
+    </nav>
+
+    <div class="app-main">
+      <header class="topbar">
+        <button class="topbar-menu" onclick="toggleSidebar()" aria-label="Open menu">
+          <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 12h16M4 18h16" /></svg>
+        </button>
+        <span class="topbar-title">📍 Site Check-ins</span>
+        <div class="topbar-right"></div>
+      </header>
+
+      <main class="page-content">
+        <div style="margin-bottom:1rem">
+          <h1 style="margin:0 0 .25rem;font-size:1.4rem;font-weight:800">📍 Site Check-ins</h1>
+          <p style="margin:0;color:var(--text-muted);font-size:.88rem">Kaunsa employee kis site pe, kab, andar/bahar check-in kiya — GPS location ke saath.</p>
+        </div>
+
+        <div style="background:var(--card-bg,#fff);border:1px solid var(--border);border-radius:14px;padding:1rem 1.25rem;margin-bottom:1rem;display:flex;flex-wrap:wrap;gap:.75rem;align-items:end">
+          <div>
+            <label style="display:block;font-size:.7rem;font-weight:700;color:var(--text-muted);text-transform:uppercase;margin-bottom:.3rem">Date</label>
+            <input type="date" id="f-date" class="form-input" style="height:38px" onchange="load()" />
+          </div>
+          <div style="flex:1;min-width:180px">
+            <label style="display:block;font-size:.7rem;font-weight:700;color:var(--text-muted);text-transform:uppercase;margin-bottom:.3rem">Search (employee / site)</label>
+            <input type="text" id="f-search" class="form-input" placeholder="Naam, emp no, ya site…" style="height:38px" oninput="render()" />
+          </div>
+          <div style="min-width:140px">
+            <label style="display:block;font-size:.7rem;font-weight:700;color:var(--text-muted);text-transform:uppercase;margin-bottom:.3rem">Status</label>
+            <select id="f-status" class="form-select" style="height:38px" onchange="render()">
+              <option value="all">Sab</option>
+              <option value="inside">Inside fence</option>
+              <option value="outside">Outside fence</option>
+              <option value="nofence">No fence</option>
+              <option value="mismatch">Site mismatch</option>
+              <option value="conflict">Attendance conflict</option>
+            </select>
+          </div>
+          <div>
+            <button onclick="exportExcel()" style="height:38px;background:#15803d;color:#fff;border:none;border-radius:8px;padding:0 1rem;font-weight:700;font-size:.82rem;cursor:pointer">⤓ Excel</button>
+          </div>
+        </div>
+
+        <div id="summary" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:.75rem;margin-bottom:1rem"></div>
+
+        <div id="wrap" style="background:var(--card-bg,#fff);border:1px solid var(--border);border-radius:14px;overflow:hidden">
+          <div class="loading-state"><div class="spinner"></div><span>Loading…</span></div>
+        </div>
+      </main>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="app.js"></script>
+  <script>
+    let currentProfile = null;
+    let rows = [];
+    let shownList = [];  // last-rendered filtered list (for Excel export)
+
+    // Attendance codes that mean the employee was OFF that day — a check-in on such a
+    // day is a conflict (they claimed leave but were physically at a site).
+    const OFF_LABEL = { A: 'Absent', L: 'Leave', CO: 'Comp-off', SUN: 'Sunday', SAT: 'Saturday', H: 'Holiday', 'Paternity Leave': 'Paternity Leave' };
+    function attConflict(r) {
+      const s = r.att_status;
+      return s && OFF_LABEL[s] ? (OFF_LABEL[s] || s) : null;
+    }
+
+    (async () => {
+      const user = await requireAuth();
+      if (!user) return;
+      currentProfile = await getUserProfile();
+      if (!currentProfile) { showMessage('Profile load nahi hua.', 'error'); return; }
+      if (!['admin', 'hr', 'audit', 'super_admin'].includes(currentProfile.role)) { window.location.href = 'dashboard.html'; return; }
+      if (typeof populateSidebar === 'function') populateSidebar(currentProfile);
+      const d = new Date();
+      document.getElementById('f-date').value = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+      load();
+    })();
+
+    async function load() {
+      const wrap = document.getElementById('wrap');
+      wrap.innerHTML = '<div class="loading-state"><div class="spinner"></div><span>Loading…</span></div>';
+      try {
+        const date = document.getElementById('f-date').value;
+        const token = (await db.auth.getSession()).data.session?.access_token;
+        const res = await fetch('/api/receipt-url?checkins=1' + (date ? '&date=' + date : ''), { headers: { Authorization: `Bearer ${token}` } });
+        const body = await res.json();
+        if (!res.ok) throw new Error(body.error || 'Load fail');
+        rows = body.checkins || [];
+        render();
+      } catch (err) { wrap.innerHTML = `<div style="padding:1rem;color:#991b1b;font-size:.85rem">Error: ${escHtml(err.message)}</div>`; }
+    }
+
+    function render() {
+      const q = (document.getElementById('f-search').value || '').toLowerCase().trim();
+      const st = document.getElementById('f-status').value;
+      let list = rows.slice();
+      if (q) list = list.filter(r => `${r.name || ''} ${r.emp_no || ''} ${r.site_name || ''} ${r.site_code || ''} ${r.department || ''} ${r.location_name || ''} ${r.nearest_site_name || ''}`.toLowerCase().includes(q));
+      if (st === 'inside') list = list.filter(r => r.inside_fence === true);
+      else if (st === 'outside') list = list.filter(r => r.inside_fence === false);
+      else if (st === 'nofence') list = list.filter(r => r.inside_fence == null);
+      else if (st === 'mismatch') list = list.filter(r => r.site_mismatch === true);
+      else if (st === 'conflict') list = list.filter(r => attConflict(r));
+      shownList = list;
+
+      // summary
+      const emps = new Set(list.map(r => r.user_id)).size;
+      const inside = list.filter(r => r.inside_fence === true).length;
+      const outside = list.filter(r => r.inside_fence === false).length;
+      const mismatch = list.filter(r => r.site_mismatch === true).length;
+      const conflict = list.filter(r => attConflict(r)).length;
+      const card = (label, val, col) => `<div style="background:var(--card-bg,#fff);border:1px solid var(--border);border-radius:12px;padding:.75rem 1rem"><div style="font-size:.68rem;font-weight:700;color:var(--text-muted);text-transform:uppercase">${label}</div><div style="font-size:1.35rem;font-weight:800;color:${col};margin-top:.15rem">${val}</div></div>`;
+      document.getElementById('summary').innerHTML =
+        card('Check-ins', list.length, '#4f46e5') + card('Present (employees)', emps, '#0e7490') +
+        card('✅ Inside', inside, '#166534') + card('⚠️ Outside', outside, '#92400e') +
+        card('📍 Site mismatch', mismatch, '#b45309') + card('🔴 Att. conflict', conflict, '#991b1b');
+
+      const wrap = document.getElementById('wrap');
+      if (!list.length) { wrap.innerHTML = `<div style="padding:1.5rem;text-align:center;color:var(--text-muted);font-size:.88rem">Is din koi check-in nahi mila.</div>`; return; }
+      wrap.innerHTML = `
+        <div style="overflow-x:auto">
+          <table style="width:100%;border-collapse:collapse;font-size:.83rem">
+            <thead style="background:var(--bg-2,#f4f4f5)">
+              <tr>
+                <th style="text-align:left;padding:.6rem .8rem;font-weight:700">Employee</th>
+                <th style="text-align:left;padding:.6rem .8rem;font-weight:700">Site</th>
+                <th style="text-align:left;padding:.6rem .8rem;font-weight:700">Status</th>
+                <th style="text-align:right;padding:.6rem .8rem;font-weight:700">Distance</th>
+                <th style="text-align:center;padding:.6rem .8rem;font-weight:700">Photo</th>
+                <th style="text-align:left;padding:.6rem .8rem;font-weight:700">Time</th>
+                <th style="text-align:left;padding:.6rem .8rem;font-weight:700">Location</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${(setTimeout(fillMissingPlaces, 60), '')}${list.map(r => {
+                const t = new Date(r.checked_at).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' });
+                const badge = r.inside_fence === true
+                  ? '<span style="background:#dcfce7;color:#166534;border-radius:5px;padding:1px 7px;font-size:.7rem;font-weight:700">✅ Inside</span>'
+                  : r.inside_fence === false
+                  ? '<span style="background:#fef3c7;color:#92400e;border-radius:5px;padding:1px 7px;font-size:.7rem;font-weight:700">⚠️ Outside</span>'
+                  : '<span style="background:#f3f4f6;color:#6b7280;border-radius:5px;padding:1px 7px;font-size:.7rem;font-weight:700">No fence</span>';
+                const hasGps = r.latitude != null && r.longitude != null;
+                const nameLine = r.location_name
+                  ? `<div style="font-weight:600">📍 ${escHtml(r.location_name)}</div>`
+                  : hasGps
+                  ? `<div class="loc-name" data-lat="${r.latitude}" data-lon="${r.longitude}" style="font-weight:600;color:var(--text-muted)">…</div>`
+                  : '';
+                const maps = hasGps
+                  ? `${nameLine}<a href="https://www.google.com/maps?q=${r.latitude},${r.longitude}" target="_blank" rel="noopener" style="color:var(--primary);font-weight:600;font-size:.78rem">Map ↗</a> <span style="color:var(--text-muted);font-size:.72rem">${(+r.latitude).toFixed(5)}, ${(+r.longitude).toFixed(5)}${r.accuracy_m != null ? ` · ±${r.accuracy_m}m` : ''}</span>`
+                  : '<span style="color:var(--text-muted)">—</span>';
+                const conf = attConflict(r);
+                const mismatchBadge = r.site_mismatch
+                  ? `<div style="margin-top:.25rem"><span title="GPS is closest to a different site" style="background:#fef3c7;color:#b45309;border-radius:5px;padding:1px 6px;font-size:.66rem;font-weight:800">📍 Mismatch</span></div>`
+                  : '';
+                const confBadge = conf
+                  ? `<div style="margin-top:.25rem"><span title="Attendance marks this day OFF but employee checked in" style="background:#fee2e2;color:#991b1b;border-radius:5px;padding:1px 6px;font-size:.66rem;font-weight:800">🔴 Att: ${escHtml(conf)}</span></div>`
+                  : '';
+                const nearestLine = r.site_mismatch && r.nearest_site_name
+                  ? `<div style="font-size:.7rem;color:#b45309;margin-top:.15rem">→ paas: ${escHtml(r.nearest_site_name)}${r.nearest_distance_m != null ? ` (${r.nearest_distance_m}m)` : ''}</div>`
+                  : '';
+                const photoCell = r.photo_url
+                  ? `<button data-url="${escHtml(r.photo_url)}" onclick="viewReceipt(this.dataset.url)" style="background:none;border:1px solid var(--border);border-radius:6px;padding:2px 8px;cursor:pointer;font-size:.72rem;font-weight:700;color:var(--primary)">📷 View</button>`
+                  : '<span style="color:var(--text-muted)">—</span>';
+                return `<tr style="border-top:1px solid var(--border)">
+                  <td style="padding:.55rem .8rem"><div style="font-weight:600">${escHtml(r.name || '—')}</div><div style="font-size:.72rem;color:var(--text-muted)">${escHtml(r.emp_no || '')}${r.department ? ' · ' + escHtml(r.department) : ''}</div></td>
+                  <td style="padding:.55rem .8rem"><div style="font-weight:600">${escHtml(r.site_name || '—')}</div><div style="font-size:.72rem;color:var(--text-muted)">${escHtml(r.site_code || '')}</div>${nearestLine}</td>
+                  <td style="padding:.55rem .8rem">${badge}${mismatchBadge}${confBadge}</td>
+                  <td style="padding:.55rem .8rem;text-align:right">${r.distance_m != null ? r.distance_m + ' m' : '—'}</td>
+                  <td style="padding:.55rem .8rem;text-align:center">${photoCell}</td>
+                  <td style="padding:.55rem .8rem;white-space:nowrap">${t}</td>
+                  <td style="padding:.55rem .8rem;min-width:170px">${maps}</td>
+                </tr>`;
+              }).join('')}
+            </tbody>
+          </table>
+        </div>`;
+    }
+
+    function exportExcel() {
+      if (typeof XLSX === 'undefined') { showMessage('Excel library load nahi hui — refresh karo.', 'error'); return; }
+      if (!shownList.length) { showMessage('Export ke liye koi check-in nahi.', 'error'); return; }
+      const statusText = r => r.inside_fence === true ? 'Inside' : r.inside_fence === false ? 'Outside' : 'No fence';
+      const data = shownList.map(r => ({
+        'Employee': r.name || '',
+        'Emp No': r.emp_no || '',
+        'Department': r.department || '',
+        'Site': r.site_name || '',
+        'Site Code': r.site_code || '',
+        'Status': statusText(r),
+        'Distance (m)': r.distance_m != null ? r.distance_m : '',
+        'Site Mismatch': r.site_mismatch ? 'YES' : '',
+        'Nearest Site': r.nearest_site_name || '',
+        'Nearest (m)': r.nearest_distance_m != null ? r.nearest_distance_m : '',
+        'Attendance Conflict': attConflict(r) || '',
+        'Place': r.location_name || '',
+        'Latitude': r.latitude != null ? r.latitude : '',
+        'Longitude': r.longitude != null ? r.longitude : '',
+        'Accuracy (m)': r.accuracy_m != null ? r.accuracy_m : '',
+        'Photo': r.photo_url || '',
+        'Time': new Date(r.checked_at).toLocaleString('en-IN'),
+        'Google Maps': (r.latitude != null && r.longitude != null) ? `https://www.google.com/maps?q=${r.latitude},${r.longitude}` : '',
+      }));
+      const ws = XLSX.utils.json_to_sheet(data);
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, 'Check-ins');
+      const dt = document.getElementById('f-date').value || 'all';
+      XLSX.writeFile(wb, `site-checkins-${dt}.xlsx`);
+    }
+
+    // Fallback for old check-ins that have no stored location_name: reverse-geocode
+    // GPS on the client via OpenStreetMap Nominatim, one-per-second, cached in localStorage.
+    let _geoBusy = false;
+    async function fillMissingPlaces() {
+      if (_geoBusy) return;
+      _geoBusy = true;
+      try {
+        const cache = JSON.parse(localStorage.getItem('geo_cache') || '{}');
+        const els = [...document.querySelectorAll('.loc-name')];
+        for (const el of els) {
+          const lat = el.getAttribute('data-lat'), lon = el.getAttribute('data-lon');
+          if (!lat || !lon) continue;
+          const key = (+lat).toFixed(4) + ',' + (+lon).toFixed(4);
+          if (cache[key]) { el.textContent = '📍 ' + cache[key]; el.style.color = 'inherit'; continue; }
+          try {
+            const r = await fetch(`https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lon}&zoom=14&addressdetails=1`, { headers: { 'Accept-Language': 'en' } });
+            if (r.ok) {
+              const j = await r.json(), a = j.address || {};
+              const place = a.village || a.town || a.city || a.suburb || a.hamlet || a.municipality || a.county;
+              const dist = a.state_district || a.county;
+              const name = [place, dist && dist !== place ? dist : null, a.state].filter(Boolean).join(', ') || j.display_name;
+              if (name) { cache[key] = name; el.textContent = '📍 ' + name; el.style.color = 'inherit'; }
+              else el.textContent = '';
+            } else el.textContent = '';
+          } catch { el.textContent = ''; }
+          await new Promise(res => setTimeout(res, 1100)); // Nominatim: max ~1 req/sec
+        }
+        localStorage.setItem('geo_cache', JSON.stringify(cache));
+      } finally { _geoBusy = false; }
+    }
+  </script>
+</body>
+
+</html>

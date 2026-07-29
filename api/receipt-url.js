@@ -76,6 +76,49 @@ export default async function handler(req, res) {
     const { data: profile } = await supabaseAdmin.from('users').select('role').eq('id', user.id).single();
     if (!profile) return res.status(403).json({ error: 'Not authorised' });
 
+    // ?checkins=1[&date=YYYY-MM-DD] → site check-ins for HR / Manager / Audit / Super Admin.
+    if (req.query?.checkins) {
+      if (!['admin', 'hr', 'audit', 'super_admin'].includes(profile.role)) {
+        return res.status(403).json({ error: 'Not authorised' });
+      }
+      const date = req.query.date; // IST day; omit → all recent (capped)
+      let q = supabaseAdmin
+        .from('attendance_checkins')
+        .select('user_id, emp_no, site_code, site_name, latitude, longitude, distance_m, inside_fence, accuracy_m, location_name, photo_url, nearest_site_code, nearest_site_name, nearest_distance_m, site_mismatch, checked_at, check_date')
+        .order('checked_at', { ascending: false })
+        .limit(2000);
+      if (date) q = q.eq('check_date', date);
+      const { data: rows, error } = await q;
+      if (error) return res.status(500).json({ error: error.message });
+      // attach employee names/departments
+      const ids = [...new Set((rows || []).map(r => r.user_id).filter(Boolean))];
+      const nameMap = {};
+      if (ids.length) {
+        const { data: us } = await supabaseAdmin.from('users').select('id, name, department, emp_no').in('id', ids);
+        (us || []).forEach(u => { nameMap[u.id] = u; });
+      }
+      // Attendance conflict (feature 3): did the employee check in on a day their imported
+      // attendance marks as an OFF day (Absent/Leave/etc)? That contradiction is audit-gold.
+      // Read-only lookup — we never write Present into employee_attendance (keeps imported data safe).
+      const emps = [...new Set((rows || []).map(r => String(r.emp_no || '').trim()).filter(Boolean))];
+      const dates = [...new Set((rows || []).map(r => r.check_date).filter(Boolean))];
+      const attMap = {};
+      if (emps.length && dates.length) {
+        const { data: att } = await supabaseAdmin
+          .from('employee_attendance')
+          .select('emp_no, att_date, status')
+          .in('emp_no', emps).in('att_date', dates);
+        (att || []).forEach(a => { attMap[`${String(a.emp_no).trim()}|${a.att_date}`] = a.status; });
+      }
+      const out = (rows || []).map(r => ({
+        ...r,
+        name: nameMap[r.user_id]?.name || null,
+        department: nameMap[r.user_id]?.department || null,
+        att_status: attMap[`${String(r.emp_no || '').trim()}|${r.check_date}`] || null,
+      }));
+      return res.status(200).json({ checkins: out });
+    }
+
     // ?audit_checks=1 → all recorded audit-check rows (Audit / Super Admin manual "checked for payment" marker)
     if (req.query?.audit_checks) {
       if (!['audit', 'super_admin'].includes(profile.role)) {
@@ -112,6 +155,19 @@ export default async function handler(req, res) {
         .select('user_id, month_year, cycle_text, claim_id, status, lines, approved_total, pushed_at, pushed_by_name');
       if (error) return res.status(500).json({ error: error.message });
       return res.status(200).json({ portal_claims: data || [] });
+    }
+
+    // ?attendance_off=1 → all off-day (chhutti) attendance rows, for expense-vs-attendance flagging.
+    // Audit / Super Admin only. Returns emp_no + date + status; the client flags any expense on a match.
+    if (req.query?.attendance_off) {
+      if (!['audit', 'super_admin'].includes(profile.role)) {
+        return res.status(403).json({ error: 'Not authorised' });
+      }
+      const { data, error } = await supabaseAdmin
+        .from('employee_attendance')
+        .select('emp_no, att_date, status, location');
+      if (error) return res.status(500).json({ error: error.message });
+      return res.status(200).json({ attendance_off: data || [] });
     }
 
     // ?advances=1 → employee advance ledger (for Advance/Due display).
@@ -208,6 +264,90 @@ export default async function handler(req, res) {
         return res.status(403).json({ error: 'Only Super Admin, Audit, or HR can sync portal advances' });
       }
       return await reconcilePortalAdvances(res, supabaseAdmin);
+    }
+
+    // ── POST { checkin: { site_name, latitude, longitude, accuracy } } → record a site check-in ──
+    // Any signed-in employee checks in for themselves. Server is authoritative: it looks up the
+    // site's fence and computes distance/inside — the client's own claim is never trusted.
+    if (req.body?.checkin) {
+      const { site_code, site_name, latitude, longitude, accuracy, photo_url } = req.body.checkin;
+      if (!site_code || latitude == null || longitude == null) {
+        return res.status(400).json({ error: 'site_code, latitude, longitude are required' });
+      }
+      // Fence is optional — a site may not have coordinates yet. Look it up; if none,
+      // still record the check-in (GPS only, no pass/fail) so nothing is lost.
+      const { data: site } = await supabaseAdmin
+        .from('site_locations')
+        .select('latitude, longitude, radius_m')
+        .eq('site_code', site_code).maybeSingle();
+
+      let distance_m = null, inside_fence = null, radius_m = site?.radius_m ?? null, has_fence = false;
+      if (site && site.latitude != null && site.longitude != null) {
+        has_fence = true;
+        distance_m = Math.round(haversineMetres(latitude, longitude, site.latitude, site.longitude));
+        inside_fence = distance_m <= (site.radius_m || 200);
+      }
+
+      // Nearest-site auto-detect: which known (fenced) site is the GPS actually closest to?
+      // If that isn't the site the employee selected (and they're not inside the selected fence),
+      // flag a mismatch so HR/audit can check ("claimed X, but stood next to Y").
+      let nearest_site_code = null, nearest_site_name = null, nearest_distance_m = null, site_mismatch = false;
+      const { data: allSites } = await supabaseAdmin
+        .from('site_locations')
+        .select('site_code, site_name, latitude, longitude')
+        .eq('active', true);
+      (allSites || []).forEach(s => {
+        if (s.latitude == null || s.longitude == null) return;
+        const d = Math.round(haversineMetres(latitude, longitude, s.latitude, s.longitude));
+        if (nearest_distance_m == null || d < nearest_distance_m) {
+          nearest_distance_m = d; nearest_site_code = s.site_code; nearest_site_name = s.site_name;
+        }
+      });
+      if (nearest_site_code && nearest_site_code !== site_code && inside_fence !== true) {
+        site_mismatch = true;
+      }
+
+      const { data: prof } = await supabaseAdmin.from('users').select('emp_no').eq('id', user.id).single();
+      const location_name = await reverseGeocodePlace(latitude, longitude); // best-effort; null on failure
+      const { error } = await supabaseAdmin.from('attendance_checkins').insert({
+        user_id: user.id, emp_no: prof?.emp_no || null, site_code, site_name: site_name || null,
+        latitude, longitude, distance_m, inside_fence,
+        accuracy_m: accuracy != null ? Math.round(accuracy) : null,
+        location_name, photo_url: photo_url || null,
+        nearest_site_code, nearest_site_name, nearest_distance_m, site_mismatch,
+      });
+      if (error) return res.status(500).json({ error: error.message });
+      return res.status(200).json({
+        ok: true, has_fence, distance_m, inside_fence, radius_m, location_name,
+        nearest_site_code, nearest_site_name, nearest_distance_m, site_mismatch,
+      });
+    }
+
+    // ── POST { upload_attendance: { source_month, rows:[{emp_no,att_date,status}] } } → replace a month's off-day attendance ──
+    if (req.body?.upload_attendance) {
+      const { data: profile } = await supabaseAdmin.from('users').select('role').eq('id', user.id).single();
+      if (!profile || !['super_admin', 'audit', 'hr'].includes(profile.role)) {
+        return res.status(403).json({ error: 'Only Super Admin, Audit, or HR can upload attendance' });
+      }
+      const { source_month, rows } = req.body.upload_attendance;
+      if (!source_month || !Array.isArray(rows)) {
+        return res.status(400).json({ error: 'source_month and rows[] are required' });
+      }
+      // Replace this month's rows so re-upload is clean
+      const { error: delErr } = await supabaseAdmin.from('employee_attendance').delete().eq('source_month', source_month);
+      if (delErr) return res.status(500).json({ error: delErr.message });
+      const clean = rows
+        .filter(r => r && r.emp_no && r.att_date && r.status)
+        .map(r => ({ emp_no: String(r.emp_no).trim(), att_date: r.att_date, status: String(r.status).trim(), location: r.location ? String(r.location).trim() : null, source_month }));
+      let inserted = 0;
+      for (let i = 0; i < clean.length; i += 500) {
+        const { error } = await supabaseAdmin
+          .from('employee_attendance')
+          .upsert(clean.slice(i, i + 500), { onConflict: 'emp_no,att_date' });
+        if (error) return res.status(500).json({ error: error.message });
+        inserted += Math.min(500, clean.length - i);
+      }
+      return res.status(200).json({ ok: true, source_month, imported: inserted });
     }
 
     // ── POST { push_claim: {...} } → push an audit-cleared cycle report (Excel + PDF) to Accounts Portal ──
@@ -918,4 +1058,35 @@ async function recordClaim(db, row) {
     await db.from('accounts_portal_claims')
       .upsert({ ...row, pushed_at: new Date().toISOString() }, { onConflict: 'user_id,month_year,cycle_text' });
   } catch (_) { /* tracking is best-effort; never block the push result on it */ }
+}
+
+/** Great-circle distance between two lat/long points, in metres (Haversine). */
+function haversineMetres(lat1, lon1, lat2, lon2) {
+  const R = 6371000, toRad = d => d * Math.PI / 180;
+  const dLat = toRad(lat2 - lat1), dLon = toRad(lon2 - lon1);
+  const a = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+// Reverse-geocode GPS → a short human place name via OpenStreetMap Nominatim (free, no key).
+// Best-effort: any failure/timeout returns null so a check-in never breaks on it.
+async function reverseGeocodePlace(lat, lon) {
+  try {
+    const ctl = new AbortController();
+    const t = setTimeout(() => ctl.abort(), 4000);
+    const url = `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lon}&zoom=14&addressdetails=1`;
+    const r = await fetch(url, {
+      signal: ctl.signal,
+      headers: { 'User-Agent': 'ExpenseTrack-Checkin/1.0 (stockwell-expense)', 'Accept-Language': 'en' },
+    });
+    clearTimeout(t);
+    if (!r.ok) return null;
+    const j = await r.json();
+    const a = j.address || {};
+    const place = a.village || a.town || a.city || a.suburb || a.hamlet || a.municipality || a.county || null;
+    const district = a.state_district || a.county || null;
+    const parts = [place, district && district !== place ? district : null, a.state].filter(Boolean);
+    const name = parts.join(', ');
+    return name || j.display_name || null;
+  } catch { return null; }
 }

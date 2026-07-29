@@ -24,6 +24,9 @@ let copied = 0;
 // Copy root-level static files
 for (const name of readdirSync('.')) {
   if (SKIP.has(name)) continue;
+  // Never publish internal/temp files (backups, update logs, one-off scripts).
+  // Convention: anything prefixed with "_" is local-only and must not be served.
+  if (name.startsWith('_')) continue;
   const stat = statSync(name);
   if (stat.isFile() && EXTS.has(extname(name).toLowerCase())) {
     copyFileSync(name, join(OUT, name));

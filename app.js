@@ -464,6 +464,11 @@ function populateSidebar(profile) {
   if (['audit', 'super_admin'].includes(role)) {
     if (el('sb-advances-link')) el('sb-advances-link').style.display = '';
   }
+
+  // Site Check-ins view: admin (manager), hr, audit, super_admin
+  if (['admin', 'hr', 'audit', 'super_admin'].includes(role)) {
+    if (el('sb-checkins-link')) el('sb-checkins-link').style.display = '';
+  }
 }
 
 
