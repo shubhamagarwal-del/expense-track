@@ -165,7 +165,8 @@ export default async function handler(req, res) {
       }
       const { data, error } = await supabaseAdmin
         .from('employee_attendance')
-        .select('emp_no, att_date, status, location');
+        .select('emp_no, att_date, status, location')
+        .in('status', ['A', 'L', 'CO', 'SUN', 'SAT', 'H', 'Paternity Leave']); // off-days only — excludes check-in 'P'
       if (error) return res.status(500).json({ error: error.message });
       return res.status(200).json({ attendance_off: data || [] });
     }
@@ -317,9 +318,24 @@ export default async function handler(req, res) {
         nearest_site_code, nearest_site_name, nearest_distance_m, site_mismatch,
       });
       if (error) return res.status(500).json({ error: error.message });
+
+      // Feed daily attendance: mark the employee Present for today — but ONLY if no
+      // attendance row exists yet. ignoreDuplicates = INSERT ... ON CONFLICT DO NOTHING,
+      // so an imported off-day (Leave/Absent) is NEVER overwritten by a check-in.
+      // A later monthly-Excel upload (which upserts with overwrite) still wins over this 'P'.
+      let marked_present = false;
+      if (prof?.emp_no) {
+        const istDate = new Date(Date.now() + 5.5 * 3600 * 1000).toISOString().slice(0, 10);
+        const { error: attErr, count } = await supabaseAdmin.from('employee_attendance').upsert(
+          { emp_no: String(prof.emp_no).trim(), att_date: istDate, status: 'P', location: 'SITE', source_month: 'checkin' },
+          { onConflict: 'emp_no,att_date', ignoreDuplicates: true, count: 'exact' }
+        );
+        if (!attErr) marked_present = (count || 0) > 0; // false if an off-day/row already existed
+      }
+
       return res.status(200).json({
         ok: true, has_fence, distance_m, inside_fence, radius_m, location_name,
-        nearest_site_code, nearest_site_name, nearest_distance_m, site_mismatch,
+        nearest_site_code, nearest_site_name, nearest_distance_m, site_mismatch, marked_present,
       });
     }
 
