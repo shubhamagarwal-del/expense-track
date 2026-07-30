@@ -258,6 +258,8 @@
       await loadSites();
       loadToday();
       refreshNotifState();
+      // Opening this page = the employee responded → clear any ringing check-in notifications.
+      try { const reg = await navigator.serviceWorker?.ready; (await reg?.getNotifications())?.forEach(n => n.close()); } catch (_) { }
     })();
 
     // Site list = SITE_DATA (from app.js) — the SAME LOC-coded sites the employee picks for expenses.

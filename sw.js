@@ -12,7 +12,7 @@
 // This string MUST change with every deployment so the browser
 // detects a new SW, evicts the old cache, and reloads clients.
 // Format: YYYY-MM-DD-NNN  (increment NNN for same-day deploys)
-const CACHE_VERSION = '2026-07-30-007';
+const CACHE_VERSION = '2026-07-30-008';
 const CACHE_NAME    = `expensetrack-${CACHE_VERSION}`;
 
 // Same-origin static assets (CSS / JS / icons / manifest)
@@ -178,20 +178,36 @@ self.addEventListener('push', (event) => {
   let data = {};
   try { data = event.data ? event.data.json() : {}; } catch { data = {}; }
   const title = data.title || '📍 Site check-in';
-  const body  = data.body  || 'Abhi check-in karo — live photo + location.';
-  event.waitUntil(
-    self.registration.showNotification(title, {
-      body,
-      icon: '/icon-192.png',
-      badge: '/icon-192.png',
-      tag: data.tag || 'site-checkin', // unique tag per burst-round → separate alert each time
-      renotify: true,
-      requireInteraction: true,      // stays until tapped/dismissed
-      silent: false,                 // allow the OS notification sound
-      vibrate: [200, 100, 200],      // Android: buzz so it's noticed
-      data: { url: data.url || '/attendance-checkin.html' },
-    })
-  );
+  const body  = data.body  || 'Check in now — live photo + location.';
+  const url   = data.url   || '/attendance-checkin.html';
+  const tag   = data.tag   || 'site-checkin';
+  const REPEATS = data.repeats || 10, GAP = data.gapMs || 2000; // re-alert up to 10×, 2s apart
+
+  // Re-show the SAME notification a few times so it keeps ringing — but STOP as soon as the
+  // employee actually has the check-in page open (and close the notification then).
+  event.waitUntil((async () => {
+    for (let i = 0; i < REPEATS; i++) {
+      const wins = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+      const onPage = wins.some(w => w.url.includes('attendance-checkin') && (w.focused || w.visibilityState === 'visible'));
+      if (onPage) {
+        const ns = await self.registration.getNotifications({ tag });
+        ns.forEach(n => n.close());
+        break; // employee is on the check-in page → stop ringing
+      }
+      await self.registration.showNotification(title, {
+        body,
+        icon: '/icon-192.png',
+        badge: '/icon-192.png',
+        tag,                           // same tag → one notification entry that re-alerts
+        renotify: true,                // ring/vibrate again on each re-show
+        requireInteraction: true,      // stays on screen until tapped/dismissed
+        silent: false,                 // allow the OS notification sound
+        vibrate: [300, 150, 300, 150, 300],
+        data: { url },
+      });
+      if (i < REPEATS - 1) await new Promise(r => setTimeout(r, GAP));
+    }
+  })());
 });
 
 self.addEventListener('notificationclick', (event) => {

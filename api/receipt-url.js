@@ -38,13 +38,12 @@ async function sendPush(db, sub, payload) {
 // Repeat a push a few times, a short gap apart, so it re-alerts (rings) and isn't missed.
 // `items` is [{ sub, payload }]. All items fire together each round (parallel), so total
 // wall time ≈ (repeats-1)*gapMs regardless of how many devices. Returns round-1 delivery count.
-const PUSH_REPEATS = 5, PUSH_GAP_MS = 1000;
+const PUSH_REPEATS = 1, PUSH_GAP_MS = 2000; // server sends once; the service worker re-rings 10× (2s apart)
 async function sendBurst(db, items, repeats = PUSH_REPEATS, gapMs = PUSH_GAP_MS) {
   let delivered = 0;
-  const base = Date.now();
+  const tag = `checkin-${Date.now()}`; // SAME tag for all rounds → one notification that re-alerts (rings) each round
   for (let r = 0; r < repeats; r++) {
-    // Unique tag per round → each arrives as its own notification and re-alerts (rings).
-    const results = await Promise.all((items || []).map(x => sendPush(db, x.sub, { ...x.payload, tag: `checkin-${base}-${r}` })));
+    const results = await Promise.all((items || []).map(x => sendPush(db, x.sub, { ...x.payload, tag })));
     if (r === 0) delivered = results.filter(Boolean).length;
     if (r < repeats - 1) await new Promise(res => setTimeout(res, gapMs));
   }
