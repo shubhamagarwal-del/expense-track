@@ -152,7 +152,10 @@
         const reg = await navigator.serviceWorker.ready;
         if (await reg.pushManager.getSubscription()) {
           title.textContent = 'Verify check-in ON hai ✓'; btn.textContent = 'ON ✓'; btn.style.background = '#16a34a'; btn.disabled = true;
-          document.getElementById('notif-test-btn').style.display = '';
+          // Test button is a verification tool — only for admins, not regular employees.
+          if (currentProfile && ['admin', 'hr', 'audit', 'super_admin'].includes(currentProfile.role)) {
+            document.getElementById('notif-test-btn').style.display = '';
+          }
         }
       } else if (Notification.permission === 'denied') {
         title.textContent = 'Notifications blocked — browser settings se allow karo'; btn.style.display = 'none';

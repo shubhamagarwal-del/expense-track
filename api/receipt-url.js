@@ -426,8 +426,12 @@ export default async function handler(req, res) {
       return res.status(200).json({ ok: true });
     }
 
-    // ── POST { test_push: true } → send a test notification to the caller's own devices ──
+    // ── POST { test_push: true } → send a test notification to the caller's own devices (admins only) ──
     if (req.body?.test_push) {
+      const { data: tprofile } = await supabaseAdmin.from('users').select('role').eq('id', user.id).single();
+      if (!tprofile || !['admin', 'hr', 'audit', 'super_admin'].includes(tprofile.role)) {
+        return res.status(403).json({ error: 'Not authorised' });
+      }
       const { data: subs } = await supabaseAdmin.from('push_subscriptions')
         .select('endpoint, p256dh, auth').eq('user_id', user.id).eq('active', true);
       if (!subs?.length) return res.status(400).json({ error: 'Pehle notifications ON karo — koi device subscribe nahi hai.' });
