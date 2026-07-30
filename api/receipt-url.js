@@ -426,6 +426,17 @@ export default async function handler(req, res) {
       return res.status(200).json({ ok: true });
     }
 
+    // ── POST { test_push: true } → send a test notification to the caller's own devices ──
+    if (req.body?.test_push) {
+      const { data: subs } = await supabaseAdmin.from('push_subscriptions')
+        .select('endpoint, p256dh, auth').eq('user_id', user.id).eq('active', true);
+      if (!subs?.length) return res.status(400).json({ error: 'Pehle notifications ON karo — koi device subscribe nahi hai.' });
+      if (!vapidReady()) return res.status(500).json({ error: 'Server pe push configure nahi hai (VAPID missing).' });
+      let sent = 0;
+      for (const s of subs) { if (await sendPush(supabaseAdmin, s, { title: '✅ Test notification', body: 'Push chal raha hai! Yeh ek test hai — tap karke check-in page khulega.', url: '/attendance-checkin.html' })) sent++; }
+      return res.status(200).json({ ok: true, sent, total: subs.length });
+    }
+
     // ── POST { set_attendance: { emp_no, att_date, status } } → HR/Admin manual attendance override ──
     // Sets a day's status to anything (Present/Half Day/Absent/Leave/...). Marked source 'manual'
     // so it sticks: later check-ins won't auto-change it (autoMarkAttendance only touches 'checkin').

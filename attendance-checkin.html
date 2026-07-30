@@ -73,6 +73,7 @@
             <div id="notif-sub" style="font-size:.75rem">Din mein kabhi-kabhi "abhi check-in karo" ka reminder aayega — site pe ho ye confirm karne ke liye.</div>
           </div>
           <button id="notif-btn" onclick="enableNotifications()" style="background:#4f46e5;color:#fff;border:none;border-radius:9px;padding:.5rem .9rem;font-weight:800;font-size:.8rem;cursor:pointer;white-space:nowrap">ON</button>
+          <button id="notif-test-btn" onclick="sendTestPush()" style="display:none;background:#fff;color:#4f46e5;border:1px solid #c7d2fe;border-radius:9px;padding:.5rem .7rem;font-weight:800;font-size:.78rem;cursor:pointer;white-space:nowrap">Test</button>
         </div>
 
         <div style="background:var(--card-bg,#fff);border:1px solid var(--border);border-radius:16px;padding:1.25rem;box-shadow:0 1px 3px rgba(0,0,0,.05)">
@@ -151,6 +152,7 @@
         const reg = await navigator.serviceWorker.ready;
         if (await reg.pushManager.getSubscription()) {
           title.textContent = 'Verify check-in ON hai ✓'; btn.textContent = 'ON ✓'; btn.style.background = '#16a34a'; btn.disabled = true;
+          document.getElementById('notif-test-btn').style.display = '';
         }
       } else if (Notification.permission === 'denied') {
         title.textContent = 'Notifications blocked — browser settings se allow karo'; btn.style.display = 'none';
@@ -172,6 +174,18 @@
         showMessage('Verify check-in ON ho gaya ✓', 'success');
         refreshNotifState();
       } catch (err) { btn.disabled = false; btn.textContent = 'ON'; showMessage('Notification on nahi hua: ' + err.message, 'error'); }
+    }
+    async function sendTestPush() {
+      const b = document.getElementById('notif-test-btn'), orig = b.textContent;
+      b.disabled = true; b.textContent = '…';
+      try {
+        const token = (await db.auth.getSession()).data.session?.access_token;
+        const res = await fetch('/api/receipt-url', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: JSON.stringify({ test_push: true }) });
+        const body = await res.json();
+        if (!res.ok) throw new Error(body.error || 'Fail');
+        showMessage(`Test notification bheji (${body.sent}/${body.total} device). Aayi?`, 'success');
+      } catch (err) { showMessage('Test fail: ' + err.message, 'error'); }
+      finally { b.disabled = false; b.textContent = orig; }
     }
 
     // Live camera only — no gallery/file upload. Uses getUserMedia so the employee
