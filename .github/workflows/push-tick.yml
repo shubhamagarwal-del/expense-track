@@ -1,0 +1,19 @@
+name: Random push check-in tick
+
+# Fires the random "verify you're on site" push logic. The endpoint itself
+# decides (randomly, within IST work hours) who to prompt, sends reminders,
+# and marks misses. Runs every 30 min across IST work hours (times are UTC).
+on:
+  schedule:
+    - cron: '0,30 3-12 * * *'   # ~IST 8:30–18:00, every 30 min
+  workflow_dispatch: {}          # allow manual run from the Actions tab
+
+jobs:
+  tick:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Hit push_tick endpoint
+        run: |
+          curl -sS -X GET "https://stockwell-expense.vercel.app/api/receipt-url?push_tick=1" \
+            -H "x-api-key: ${{ secrets.PUSH_TICK_KEY }}" \
+            --max-time 60 -w "\nHTTP %{http_code}\n"

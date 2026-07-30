@@ -66,6 +66,15 @@
           <p style="margin:0;color:var(--text-muted);font-size:.88rem">Apni site chuno aur check-in karo — GPS se confirm hoga ki aap site pe hain.</p>
         </div>
 
+        <div id="notif-card" style="background:#eef2ff;border:1px solid #c7d2fe;border-radius:14px;padding:.85rem 1rem;margin-bottom:1rem;display:flex;align-items:center;gap:.75rem">
+          <span style="font-size:1.3rem">🔔</span>
+          <div style="flex:1;font-size:.82rem;color:#3730a3">
+            <div style="font-weight:800" id="notif-title">Verify check-in ON karo</div>
+            <div id="notif-sub" style="font-size:.75rem">Din mein kabhi-kabhi "abhi check-in karo" ka reminder aayega — site pe ho ye confirm karne ke liye.</div>
+          </div>
+          <button id="notif-btn" onclick="enableNotifications()" style="background:#4f46e5;color:#fff;border:none;border-radius:9px;padding:.5rem .9rem;font-weight:800;font-size:.8rem;cursor:pointer;white-space:nowrap">ON</button>
+        </div>
+
         <div style="background:var(--card-bg,#fff);border:1px solid var(--border);border-radius:16px;padding:1.25rem;box-shadow:0 1px 3px rgba(0,0,0,.05)">
           <label style="display:block;font-size:.75rem;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:.4rem">Site</label>
           <input list="site-list" id="site-input" class="form-input" placeholder="Type ya select karo…" autocomplete="off" style="height:46px;font-size:1rem;width:100%" />
@@ -124,6 +133,45 @@
       const ist = new Date(Date.now() + 5.5 * 3600 * 1000);
       const h = ist.getUTCHours();
       return h < 12 ? 'morning' : h < 16 ? 'afternoon' : 'evening';
+    }
+
+    // ── Web Push: enable random "verify you're on site" prompts ──
+    const VAPID_PUBLIC = 'BDpDnIhZAEesC14fexaPrqWFPwS7YIJMl01Hi1P1z_j2A-52y3Y_qQCskrPJaJwiWTz6vLN1CY7ARB_cjw60jbI';
+    function urlB64ToUint8(base64) {
+      const pad = '='.repeat((4 - base64.length % 4) % 4);
+      const b64 = (base64 + pad).replace(/-/g, '+').replace(/_/g, '/');
+      const raw = atob(b64); const arr = new Uint8Array(raw.length);
+      for (let i = 0; i < raw.length; i++) arr[i] = raw.charCodeAt(i);
+      return arr;
+    }
+    async function refreshNotifState() {
+      const btn = document.getElementById('notif-btn'), title = document.getElementById('notif-title'), card = document.getElementById('notif-card');
+      if (!('serviceWorker' in navigator) || !('PushManager' in window) || !('Notification' in window)) { card.style.display = 'none'; return; }
+      if (Notification.permission === 'granted') {
+        const reg = await navigator.serviceWorker.ready;
+        if (await reg.pushManager.getSubscription()) {
+          title.textContent = 'Verify check-in ON hai ✓'; btn.textContent = 'ON ✓'; btn.style.background = '#16a34a'; btn.disabled = true;
+        }
+      } else if (Notification.permission === 'denied') {
+        title.textContent = 'Notifications blocked — browser settings se allow karo'; btn.style.display = 'none';
+      }
+    }
+    async function enableNotifications() {
+      const btn = document.getElementById('notif-btn');
+      try {
+        if (!('serviceWorker' in navigator) || !('PushManager' in window) || !('Notification' in window)) return showMessage('Is browser mein push support nahi hai.', 'error');
+        const perm = await Notification.requestPermission();
+        if (perm !== 'granted') return showMessage('Notification permission chahiye — Allow karo.', 'error');
+        btn.disabled = true; btn.textContent = '…';
+        const reg = await navigator.serviceWorker.ready;
+        let sub = await reg.pushManager.getSubscription();
+        if (!sub) sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: urlB64ToUint8(VAPID_PUBLIC) });
+        const token = (await db.auth.getSession()).data.session?.access_token;
+        const res = await fetch('/api/receipt-url', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: JSON.stringify({ subscribe_push: sub.toJSON() }) });
+        if (!res.ok) { const b = await res.json(); throw new Error(b.error || 'Save fail'); }
+        showMessage('Verify check-in ON ho gaya ✓', 'success');
+        refreshNotifState();
+      } catch (err) { btn.disabled = false; btn.textContent = 'ON'; showMessage('Notification on nahi hua: ' + err.message, 'error'); }
     }
 
     // Live camera only — no gallery/file upload. Uses getUserMedia so the employee
@@ -192,6 +240,7 @@
       if (typeof populateSidebar === 'function') populateSidebar(currentProfile);
       await loadSites();
       loadToday();
+      refreshNotifState();
     })();
 
     // Site list = SITE_DATA (from app.js) — the SAME LOC-coded sites the employee picks for expenses.

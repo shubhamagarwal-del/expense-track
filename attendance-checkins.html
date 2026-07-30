@@ -110,6 +110,7 @@
   <script>
     let currentProfile = null;
     let rows = [];
+    let pushChecks = [];  // random push-check rows for the selected date
     let shownList = [];  // last-rendered filtered list (for Excel export)
 
     // Attendance codes that mean the employee was OFF that day — a check-in on such a
@@ -157,6 +158,11 @@
         const body = await res.json();
         if (!res.ok) throw new Error(body.error || 'Load fail');
         rows = body.checkins || [];
+        try {
+          const pcRes = await fetch('/api/receipt-url?push_checks=1' + (date ? '&date=' + date : ''), { headers: { Authorization: `Bearer ${token}` } });
+          const pcBody = await pcRes.json();
+          pushChecks = pcRes.ok ? (pcBody.push_checks || []) : [];
+        } catch { pushChecks = []; }
         render();
       } catch (err) { wrap.innerHTML = `<div style="padding:1rem;color:#991b1b;font-size:.85rem">Error: ${escHtml(err.message)}</div>`; }
     }
@@ -273,6 +279,21 @@
         const ph = sl.photo_url ? ` <button data-url="${escHtml(sl.photo_url)}" onclick="viewReceipt(this.dataset.url)" title="Photo" style="background:none;border:none;cursor:pointer;font-size:.85rem;padding:0">📷</button>` : '';
         return `<span style="color:#166534;font-weight:700;font-size:.75rem">✓ ${sl.time}</span>${ph}`;
       };
+      // Random push-check tallies per employee: sent / responded / missed
+      const pcByEmp = {};
+      pushChecks.forEach(p => {
+        const k = String(p.emp_no || '').trim(); if (!k) return;
+        (pcByEmp[k] ||= { sent: 0, responded: 0, missed: 0 }).sent++;
+        if (p.status === 'responded') pcByEmp[k].responded++;
+        else if (p.status === 'missed') pcByEmp[k].missed++;
+      });
+      const verifyCell = (empNo) => {
+        const p = pcByEmp[String(empNo || '').trim()];
+        if (!p || !p.sent) return '<span style="color:var(--text-muted);font-size:.72rem">—</span>';
+        const missTag = p.missed ? ` <span style="color:#991b1b;font-weight:800">· ${p.missed} missed</span>` : '';
+        const col = p.missed ? '#991b1b' : p.responded === p.sent ? '#166534' : '#854d0e';
+        return `<span style="font-weight:700;font-size:.75rem;color:${col}">${p.responded}/${p.sent} ✓${missTag}</span>`;
+      };
       el.innerHTML = `<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:.83rem">
         <thead style="background:var(--bg-2,#f4f4f5)"><tr>
           <th style="text-align:left;padding:.6rem .8rem;font-weight:700">Employee</th>
@@ -280,6 +301,7 @@
           <th style="text-align:center;padding:.6rem .5rem;font-weight:700">☀️ Dopahar</th>
           <th style="text-align:center;padding:.6rem .5rem;font-weight:700">🌆 Shaam</th>
           <th style="text-align:center;padding:.6rem .5rem;font-weight:700">Slots</th>
+          <th style="text-align:center;padding:.6rem .5rem;font-weight:700" title="Random push check-ins: responded/sent">🔔 Verify</th>
           <th style="text-align:left;padding:.6rem .8rem;font-weight:700">Attendance (badla ja sakta hai)</th>
         </tr></thead><tbody>
         ${emps.map(e => {
@@ -301,6 +323,7 @@
             <td style="padding:.55rem .5rem;text-align:center">${cell(e, 'afternoon')}</td>
             <td style="padding:.55rem .5rem;text-align:center">${cell(e, 'evening')}</td>
             <td style="padding:.55rem .5rem;text-align:center"><span style="${slotCss};border-radius:6px;padding:2px 8px;font-size:.72rem;font-weight:800;white-space:nowrap">${slotLabel}</span></td>
+            <td style="padding:.55rem .5rem;text-align:center">${verifyCell(e.emp_no)}</td>
             <td style="padding:.55rem .8rem">
               <select data-emp="${escHtml(e.emp_no || '')}" onchange="setAttendance(this)" ${e.emp_no ? '' : 'disabled'} style="height:32px;border:1px solid var(--border);border-radius:7px;padding:0 .4rem;font-family:inherit;font-size:.8rem;font-weight:700;background:#fff;color:var(--text-1);cursor:pointer">${opts}</select>
               ${srcTag}

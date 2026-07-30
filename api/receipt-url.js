@@ -1,8 +1,38 @@
 import { createClient } from '@supabase/supabase-js';
+import webpush from 'web-push';
 
 // Mirrors DUE_EXCLUDED_STATUSES in app.js (browser side) — server-side runtime can't
 // share that file directly, so keep this list in sync manually if it ever changes.
 const DUE_EXCLUDED_STATUSES = ['rejected', 'l1_rejected', 'deleted', 'audit_review', 'audit_query', 'superseded'];
+
+// Configure Web Push (VAPID) once, lazily — returns false if keys aren't set.
+let _vapidReady = null;
+function vapidReady() {
+  if (_vapidReady !== null) return _vapidReady;
+  const pub = process.env.VAPID_PUBLIC_KEY, priv = process.env.VAPID_PRIVATE_KEY;
+  if (!pub || !priv) { _vapidReady = false; return false; }
+  try {
+    webpush.setVapidDetails(process.env.VAPID_SUBJECT || 'mailto:admin@stockwell.example', pub, priv);
+    _vapidReady = true;
+  } catch { _vapidReady = false; }
+  return _vapidReady;
+}
+// Send one push; on 404/410 (gone) deactivate the subscription. Best-effort.
+async function sendPush(db, sub, payload) {
+  if (!vapidReady()) return false;
+  try {
+    await webpush.sendNotification(
+      { endpoint: sub.endpoint, keys: { p256dh: sub.p256dh, auth: sub.auth } },
+      JSON.stringify(payload)
+    );
+    return true;
+  } catch (err) {
+    if (err?.statusCode === 404 || err?.statusCode === 410) {
+      await db.from('push_subscriptions').update({ active: false }).eq('endpoint', sub.endpoint);
+    }
+    return false;
+  }
+}
 
 /**
  * Combines several related, low-traffic endpoints into one serverless function
@@ -57,6 +87,18 @@ export default async function handler(req, res) {
     }
     const supabaseAdmin = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
     return await handleAccountsPortalWebhook(req, res, supabaseAdmin);
+  }
+
+  // ── Random push check-in tick (external scheduler, e.g. GitHub Action every ~30 min) ──
+  // GET /api/receipt-url?push_tick=1  Header: x-api-key: <ACCOUNTS2026_API_KEY>
+  // Sends random "verify you're on site" prompts, reminders, and marks misses.
+  if (req.method === 'GET' && req.query?.push_tick) {
+    const expectedKey = process.env.ACCOUNTS_PORTAL_API_KEY || process.env.ACCOUNTS2026_API_KEY;
+    if (!expectedKey || req.headers['x-api-key'] !== expectedKey) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+    const supabaseAdmin = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
+    return await runPushTick(res, supabaseAdmin);
   }
 
   const authHeader = req.headers.authorization;
@@ -121,6 +163,28 @@ export default async function handler(req, res) {
         };
       });
       return res.status(200).json({ checkins: out });
+    }
+
+    // ?push_checks=1[&date=YYYY-MM-DD] → random-check stats per employee (sent/responded/missed).
+    if (req.query?.push_checks) {
+      if (!['admin', 'hr', 'audit', 'super_admin'].includes(profile.role)) {
+        return res.status(403).json({ error: 'Not authorised' });
+      }
+      const date = req.query.date;
+      let q = supabaseAdmin.from('push_checks')
+        .select('user_id, emp_no, sent_at, status, responded_at, window_min, check_date')
+        .order('sent_at', { ascending: false }).limit(3000);
+      if (date) q = q.eq('check_date', date);
+      const { data: pc, error } = await q;
+      if (error) return res.status(500).json({ error: error.message });
+      const ids = [...new Set((pc || []).map(r => r.user_id).filter(Boolean))];
+      const nameMap = {};
+      if (ids.length) {
+        const { data: us } = await supabaseAdmin.from('users').select('id, name, department').in('id', ids);
+        (us || []).forEach(u => { nameMap[u.id] = u; });
+      }
+      const out = (pc || []).map(r => ({ ...r, name: nameMap[r.user_id]?.name || null, department: nameMap[r.user_id]?.department || null }));
+      return res.status(200).json({ push_checks: out });
     }
 
     // ?audit_checks=1 → all recorded audit-check rows (Audit / Super Admin manual "checked for payment" marker)
@@ -314,14 +378,22 @@ export default async function handler(req, res) {
 
       const { data: prof } = await supabaseAdmin.from('users').select('emp_no').eq('id', user.id).single();
       const location_name = await reverseGeocodePlace(latitude, longitude); // best-effort; null on failure
-      const { error } = await supabaseAdmin.from('attendance_checkins').insert({
+      const { data: inserted, error } = await supabaseAdmin.from('attendance_checkins').insert({
         user_id: user.id, emp_no: prof?.emp_no || null, site_code, site_name: site_name || null,
         latitude, longitude, distance_m, inside_fence,
         accuracy_m: accuracy != null ? Math.round(accuracy) : null,
         location_name, photo_url: photo_url || null,
         nearest_site_code, nearest_site_name, nearest_distance_m, site_mismatch,
-      });
+      }).select('id').single();
       if (error) return res.status(500).json({ error: error.message });
+
+      // If a random push-check is pending for this employee today, this check-in answers it.
+      if (prof?.emp_no) {
+        const istDate = new Date(Date.now() + 5.5 * 3600 * 1000).toISOString().slice(0, 10);
+        await supabaseAdmin.from('push_checks')
+          .update({ status: 'responded', responded_at: new Date().toISOString(), checkin_id: inserted?.id || null })
+          .eq('emp_no', String(prof.emp_no).trim()).eq('check_date', istDate).eq('status', 'pending');
+      }
 
       // Feed daily attendance from this check-in: auto Present / Half Day based on how many
       // of the 3 slots the employee has done today. Never overwrites an imported off-day or
@@ -336,6 +408,22 @@ export default async function handler(req, res) {
         ok: true, has_fence, distance_m, inside_fence, radius_m, location_name,
         nearest_site_code, nearest_site_name, nearest_distance_m, site_mismatch, attendance_status,
       });
+    }
+
+    // ── POST { subscribe_push: { endpoint, keys:{p256dh, auth} } } → save this browser's push subscription ──
+    if (req.body?.subscribe_push) {
+      const sub = req.body.subscribe_push;
+      if (!sub?.endpoint || !sub?.keys?.p256dh || !sub?.keys?.auth) {
+        return res.status(400).json({ error: 'Invalid subscription' });
+      }
+      const { data: prof } = await supabaseAdmin.from('users').select('emp_no').eq('id', user.id).single();
+      const { error } = await supabaseAdmin.from('push_subscriptions').upsert({
+        user_id: user.id, emp_no: prof?.emp_no || null,
+        endpoint: sub.endpoint, p256dh: sub.keys.p256dh, auth: sub.keys.auth,
+        user_agent: (req.headers['user-agent'] || '').slice(0, 300), active: true,
+      }, { onConflict: 'endpoint' });
+      if (error) return res.status(500).json({ error: error.message });
+      return res.status(200).json({ ok: true });
     }
 
     // ── POST { set_attendance: { emp_no, att_date, status } } → HR/Admin manual attendance override ──
@@ -1154,4 +1242,67 @@ async function autoMarkAttendance(db, empNo, istDate) {
     return { status: desired, changed: true };
   }
   return { status: null, changed: false }; // imported off-day or manual override — leave it
+}
+
+// Random push check-in scheduler. Called by an external cron (~every 30 min). Each tick:
+//  1. marks pending checks past their window as 'missed'
+//  2. sends a reminder for pending checks past half-window
+//  3. randomly sends a fresh check to on-duty employees (subscribed + checked in today),
+//     capped per day with a minimum gap, only during IST work hours.
+async function runPushTick(res, db) {
+  if (!vapidReady()) return res.status(200).json({ ok: true, skipped: 'VAPID not configured' });
+  const now = new Date();
+  const istNow = new Date(now.getTime() + 5.5 * 3600 * 1000);
+  const istHour = istNow.getUTCHours();
+  const istDate = istNow.toISOString().slice(0, 10);
+  const WINDOW_MIN = 30, MAX_PER_DAY = 3, MIN_GAP_MIN = 90, WORK_START = 9, WORK_END = 18, PROB = 0.35;
+  const result = { sent: 0, reminders: 0, missed: 0 };
+
+  // 1. Mark misses
+  const missCutoff = new Date(now.getTime() - WINDOW_MIN * 60000).toISOString();
+  const { data: overdue } = await db.from('push_checks').select('id').eq('status', 'pending').lt('sent_at', missCutoff);
+  if (overdue?.length) {
+    await db.from('push_checks').update({ status: 'missed' }).in('id', overdue.map(r => r.id));
+    result.missed = overdue.length;
+  }
+
+  // 2. Reminders (pending, past half-window, none sent yet)
+  const remCutoff = new Date(now.getTime() - (WINDOW_MIN / 2) * 60000).toISOString();
+  const { data: pendingRem } = await db.from('push_checks')
+    .select('id, user_id').eq('status', 'pending').eq('reminders_sent', 0).lt('sent_at', remCutoff);
+  for (const pc of (pendingRem || [])) {
+    const { data: subs } = await db.from('push_subscriptions').select('endpoint, p256dh, auth').eq('user_id', pc.user_id).eq('active', true);
+    let ok = false;
+    for (const s of (subs || [])) { if (await sendPush(db, s, { title: '⏰ Check-in reminder', body: 'Thoda time bacha hai — abhi check-in karo.', url: '/attendance-checkin.html' })) ok = true; }
+    if (ok) { await db.from('push_checks').update({ reminders_sent: 1 }).eq('id', pc.id); result.reminders++; }
+  }
+
+  // 3. New random checks — only during work hours
+  if (istHour >= WORK_START && istHour < WORK_END) {
+    const { data: subs } = await db.from('push_subscriptions').select('user_id, emp_no, endpoint, p256dh, auth').eq('active', true);
+    const byEmp = {};
+    (subs || []).forEach(s => { const k = String(s.emp_no || '').trim(); if (!k) return; (byEmp[k] ||= { user_id: s.user_id, subs: [] }).subs.push(s); });
+    const emps = Object.keys(byEmp);
+    if (emps.length) {
+      const { data: todayCk } = await db.from('attendance_checkins').select('emp_no').eq('check_date', istDate).in('emp_no', emps);
+      const onDuty = new Set((todayCk || []).map(r => String(r.emp_no || '').trim()));
+      const { data: todaysChecks } = await db.from('push_checks').select('emp_no, sent_at').eq('check_date', istDate).in('emp_no', emps);
+      const cnt = {}, last = {};
+      (todaysChecks || []).forEach(r => { const k = String(r.emp_no || '').trim(); cnt[k] = (cnt[k] || 0) + 1; if (!last[k] || r.sent_at > last[k]) last[k] = r.sent_at; });
+      for (const emp of emps) {
+        if (!onDuty.has(emp)) continue;
+        if ((cnt[emp] || 0) >= MAX_PER_DAY) continue;
+        if (last[emp] && (now - new Date(last[emp])) < MIN_GAP_MIN * 60000) continue;
+        if (Math.random() >= PROB) continue;
+        const g = byEmp[emp];
+        const { data: created } = await db.from('push_checks').insert({ user_id: g.user_id, emp_no: emp, window_min: WINDOW_MIN, status: 'pending' }).select('id').single();
+        let ok = false;
+        for (const s of g.subs) { if (await sendPush(db, s, { title: '📍 Site check-in', body: 'Abhi check-in karo — live photo + location (site verify).', url: '/attendance-checkin.html' })) ok = true; }
+        if (ok) result.sent++;
+        else if (created?.id) await db.from('push_checks').delete().eq('id', created.id); // no live sub → undo
+      }
+    }
+  }
+
+  return res.status(200).json({ ok: true, ...result, ist_hour: istHour });
 }

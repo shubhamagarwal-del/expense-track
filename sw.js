@@ -12,7 +12,7 @@
 // This string MUST change with every deployment so the browser
 // detects a new SW, evicts the old cache, and reloads clients.
 // Format: YYYY-MM-DD-NNN  (increment NNN for same-day deploys)
-const CACHE_VERSION = '2026-07-30-001';
+const CACHE_VERSION = '2026-07-30-002';
 const CACHE_NAME    = `expensetrack-${CACHE_VERSION}`;
 
 // Same-origin static assets (CSS / JS / icons / manifest)
@@ -169,4 +169,36 @@ self.addEventListener('message', (event) => {
   if (event.data?.type === 'SKIP_WAITING') {
     self.skipWaiting();
   }
+});
+
+// ── Web Push: random "verify you're on site" check-in prompt ──
+// The server pushes a payload; we show a notification. Tapping it opens the
+// check-in page so the employee can respond with live photo + GPS.
+self.addEventListener('push', (event) => {
+  let data = {};
+  try { data = event.data ? event.data.json() : {}; } catch { data = {}; }
+  const title = data.title || '📍 Site check-in';
+  const body  = data.body  || 'Abhi check-in karo — live photo + location.';
+  event.waitUntil(
+    self.registration.showNotification(title, {
+      body,
+      icon: '/icon-192.png',
+      badge: '/icon-192.png',
+      tag: 'site-checkin',           // replaces a prior pending prompt
+      renotify: true,
+      requireInteraction: true,      // stays until tapped/dismissed
+      data: { url: data.url || '/attendance-checkin.html' },
+    })
+  );
+});
+
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+  const url = event.notification.data?.url || '/attendance-checkin.html';
+  event.waitUntil(
+    clients.matchAll({ type: 'window', includeUncontrolled: true }).then((wins) => {
+      for (const w of wins) { if (w.url.includes('attendance-checkin') && 'focus' in w) return w.focus(); }
+      return clients.openWindow(url);
+    })
+  );
 });
