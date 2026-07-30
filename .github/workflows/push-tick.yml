@@ -1,18 +1,19 @@
-name: Random push check-in tick
+name: Check-in tick (missed + reminders)
 
-# Fires the random "verify you're on site" push logic. The endpoint itself
-# decides (randomly, within IST work hours) who to prompt, sends reminders,
-# and marks misses. Runs every 30 min across IST work hours (times are UTC).
+# Marks overdue pending check-in requests as 'missed' and sends reminders.
+# HR sends the check-in requests manually from the admin view — this tick does
+# NOT send new random prompts (that needs &send_random=1, intentionally omitted).
+# Runs every 15 min so a missed request is flagged soon after its 30-min window.
 on:
   schedule:
-    - cron: '0,30 3-12 * * *'   # ~IST 8:30–18:00, every 30 min
+    - cron: '*/15 3-13 * * *'   # every 15 min, ~IST 8:30–19:00 (times are UTC)
   workflow_dispatch: {}          # allow manual run from the Actions tab
 
 jobs:
   tick:
     runs-on: ubuntu-latest
     steps:
-      - name: Hit push_tick endpoint
+      - name: Hit push_tick endpoint (missed + reminders)
         run: |
           curl -sS -X GET "https://stockwell-expense.vercel.app/api/receipt-url?push_tick=1" \
             -H "x-api-key: ${{ secrets.PUSH_TICK_KEY }}" \

@@ -105,16 +105,17 @@ export default async function handler(req, res) {
     return await handleAccountsPortalWebhook(req, res, supabaseAdmin);
   }
 
-  // ── Random push check-in tick (external scheduler, e.g. GitHub Action every ~30 min) ──
+  // ── Push check-in tick (external scheduler, e.g. GitHub Action every ~30 min) ──
   // GET /api/receipt-url?push_tick=1  Header: x-api-key: <ACCOUNTS2026_API_KEY>
-  // Sends random "verify you're on site" prompts, reminders, and marks misses.
+  // Marks overdue pending checks as 'missed' and sends reminders. Random NEW prompts are
+  // sent only with &send_random=1 (off by default → HR sends check-in requests manually).
   if (req.method === 'GET' && req.query?.push_tick) {
     const expectedKey = process.env.ACCOUNTS_PORTAL_API_KEY || process.env.ACCOUNTS2026_API_KEY;
     if (!expectedKey || req.headers['x-api-key'] !== expectedKey) {
       return res.status(401).json({ error: 'Unauthorized' });
     }
     const supabaseAdmin = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
-    return await runPushTick(res, supabaseAdmin);
+    return await runPushTick(res, supabaseAdmin, req.query.send_random === '1');
   }
 
   const authHeader = req.headers.authorization;
@@ -418,12 +419,25 @@ export default async function handler(req, res) {
       }).select('id').single();
       if (error) return res.status(500).json({ error: error.message });
 
-      // If a random push-check is pending for this employee today, this check-in answers it.
+      // This check-in answers a push-check: a pending one → 'responded' (on time); if none
+      // pending but one was already 'missed' (window passed) → 'late' (still counted, flagged).
       if (prof?.emp_no) {
+        const empN = String(prof.emp_no).trim();
         const istDate = new Date(Date.now() + 5.5 * 3600 * 1000).toISOString().slice(0, 10);
-        await supabaseAdmin.from('push_checks')
-          .update({ status: 'responded', responded_at: new Date().toISOString(), checkin_id: inserted?.id || null })
-          .eq('emp_no', String(prof.emp_no).trim()).eq('check_date', istDate).eq('status', 'pending');
+        const nowIso = new Date().toISOString();
+        const { data: resp } = await supabaseAdmin.from('push_checks')
+          .update({ status: 'responded', responded_at: nowIso, checkin_id: inserted?.id || null })
+          .eq('emp_no', empN).eq('check_date', istDate).eq('status', 'pending').select('id');
+        if (!resp?.length) {
+          const { data: missed } = await supabaseAdmin.from('push_checks')
+            .select('id').eq('emp_no', empN).eq('check_date', istDate).eq('status', 'missed')
+            .order('sent_at', { ascending: false }).limit(1);
+          if (missed?.length) {
+            await supabaseAdmin.from('push_checks')
+              .update({ status: 'late', responded_at: nowIso, checkin_id: inserted?.id || null })
+              .eq('id', missed[0].id);
+          }
+        }
       }
 
       // Feed daily attendance from this check-in: auto Present / Half Day based on how many
@@ -1327,7 +1341,7 @@ async function autoMarkAttendance(db, empNo, istDate) {
 //  2. sends a reminder for pending checks past half-window
 //  3. randomly sends a fresh check to on-duty employees (subscribed + checked in today),
 //     capped per day with a minimum gap, only during IST work hours.
-async function runPushTick(res, db) {
+async function runPushTick(res, db, sendRandom = false) {
   if (!vapidReady()) return res.status(200).json({ ok: true, skipped: 'VAPID not configured' });
   const now = new Date();
   const istNow = new Date(now.getTime() + 5.5 * 3600 * 1000);
@@ -1362,8 +1376,8 @@ async function runPushTick(res, db) {
     }
   }
 
-  // 3. New random checks — only during work hours
-  if (istHour >= WORK_START && istHour < WORK_END) {
+  // 3. New random checks — only if explicitly enabled (default off: HR sends manually), work hours
+  if (sendRandom && istHour >= WORK_START && istHour < WORK_END) {
     const { data: subs } = await db.from('push_subscriptions').select('user_id, emp_no, endpoint, p256dh, auth').eq('active', true);
     const byEmp = {};
     (subs || []).forEach(s => { const k = String(s.emp_no || '').trim(); if (!k) return; (byEmp[k] ||= { user_id: s.user_id, subs: [] }).subs.push(s); });
