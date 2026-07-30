@@ -161,7 +161,10 @@
           }
         }
       } else if (Notification.permission === 'denied') {
-        title.textContent = 'Notifications blocked — allow them in browser settings'; btn.style.display = 'none';
+        title.textContent = '🔕 Notifications blocked hai';
+        document.getElementById('notif-sub').innerHTML = 'Chrome address bar mein <b>🔒 / ⓘ</b> pe tap → Permissions → Notifications → <b>Allow</b> → phir 🔄 Reload. (Ya Chrome <b>⋮</b> → Settings → Site settings → Notifications → is site ko <b>Allow</b>.)';
+        btn.textContent = '🔄 Reload'; btn.disabled = false; btn.style.background = '#4f46e5';
+        btn.onclick = () => location.reload();
       }
     }
     async function enableNotifications() {
