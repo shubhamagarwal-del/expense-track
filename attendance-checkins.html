@@ -298,6 +298,9 @@
                 const confBadge = conf
                   ? `<div style="margin-top:.25rem"><span title="Attendance marks this day OFF but employee checked in" style="background:#fee2e2;color:#991b1b;border-radius:5px;padding:1px 6px;font-size:.66rem;font-weight:800">🔴 Att: ${escHtml(conf)}</span></div>`
                   : '';
+                const verifyBadge = r.source === 'notification'
+                  ? `<div style="margin-top:.25rem"><span title="Spot-check via notification — location only, not counted in daily slots" style="background:#eef2ff;color:#4338ca;border-radius:5px;padding:1px 6px;font-size:.66rem;font-weight:800">🔔 Verify</span></div>`
+                  : '';
                 const nearestLine = r.site_mismatch && r.nearest_site_name
                   ? `<div style="font-size:.7rem;color:#b45309;margin-top:.15rem">→ paas: ${escHtml(r.nearest_site_name)}${r.nearest_distance_m != null ? ` (${r.nearest_distance_m}m)` : ''}</div>`
                   : '';
@@ -307,7 +310,7 @@
                 return `<tr style="border-top:1px solid var(--border)">
                   <td style="padding:.55rem .8rem"><div style="font-weight:600">${escHtml(r.name || '—')}</div><div style="font-size:.72rem;color:var(--text-muted)">${escHtml(r.emp_no || '')}${r.department ? ' · ' + escHtml(r.department) : ''}</div></td>
                   <td style="padding:.55rem .8rem"><div style="font-weight:600">${escHtml(r.site_name || '—')}</div><div style="font-size:.72rem;color:var(--text-muted)">${escHtml(r.site_code || '')}</div>${nearestLine}</td>
-                  <td style="padding:.55rem .8rem">${badge}${mismatchBadge}${confBadge}</td>
+                  <td style="padding:.55rem .8rem">${badge}${verifyBadge}${mismatchBadge}${confBadge}</td>
                   <td style="padding:.55rem .8rem;text-align:right">${r.distance_m != null ? r.distance_m + ' m' : '—'}</td>
                   <td style="padding:.55rem .8rem;text-align:center">${photoCell}</td>
                   <td style="padding:.55rem .8rem;white-space:nowrap">${t}</td>
@@ -324,6 +327,7 @@
       const el = document.getElementById('attendance-rollup');
       const byUser = {};
       attRows.forEach(r => {
+        if (r.source === 'notification') return; // spot-checks are location-only — not part of daily slots
         const k = r.user_id || r.emp_no;
         if (!k) return;
         if (!byUser[k]) byUser[k] = { name: r.name, emp_no: r.emp_no, department: r.department, att_status: r.att_status, att_source: r.att_source, slots: {} };

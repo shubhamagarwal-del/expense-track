@@ -43,6 +43,7 @@ CREATE TABLE IF NOT EXISTS public.attendance_checkins (
   nearest_site_name text,
   nearest_distance_m integer,                    -- metres to that nearest site's centre
   site_mismatch boolean,                          -- true = GPS is closest to a DIFFERENT site than selected
+  source       text        DEFAULT 'regular',     -- 'regular' = normal check-in (counts to slots/attendance) · 'notification' = spot-check (location only)
   checked_at   timestamptz DEFAULT now(),
   check_date   date        DEFAULT (now() AT TIME ZONE 'Asia/Kolkata')::date  -- IST day, for daily roll-up
 );

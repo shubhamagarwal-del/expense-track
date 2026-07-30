@@ -142,7 +142,7 @@ export default async function handler(req, res) {
       const date = req.query.date; // IST day; omit → all recent (capped)
       let q = supabaseAdmin
         .from('attendance_checkins')
-        .select('user_id, emp_no, site_code, site_name, latitude, longitude, distance_m, inside_fence, accuracy_m, location_name, photo_url, nearest_site_code, nearest_site_name, nearest_distance_m, site_mismatch, checked_at, check_date')
+        .select('user_id, emp_no, site_code, site_name, latitude, longitude, distance_m, inside_fence, accuracy_m, location_name, photo_url, nearest_site_code, nearest_site_name, nearest_distance_m, site_mismatch, source, checked_at, check_date')
         .order('checked_at', { ascending: false })
         .limit(2000);
       if (date) q = q.eq('check_date', date);
@@ -368,6 +368,9 @@ export default async function handler(req, res) {
     // site's fence and computes distance/inside — the client's own claim is never trusted.
     if (req.body?.checkin) {
       const { site_code, site_name, latitude, longitude, accuracy, photo_url } = req.body.checkin;
+      // 'notification' = spot-check via a push prompt → location record only (NOT counted in
+      // the 3 daily slots or attendance). 'regular' = normal check-in (counts).
+      const source = req.body.checkin.source === 'notification' ? 'notification' : 'regular';
       if (!site_code || latitude == null || longitude == null) {
         return res.status(400).json({ error: 'site_code, latitude, longitude are required' });
       }
@@ -411,7 +414,7 @@ export default async function handler(req, res) {
         latitude, longitude, distance_m, inside_fence,
         accuracy_m: accuracy != null ? Math.round(accuracy) : null,
         location_name, photo_url: photo_url || null,
-        nearest_site_code, nearest_site_name, nearest_distance_m, site_mismatch,
+        nearest_site_code, nearest_site_name, nearest_distance_m, site_mismatch, source,
       }).select('id').single();
       if (error) return res.status(500).json({ error: error.message });
 
@@ -426,8 +429,9 @@ export default async function handler(req, res) {
       // Feed daily attendance from this check-in: auto Present / Half Day based on how many
       // of the 3 slots the employee has done today. Never overwrites an imported off-day or
       // an HR manual override (see autoMarkAttendance). Best-effort — never fails the check-in.
+      // A 'notification' spot-check is location-only → it does NOT drive attendance/slots.
       let attendance_status = null;
-      if (prof?.emp_no) {
+      if (prof?.emp_no && source !== 'notification') {
         const istDate = new Date(Date.now() + 5.5 * 3600 * 1000).toISOString().slice(0, 10);
         try { attendance_status = (await autoMarkAttendance(supabaseAdmin, String(prof.emp_no).trim(), istDate)).status; } catch { /* non-fatal */ }
       }
@@ -477,7 +481,7 @@ export default async function handler(req, res) {
       }
       if (!vapidReady()) return res.status(500).json({ error: 'Server pe push configure nahi hai (VAPID missing).' });
       const istDate = new Date(Date.now() + 5.5 * 3600 * 1000).toISOString().slice(0, 10);
-      const payload = { title: '📍 Site check-in', body: 'Check in now — live photo + location (site verify).', url: '/attendance-checkin.html' };
+      const payload = { title: '📍 Site check-in', body: 'Check in now — live photo + location (site verify).', url: '/attendance-checkin.html?verify=1' };
 
       // Which subscriptions to hit: one employee, or everyone subscribed
       let q = supabaseAdmin.from('push_subscriptions').select('endpoint, p256dh, auth, user_id, emp_no').eq('active', true);
@@ -1302,7 +1306,7 @@ function slotOfIST(iso) {
 //    new row (source 'checkin') or updates a prior 'checkin' row as more slots come in.
 async function autoMarkAttendance(db, empNo, istDate) {
   const { data: todays } = await db.from('attendance_checkins')
-    .select('checked_at').eq('emp_no', empNo).eq('check_date', istDate);
+    .select('checked_at').eq('emp_no', empNo).eq('check_date', istDate).neq('source', 'notification');
   const slots = new Set((todays || []).map(c => slotOfIST(c.checked_at)));
   const desired = slots.size >= 2 ? 'P' : 'HD';
   const { data: existing } = await db.from('employee_attendance')
@@ -1342,8 +1346,8 @@ async function runPushTick(res, db) {
 
   // Collect every notification to send this tick, then burst them together (each rings 5×).
   const items = [];
-  const NEW_PAYLOAD = { title: '📍 Site check-in', body: 'Abhi check-in karo — live photo + location (site verify).', url: '/attendance-checkin.html' };
-  const REM_PAYLOAD = { title: '⏰ Check-in reminder', body: 'Thoda time bacha hai — abhi check-in karo.', url: '/attendance-checkin.html' };
+  const NEW_PAYLOAD = { title: '📍 Site check-in', body: 'Abhi check-in karo — live photo + location (site verify).', url: '/attendance-checkin.html?verify=1' };
+  const REM_PAYLOAD = { title: '⏰ Check-in reminder', body: 'Thoda time bacha hai — abhi check-in karo.', url: '/attendance-checkin.html?verify=1' };
 
   // 2. Reminders (pending, past half-window, none sent yet)
   const remCutoff = new Date(now.getTime() - (WINDOW_MIN / 2) * 60000).toISOString();

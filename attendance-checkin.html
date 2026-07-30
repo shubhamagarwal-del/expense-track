@@ -76,6 +76,8 @@
           <button id="notif-test-btn" onclick="sendTestPush()" style="display:none;background:#fff;color:#4f46e5;border:1px solid #c7d2fe;border-radius:9px;padding:.5rem .7rem;font-weight:800;font-size:.78rem;cursor:pointer;white-space:nowrap">Test</button>
         </div>
 
+        <div id="verify-banner" style="display:none;background:#eff6ff;border:1px solid #bfdbfe;border-radius:12px;padding:.7rem 1rem;margin-bottom:1rem;font-size:.85rem;color:#1e40af"><b>📍 Location verify</b> — HR ne abhi location maangi hai. Ye check-in aaj ke 3 slots me count nahi hoga — sirf location record hoga.</div>
+
         <div style="background:var(--card-bg,#fff);border:1px solid var(--border);border-radius:16px;padding:1.25rem;box-shadow:0 1px 3px rgba(0,0,0,.05)">
           <label style="display:block;font-size:.75rem;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:.4rem">Site</label>
           <input list="site-list" id="site-input" class="form-input" placeholder="Type or select…" autocomplete="off" style="height:46px;font-size:1rem;width:100%" />
@@ -90,6 +92,8 @@
             <button type="button" onclick="retakePhoto()" style="margin-top:.4rem;background:none;border:none;color:#4f46e5;font-size:.8rem;font-weight:700;cursor:pointer">🔄 Retake</button>
           </div>
           <canvas id="cam-canvas" style="display:none"></canvas>
+
+          <div id="notif-required-note" style="display:none;background:#fef2f2;border:1px solid #fecaca;border-radius:10px;padding:.6rem .8rem;margin-top:.9rem;font-size:.82rem;color:#991b1b;font-weight:600">⚠️ Check-in ke liye pehle upar <b>"🔔 ON"</b> karo — notifications ON karna zaroori hai.</div>
 
           <button id="btn-checkin" onclick="doCheckin()" style="margin-top:1rem;width:100%;height:52px;background:#15803d;color:#fff;border:none;border-radius:12px;font-size:1.05rem;font-weight:800;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:.5rem">📍 Check in</button>
 
@@ -117,6 +121,22 @@
     let sites = [];
     let photoFile = null;
     let camStream = null;
+    // Opened from a push prompt? Then this is a location spot-check (source 'notification') —
+    // it records location only, NOT counted in the 3 daily slots / attendance.
+    const isVerify = new URLSearchParams(location.search).get('verify') === '1';
+
+    // Notifications must be ON to check in (enforced).
+    async function notificationsOn() {
+      if (!('Notification' in window) || Notification.permission !== 'granted') return false;
+      try { const reg = await navigator.serviceWorker.ready; return !!(await reg.pushManager.getSubscription()); } catch { return false; }
+    }
+    async function enforceNotif() {
+      const on = await notificationsOn();
+      const btn = document.getElementById('btn-checkin');
+      const note = document.getElementById('notif-required-note');
+      if (btn) { btn.disabled = !on; btn.style.opacity = on ? '1' : '.45'; }
+      if (note) note.style.display = on ? 'none' : '';
+    }
 
     // 3 fixed daily slots — derived from the check-in time (IST). No DB column needed.
     const SLOTS = [
@@ -185,6 +205,7 @@
         if (!res.ok) { const b = await res.json(); throw new Error(b.error || 'Save fail'); }
         showMessage('Check-in verification is ON ✓', 'success');
         refreshNotifState();
+        enforceNotif();
       } catch (err) { btn.disabled = false; btn.textContent = 'ON'; showMessage('Couldn\'t turn on notifications: ' + err.message, 'error'); }
     }
     async function sendTestPush() {
@@ -266,7 +287,9 @@
       if (typeof populateSidebar === 'function') populateSidebar(currentProfile);
       await loadSites();
       loadToday();
+      if (isVerify) document.getElementById('verify-banner').style.display = '';
       refreshNotifState();
+      enforceNotif(); // notifications must be ON to check in
       // Opening this page = the employee responded → clear any ringing check-in notifications.
       try { const reg = await navigator.serviceWorker?.ready; (await reg?.getNotifications())?.forEach(n => n.close()); } catch (_) { }
     })();
@@ -293,6 +316,11 @@
     }
 
     async function doCheckin() {
+      if (!(await notificationsOn())) {
+        document.getElementById('notif-required-note').style.display = '';
+        document.getElementById('notif-card').scrollIntoView({ behavior: 'smooth', block: 'center' });
+        return showMessage('Pehle notifications ON karo — check-in ke liye zaroori hai.', 'error');
+      }
       const val = document.getElementById('site-input').value;
       const site = resolveSite(val);
       if (!site) return showMessage('Choose from the site list (name or LOC code).', 'error');
@@ -314,7 +342,7 @@
           btn.innerHTML = 'Checking in…';
           const res = await fetch('/api/receipt-url', {
             method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-            body: JSON.stringify({ checkin: { site_code: site.code, site_name: site.name, latitude, longitude, accuracy, photo_url } })
+            body: JSON.stringify({ checkin: { site_code: site.code, site_name: site.name, latitude, longitude, accuracy, photo_url, source: isVerify ? 'notification' : 'regular' } })
           });
           const body = await res.json();
           if (!res.ok) throw new Error(body.error || 'Check-in failed');
@@ -357,7 +385,7 @@
         const uid = currentProfile.id;
         const today = new Date(); today.setHours(0, 0, 0, 0);
         const { data } = await db.from('attendance_checkins')
-          .select('site_name, distance_m, inside_fence, checked_at, photo_url')
+          .select('site_name, distance_m, inside_fence, checked_at, photo_url, source')
           .eq('user_id', uid)
           .gte('checked_at', today.toISOString())
           .order('checked_at', { ascending: false });
@@ -381,7 +409,8 @@
     // Render the 3-slot progress panel from today's check-ins.
     function renderSlots(checkins) {
       const doneAt = {}; // slot → earliest check-in time in that slot
-      checkins.forEach(c => {
+      // Notification spot-checks are location-only — they don't count toward the 3 slots.
+      checkins.filter(c => c.source !== 'notification').forEach(c => {
         const s = slotOf(c.checked_at);
         const t = new Date(c.checked_at).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' });
         if (!doneAt[s]) doneAt[s] = t; // list is desc → last write = earliest; fine either way
