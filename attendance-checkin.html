@@ -62,8 +62,8 @@
 
       <main class="page-content" style="max-width:520px;margin:0 auto">
         <div style="margin-bottom:1rem">
-          <h1 style="margin:0 0 .25rem;font-size:1.35rem;font-weight:800">📍 Site Check-in</h1>
-          <p style="margin:0;color:var(--text-muted);font-size:.88rem">Choose your site and check in — GPS will confirm you're at the site.</p>
+          <h1 id="pg-title" style="margin:0 0 .25rem;font-size:1.35rem;font-weight:800">📍 Site Check-in</h1>
+          <p id="pg-sub" style="margin:0;color:var(--text-muted);font-size:.88rem">Choose your site and check in — GPS will confirm you're at the site.</p>
         </div>
 
         <div id="notif-card" style="background:#eef2ff;border:1px solid #c7d2fe;border-radius:14px;padding:.85rem 1rem;margin-bottom:1rem;display:flex;align-items:center;gap:.75rem">
@@ -76,10 +76,10 @@
           <button id="notif-test-btn" onclick="sendTestPush()" style="display:none;background:#fff;color:#4f46e5;border:1px solid #c7d2fe;border-radius:9px;padding:.5rem .7rem;font-weight:800;font-size:.78rem;cursor:pointer;white-space:nowrap">Test</button>
         </div>
 
-        <div id="verify-banner" style="display:none;background:#eff6ff;border:1px solid #bfdbfe;border-radius:12px;padding:.7rem 1rem;margin-bottom:1rem;font-size:.85rem;color:#1e40af"><b>📍 Location verify</b> — HR ne abhi location maangi hai. Ye check-in aaj ke 3 slots me count nahi hoga — sirf location record hoga.</div>
+        <div id="verify-banner" style="display:none;background:#eff6ff;border:1px solid #bfdbfe;border-radius:12px;padding:.7rem 1rem;margin-bottom:1rem;font-size:.85rem;color:#1e40af"><b>📍 Location verification</b> — HR has requested your current location. This won't count toward your 3 daily check-ins — it only records where you are right now.</div>
 
         <div style="background:var(--card-bg,#fff);border:1px solid var(--border);border-radius:16px;padding:1.25rem;box-shadow:0 1px 3px rgba(0,0,0,.05)">
-          <label style="display:block;font-size:.75rem;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:.4rem">Site</label>
+          <label id="site-label" style="display:block;font-size:.75rem;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:.4rem">Site</label>
           <input list="site-list" id="site-input" class="form-input" placeholder="Type or select…" autocomplete="off" style="height:46px;font-size:1rem;width:100%" />
           <datalist id="site-list"></datalist>
 
@@ -93,20 +93,20 @@
           </div>
           <canvas id="cam-canvas" style="display:none"></canvas>
 
-          <div id="notif-required-note" style="display:none;background:#fef2f2;border:1px solid #fecaca;border-radius:10px;padding:.6rem .8rem;margin-top:.9rem;font-size:.82rem;color:#991b1b;font-weight:600">⚠️ Check-in ke liye pehle upar <b>"🔔 ON"</b> karo — notifications ON karna zaroori hai.</div>
+          <div id="notif-required-note" style="display:none;background:#fef2f2;border:1px solid #fecaca;border-radius:10px;padding:.6rem .8rem;margin-top:.9rem;font-size:.82rem;color:#991b1b;font-weight:600">⚠️ Turn on <b>🔔 notifications</b> above first — required to check in.</div>
 
           <button id="btn-checkin" onclick="doCheckin()" style="margin-top:1rem;width:100%;height:52px;background:#15803d;color:#fff;border:none;border-radius:12px;font-size:1.05rem;font-weight:800;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:.5rem">📍 Check in</button>
 
           <div id="checkin-result" style="margin-top:1rem"></div>
         </div>
 
-        <div style="margin-top:1.5rem">
+        <div id="slots-section" style="margin-top:1.5rem">
           <div style="font-size:.75rem;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:.5rem">Today's 3 check-ins</div>
           <div id="slots-panel" style="display:grid;grid-template-columns:repeat(3,1fr);gap:.5rem"></div>
           <div id="slots-hint" style="margin-top:.6rem;font-size:.82rem;text-align:center"></div>
         </div>
 
-        <div style="margin-top:1.25rem">
+        <div id="today-section" style="margin-top:1.25rem">
           <div style="font-size:.75rem;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:.5rem">All check-ins today</div>
           <div id="today-list" style="display:flex;flex-direction:column;gap:.5rem"></div>
         </div>
@@ -174,15 +174,15 @@
           title.textContent = 'Check-in verification is ON ✓'; btn.textContent = 'ON ✓'; btn.style.background = '#16a34a';
           // Keep the button tappable — a subscription can silently expire (esp. after app
           // updates); tapping re-registers a fresh one so the employee is never stuck.
-          btn.disabled = false; btn.title = 'Notifications nahi aa rahi? Tap karo re-enable ke liye';
+          btn.disabled = false; btn.title = 'Not getting notifications? Tap to re-enable';
           // Test button is a verification tool — only for admins, not regular employees.
           if (currentProfile && ['admin', 'hr', 'audit', 'super_admin'].includes(currentProfile.role)) {
             document.getElementById('notif-test-btn').style.display = '';
           }
         }
       } else if (Notification.permission === 'denied') {
-        title.textContent = '🔕 Notifications blocked hai';
-        document.getElementById('notif-sub').innerHTML = 'Chrome address bar mein <b>🔒 / ⓘ</b> pe tap → Permissions → Notifications → <b>Allow</b> → phir 🔄 Reload. (Ya Chrome <b>⋮</b> → Settings → Site settings → Notifications → is site ko <b>Allow</b>.)';
+        title.textContent = '🔕 Notifications are blocked';
+        document.getElementById('notif-sub').innerHTML = 'Tap the <b>🔒 / ⓘ</b> icon in the address bar → Permissions → Notifications → <b>Allow</b>, then 🔄 Reload. (Or Chrome <b>⋮</b> → Settings → Site settings → Notifications → set this site to <b>Allow</b>.)';
         btn.textContent = '🔄 Reload'; btn.disabled = false; btn.style.background = '#4f46e5';
         btn.onclick = () => location.reload();
       }
@@ -287,7 +287,17 @@
       if (typeof populateSidebar === 'function') populateSidebar(currentProfile);
       await loadSites();
       loadToday();
-      if (isVerify) document.getElementById('verify-banner').style.display = '';
+      if (isVerify) {
+        // Reframe as a simple "send location" task so the employee isn't confused with a normal check-in.
+        document.getElementById('verify-banner').style.display = '';
+        document.getElementById('pg-title').textContent = '📍 Location Verification';
+        document.getElementById('pg-sub').textContent = 'HR requested your location — just take a live photo. Your GPS is sent automatically.';
+        document.getElementById('site-label').style.display = 'none';
+        document.getElementById('site-input').style.display = 'none';
+        document.getElementById('slots-section').style.display = 'none';
+        document.getElementById('today-section').style.display = 'none';
+        document.getElementById('btn-checkin').innerHTML = '📍 Send Location';
+      }
       refreshNotifState();
       enforceNotif(); // notifications must be ON to check in
       // Opening this page = the employee responded → clear any ringing check-in notifications.
@@ -319,12 +329,17 @@
       if (!(await notificationsOn())) {
         document.getElementById('notif-required-note').style.display = '';
         document.getElementById('notif-card').scrollIntoView({ behavior: 'smooth', block: 'center' });
-        return showMessage('Pehle notifications ON karo — check-in ke liye zaroori hai.', 'error');
+        return showMessage('Turn on notifications first — required to check in.', 'error');
       }
-      const val = document.getElementById('site-input').value;
-      const site = resolveSite(val);
-      if (!site) return showMessage('Choose from the site list (name or LOC code).', 'error');
-      if (!photoFile) return showMessage('Take a live photo first — check-in needs a photo.', 'error');
+      // Verify (location) mode needs no site — use the employee's usual site, else a generic marker.
+      let site;
+      if (isVerify) {
+        site = resolveSite(currentProfile.site_name || '') || { code: 'VERIFY', name: 'Location Verify' };
+      } else {
+        site = resolveSite(document.getElementById('site-input').value);
+        if (!site) return showMessage('Choose from the site list (name or LOC code).', 'error');
+      }
+      if (!photoFile) return showMessage('Take a live photo first — a photo is required.', 'error');
       if (!navigator.geolocation) return showMessage('GPS isn\'t supported on this device.', 'error');
 
       const btn = document.getElementById('btn-checkin');
@@ -347,6 +362,16 @@
           const body = await res.json();
           if (!res.ok) throw new Error(body.error || 'Check-in failed');
           const nm = escHtml(site.name);
+          if (isVerify) {
+            // Location-only spot-check → simple confirmation, no site/attendance wording.
+            result.innerHTML = `<div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:12px;padding:1rem;color:#166534">
+              <div style="font-size:1.05rem;font-weight:800">✅ Location sent to HR</div>
+              <div style="font-size:.85rem;margin-top:.25rem">${body.location_name ? escHtml(body.location_name) : 'Your current location'} recorded. Thank you.</div>
+            </div>`;
+            resetPhotoUI();
+            btn.disabled = false; btn.innerHTML = orig;
+            return;
+          }
           if (!body.has_fence) {
             result.innerHTML = `<div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:12px;padding:1rem;color:#1e40af">
               <div style="font-size:1.05rem;font-weight:800">✅ Check-in recorded</div>
