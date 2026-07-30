@@ -41,8 +41,10 @@ async function sendPush(db, sub, payload) {
 const PUSH_REPEATS = 5, PUSH_GAP_MS = 1000;
 async function sendBurst(db, items, repeats = PUSH_REPEATS, gapMs = PUSH_GAP_MS) {
   let delivered = 0;
+  const base = Date.now();
   for (let r = 0; r < repeats; r++) {
-    const results = await Promise.all((items || []).map(x => sendPush(db, x.sub, x.payload)));
+    // Unique tag per round → each arrives as its own notification and re-alerts (rings).
+    const results = await Promise.all((items || []).map(x => sendPush(db, x.sub, { ...x.payload, tag: `checkin-${base}-${r}` })));
     if (r === 0) delivered = results.filter(Boolean).length;
     if (r < repeats - 1) await new Promise(res => setTimeout(res, gapMs));
   }

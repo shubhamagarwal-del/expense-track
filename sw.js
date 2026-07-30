@@ -12,7 +12,7 @@
 // This string MUST change with every deployment so the browser
 // detects a new SW, evicts the old cache, and reloads clients.
 // Format: YYYY-MM-DD-NNN  (increment NNN for same-day deploys)
-const CACHE_VERSION = '2026-07-30-006';
+const CACHE_VERSION = '2026-07-30-007';
 const CACHE_NAME    = `expensetrack-${CACHE_VERSION}`;
 
 // Same-origin static assets (CSS / JS / icons / manifest)
@@ -184,7 +184,7 @@ self.addEventListener('push', (event) => {
       body,
       icon: '/icon-192.png',
       badge: '/icon-192.png',
-      tag: 'site-checkin',           // replaces a prior pending prompt
+      tag: data.tag || 'site-checkin', // unique tag per burst-round → separate alert each time
       renotify: true,
       requireInteraction: true,      // stays until tapped/dismissed
       silent: false,                 // allow the OS notification sound
