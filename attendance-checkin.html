@@ -87,7 +87,13 @@
         </div>
 
         <div style="margin-top:1.5rem">
-          <div style="font-size:.75rem;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:.5rem">Aaj ke check-ins</div>
+          <div style="font-size:.75rem;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:.5rem">Aaj ke 3 check-in</div>
+          <div id="slots-panel" style="display:grid;grid-template-columns:repeat(3,1fr);gap:.5rem"></div>
+          <div id="slots-hint" style="margin-top:.6rem;font-size:.82rem;text-align:center"></div>
+        </div>
+
+        <div style="margin-top:1.25rem">
+          <div style="font-size:.75rem;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:.5rem">Aaj ke saare check-ins</div>
           <div id="today-list" style="display:flex;flex-direction:column;gap:.5rem"></div>
         </div>
       </main>
@@ -101,6 +107,24 @@
     let sites = [];
     let photoFile = null;
     let camStream = null;
+
+    // 3 fixed daily slots — derived from the check-in time (IST). No DB column needed.
+    const SLOTS = [
+      { key: 'morning',   icon: '🌅', label: 'Subah',   win: '12 PM se pehle' },
+      { key: 'afternoon', icon: '☀️', label: 'Dopahar', win: '12–4 PM' },
+      { key: 'evening',   icon: '🌆', label: 'Shaam',   win: '4 PM ke baad' },
+    ];
+    function slotOf(iso) {
+      const ist = new Date(new Date(iso).getTime() + 5.5 * 3600 * 1000); // shift to IST, read UTC hour
+      const h = ist.getUTCHours();
+      return h < 12 ? 'morning' : h < 16 ? 'afternoon' : 'evening';
+    }
+    // Which slot is it right now (to hint the employee)?
+    function currentSlot() {
+      const ist = new Date(Date.now() + 5.5 * 3600 * 1000);
+      const h = ist.getUTCHours();
+      return h < 12 ? 'morning' : h < 16 ? 'afternoon' : 'evening';
+    }
 
     // Live camera only — no gallery/file upload. Uses getUserMedia so the employee
     // MUST take the photo on the spot (rear camera preferred).
@@ -260,6 +284,7 @@
           .eq('user_id', uid)
           .gte('checked_at', today.toISOString())
           .order('checked_at', { ascending: false });
+        renderSlots(data || []);
         const el = document.getElementById('today-list');
         if (!data || !data.length) { el.innerHTML = `<div style="color:var(--text-muted);font-size:.85rem">Aaj koi check-in nahi.</div>`; return; }
         el.innerHTML = data.map(c => {
@@ -274,6 +299,44 @@
           </div>`;
         }).join('');
       } catch (_) { /* non-fatal */ }
+    }
+
+    // Render the 3-slot progress panel from today's check-ins.
+    function renderSlots(checkins) {
+      const doneAt = {}; // slot → earliest check-in time in that slot
+      checkins.forEach(c => {
+        const s = slotOf(c.checked_at);
+        const t = new Date(c.checked_at).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' });
+        if (!doneAt[s]) doneAt[s] = t; // list is desc → last write = earliest; fine either way
+        else doneAt[s] = t;
+      });
+      const now = currentSlot();
+      document.getElementById('slots-panel').innerHTML = SLOTS.map(s => {
+        const done = doneAt[s.key];
+        const isNow = s.key === now && !done;
+        const bg = done ? '#f0fdf4' : isNow ? '#eff6ff' : '#fff';
+        const bd = done ? '#bbf7d0' : isNow ? '#bfdbfe' : 'var(--border)';
+        return `<div style="background:${bg};border:1.5px solid ${bd};border-radius:12px;padding:.6rem .4rem;text-align:center">
+          <div style="font-size:1.3rem">${s.icon}</div>
+          <div style="font-weight:800;font-size:.82rem;margin-top:.1rem">${s.label}</div>
+          <div style="font-size:.62rem;color:var(--text-muted)">${s.win}</div>
+          <div style="margin-top:.35rem;font-size:.75rem;font-weight:800;color:${done ? '#166534' : isNow ? '#1d4ed8' : '#9ca3af'}">
+            ${done ? '✓ ' + done : isNow ? 'Abhi karo' : '—'}
+          </div>
+        </div>`;
+      }).join('');
+
+      const n = Object.keys(doneAt).length;
+      const hint = document.getElementById('slots-hint');
+      if (n >= 3) {
+        hint.innerHTML = `<span style="color:#166534;font-weight:800">✅ Full day — teeno check-in ho gaye (3/3)</span>`;
+      } else if (n === 0) {
+        hint.innerHTML = `<span style="color:var(--text-muted)">Aaj ke <b>3</b> check-in karne hain — abhi shuru karo.</span>`;
+      } else {
+        const pending = SLOTS.filter(s => !doneAt[s.key]).map(s => s.icon + ' ' + s.label).join(', ');
+        const tag = n === 1 ? '🟠 Half day (1/3)' : '🟡 Present (2/3)';
+        hint.innerHTML = `<span style="font-weight:700">${tag}</span> — baaki: <b>${pending}</b>`;
+      }
     }
   </script>
 </body>
