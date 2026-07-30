@@ -203,6 +203,18 @@ export default async function handler(req, res) {
       return res.status(200).json({ push_checks: out });
     }
 
+    // ?ping_employees=1 → employee list for the manual "send check-in request" picker (with push status).
+    if (req.query?.ping_employees) {
+      if (!['admin', 'hr', 'audit', 'super_admin'].includes(profile.role)) {
+        return res.status(403).json({ error: 'Not authorised' });
+      }
+      const { data: users } = await supabaseAdmin.from('users').select('name, emp_no, department').not('emp_no', 'is', null).order('name');
+      const { data: subs } = await supabaseAdmin.from('push_subscriptions').select('emp_no').eq('active', true);
+      const subbed = new Set((subs || []).map(s => String(s.emp_no || '').trim()));
+      const out = (users || []).map(u => ({ name: u.name, emp_no: u.emp_no, department: u.department, has_push: subbed.has(String(u.emp_no || '').trim()) }));
+      return res.status(200).json({ employees: out, subscribed: subbed.size });
+    }
+
     // ?audit_checks=1 → all recorded audit-check rows (Audit / Super Admin manual "checked for payment" marker)
     if (req.query?.audit_checks) {
       if (!['audit', 'super_admin'].includes(profile.role)) {
@@ -455,6 +467,37 @@ export default async function handler(req, res) {
       const payload = { title: '✅ Test notification', body: 'Push chal raha hai! Yeh ek test hai — tap karke check-in page khulega.', url: '/attendance-checkin.html' };
       const sent = await sendBurst(supabaseAdmin, subs.map(s => ({ sub: s, payload })));
       return res.status(200).json({ ok: true, sent, total: subs.length });
+    }
+
+    // ── POST { ping_employee: { emp_no } } | { ping_all: true } → HR/Manager manual "send me your photo+location now" ──
+    if (req.body?.ping_employee || req.body?.ping_all) {
+      const { data: pprof } = await supabaseAdmin.from('users').select('role, name').eq('id', user.id).single();
+      if (!pprof || !['admin', 'hr', 'audit', 'super_admin'].includes(pprof.role)) {
+        return res.status(403).json({ error: 'Not authorised' });
+      }
+      if (!vapidReady()) return res.status(500).json({ error: 'Server pe push configure nahi hai (VAPID missing).' });
+      const istDate = new Date(Date.now() + 5.5 * 3600 * 1000).toISOString().slice(0, 10);
+      const payload = { title: '📍 Site check-in', body: 'Check in now — live photo + location (site verify).', url: '/attendance-checkin.html' };
+
+      // Which subscriptions to hit: one employee, or everyone subscribed
+      let q = supabaseAdmin.from('push_subscriptions').select('endpoint, p256dh, auth, user_id, emp_no').eq('active', true);
+      if (req.body.ping_employee) {
+        const emp = String(req.body.ping_employee.emp_no || '').trim();
+        if (!emp) return res.status(400).json({ error: 'emp_no required' });
+        q = q.eq('emp_no', emp);
+      }
+      const { data: subs } = await q;
+      if (!subs?.length) {
+        return res.status(400).json({ error: req.body.ping_employee ? 'Is employee ke device pe notifications ON nahi hai.' : 'Kisi employee ne notifications ON nahi kiya.' });
+      }
+      // One pending push_check per distinct employee (trackable → responded/missed)
+      const byEmp = {};
+      subs.forEach(s => { const k = String(s.emp_no || '').trim(); if (k) (byEmp[k] ||= s); });
+      for (const k of Object.keys(byEmp)) {
+        await supabaseAdmin.from('push_checks').insert({ user_id: byEmp[k].user_id, emp_no: k, window_min: 30, status: 'pending', check_date: istDate });
+      }
+      const sent = await sendBurst(supabaseAdmin, subs.map(s => ({ sub: s, payload })));
+      return res.status(200).json({ ok: true, employees: Object.keys(byEmp).length, devices: subs.length, sent });
     }
 
     // ── POST { set_attendance: { emp_no, att_date, status } } → HR/Admin manual attendance override ──

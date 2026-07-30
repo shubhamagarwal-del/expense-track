@@ -67,6 +67,18 @@
           <p style="margin:0;color:var(--text-muted);font-size:.88rem">Kaunsa employee kis site pe, kab, andar/bahar check-in kiya — GPS location ke saath.</p>
         </div>
 
+        <div style="background:#eef2ff;border:1px solid #c7d2fe;border-radius:14px;padding:1rem 1.25rem;margin-bottom:1rem">
+          <div style="font-weight:800;font-size:.95rem;color:#3730a3;margin-bottom:.15rem">🔔 Send check-in request</div>
+          <div style="font-size:.78rem;color:#4338ca;margin-bottom:.7rem">Employee ko abhi "live photo + location" ki request bhejo — unke phone pe ring hoga.</div>
+          <div style="display:flex;flex-wrap:wrap;gap:.6rem;align-items:center">
+            <input list="ping-emp-list" id="ping-input" class="form-input" placeholder="Employee naam ya emp no…" autocomplete="off" style="height:38px;flex:1;min-width:200px" />
+            <datalist id="ping-emp-list"></datalist>
+            <button onclick="pingEmployee()" style="height:38px;background:#4f46e5;color:#fff;border:none;border-radius:8px;padding:0 1.1rem;font-weight:800;font-size:.82rem;cursor:pointer">🔔 Send</button>
+            <button onclick="pingAll()" id="ping-all-btn" style="height:38px;background:#fff;color:#4f46e5;border:1px solid #c7d2fe;border-radius:8px;padding:0 1rem;font-weight:800;font-size:.82rem;cursor:pointer">Send to all</button>
+          </div>
+          <div id="ping-result" style="font-size:.8rem;margin-top:.5rem"></div>
+        </div>
+
         <div style="background:var(--card-bg,#fff);border:1px solid var(--border);border-radius:14px;padding:1rem 1.25rem;margin-bottom:1rem;display:flex;flex-wrap:wrap;gap:.75rem;align-items:end">
           <div>
             <label style="display:block;font-size:.7rem;font-weight:700;color:var(--text-muted);text-transform:uppercase;margin-bottom:.3rem">Date</label>
@@ -146,7 +158,58 @@
       const d = new Date();
       document.getElementById('f-date').value = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
       load();
+      loadPingEmployees();
     })();
+
+    let pingEmployees = [];
+    async function loadPingEmployees() {
+      try {
+        const token = (await db.auth.getSession()).data.session?.access_token;
+        const res = await fetch('/api/receipt-url?ping_employees=1', { headers: { Authorization: `Bearer ${token}` } });
+        const body = await res.json();
+        if (!res.ok) return;
+        pingEmployees = body.employees || [];
+        document.getElementById('ping-emp-list').innerHTML = pingEmployees
+          .map(e => `<option value="${escHtml(e.name || '')} — ${escHtml(e.emp_no || '')}">${e.has_push ? '🔔 on' : 'notifications off'}</option>`).join('');
+        const btn = document.getElementById('ping-all-btn');
+        if (btn) btn.textContent = `Send to all (${body.subscribed || 0})`;
+      } catch (_) { }
+    }
+    function resolveEmp(val) {
+      const v = (val || '').trim().toLowerCase();
+      return pingEmployees.find(e => `${e.name} — ${e.emp_no}`.toLowerCase() === v)
+          || pingEmployees.find(e => String(e.emp_no).toLowerCase() === v)
+          || pingEmployees.find(e => (e.name || '').toLowerCase() === v)
+          || pingEmployees.find(e => v.includes(String(e.emp_no).toLowerCase()));
+    }
+    async function pingEmployee() {
+      const emp = resolveEmp(document.getElementById('ping-input').value);
+      const out = document.getElementById('ping-result');
+      if (!emp) { out.innerHTML = '<span style="color:#991b1b">Employee list mein se chuno (naam ya emp no).</span>'; return; }
+      if (!emp.has_push) { out.innerHTML = `<span style="color:#991b1b">${escHtml(emp.name)} ke phone pe notifications ON nahi hai — pehle unhe check-in page pe 🔔 ON karna padega.</span>`; return; }
+      out.innerHTML = 'Bhej rahe hain…';
+      try {
+        const token = (await db.auth.getSession()).data.session?.access_token;
+        const res = await fetch('/api/receipt-url', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: JSON.stringify({ ping_employee: { emp_no: emp.emp_no } }) });
+        const body = await res.json();
+        if (!res.ok) throw new Error(body.error || 'Fail');
+        out.innerHTML = `<span style="color:#166534;font-weight:700">✅ ${escHtml(emp.name)} ko request bhej di — unke phone pe ring hoga.</span>`;
+        setTimeout(load, 1200);
+      } catch (err) { out.innerHTML = `<span style="color:#991b1b">Fail: ${escHtml(err.message)}</span>`; }
+    }
+    async function pingAll() {
+      const out = document.getElementById('ping-result');
+      if (!confirm('Jitne employees ne notifications ON kiya hai, sabko abhi check-in request bhejein?')) return;
+      out.innerHTML = 'Bhej rahe hain…';
+      try {
+        const token = (await db.auth.getSession()).data.session?.access_token;
+        const res = await fetch('/api/receipt-url', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: JSON.stringify({ ping_all: true }) });
+        const body = await res.json();
+        if (!res.ok) throw new Error(body.error || 'Fail');
+        out.innerHTML = `<span style="color:#166534;font-weight:700">✅ ${body.employees} employees ko request bhej di.</span>`;
+        setTimeout(load, 1200);
+      } catch (err) { out.innerHTML = `<span style="color:#991b1b">Fail: ${escHtml(err.message)}</span>`; }
+    }
 
     async function load() {
       const wrap = document.getElementById('wrap');
