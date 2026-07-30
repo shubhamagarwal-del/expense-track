@@ -63,14 +63,14 @@
       <main class="page-content" style="max-width:520px;margin:0 auto">
         <div style="margin-bottom:1rem">
           <h1 style="margin:0 0 .25rem;font-size:1.35rem;font-weight:800">📍 Site Check-in</h1>
-          <p style="margin:0;color:var(--text-muted);font-size:.88rem">Apni site chuno aur check-in karo — GPS se confirm hoga ki aap site pe hain.</p>
+          <p style="margin:0;color:var(--text-muted);font-size:.88rem">Choose your site and check in — GPS will confirm you're at the site.</p>
         </div>
 
         <div id="notif-card" style="background:#eef2ff;border:1px solid #c7d2fe;border-radius:14px;padding:.85rem 1rem;margin-bottom:1rem;display:flex;align-items:center;gap:.75rem">
           <span style="font-size:1.3rem">🔔</span>
           <div style="flex:1;font-size:.82rem;color:#3730a3">
-            <div style="font-weight:800" id="notif-title">Verify check-in ON karo</div>
-            <div id="notif-sub" style="font-size:.75rem">Din mein kabhi-kabhi "abhi check-in karo" ka reminder aayega — site pe ho ye confirm karne ke liye.</div>
+            <div style="font-weight:800" id="notif-title">Turn on check-in verification</div>
+            <div id="notif-sub" style="font-size:.75rem">You'll occasionally get a "check in now" reminder — to confirm you're at the site.</div>
           </div>
           <button id="notif-btn" onclick="enableNotifications()" style="background:#4f46e5;color:#fff;border:none;border-radius:9px;padding:.5rem .9rem;font-weight:800;font-size:.8rem;cursor:pointer;white-space:nowrap">ON</button>
           <button id="notif-test-btn" onclick="sendTestPush()" style="display:none;background:#fff;color:#4f46e5;border:1px solid #c7d2fe;border-radius:9px;padding:.5rem .7rem;font-weight:800;font-size:.78rem;cursor:pointer;white-space:nowrap">Test</button>
@@ -78,16 +78,16 @@
 
         <div style="background:var(--card-bg,#fff);border:1px solid var(--border);border-radius:16px;padding:1.25rem;box-shadow:0 1px 3px rgba(0,0,0,.05)">
           <label style="display:block;font-size:.75rem;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:.4rem">Site</label>
-          <input list="site-list" id="site-input" class="form-input" placeholder="Type ya select karo…" autocomplete="off" style="height:46px;font-size:1rem;width:100%" />
+          <input list="site-list" id="site-input" class="form-input" placeholder="Type or select…" autocomplete="off" style="height:46px;font-size:1rem;width:100%" />
           <datalist id="site-list"></datalist>
 
-          <label style="display:block;font-size:.75rem;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;margin:1rem 0 .4rem">Live Photo <span style="color:#dc2626">*</span> <span style="font-weight:500;text-transform:none">(zaroori — site pe camera se, gallery upload nahi)</span></label>
-          <button type="button" id="btn-open-cam" onclick="openCamera()" style="width:100%;height:46px;background:#fff;border:1.5px dashed var(--border);border-radius:12px;font-size:.95rem;font-weight:700;color:#334155;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:.5rem">📷 Camera kholein</button>
+          <label style="display:block;font-size:.75rem;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;margin:1rem 0 .4rem">Live Photo <span style="color:#dc2626">*</span> <span style="font-weight:500;text-transform:none">(required — camera on site, no gallery upload)</span></label>
+          <button type="button" id="btn-open-cam" onclick="openCamera()" style="width:100%;height:46px;background:#fff;border:1.5px dashed var(--border);border-radius:12px;font-size:.95rem;font-weight:700;color:#334155;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:.5rem">📷 Open camera</button>
           <video id="cam-video" playsinline autoplay muted style="display:none;width:100%;max-height:320px;object-fit:cover;border-radius:12px;background:#000;margin-top:.4rem"></video>
-          <button type="button" id="btn-capture" onclick="capturePhoto()" style="display:none;margin-top:.5rem;width:100%;height:46px;background:#4f46e5;color:#fff;border:none;border-radius:12px;font-size:.95rem;font-weight:800;cursor:pointer">📸 Photo lein</button>
+          <button type="button" id="btn-capture" onclick="capturePhoto()" style="display:none;margin-top:.5rem;width:100%;height:46px;background:#4f46e5;color:#fff;border:none;border-radius:12px;font-size:.95rem;font-weight:800;cursor:pointer">📸 Take photo</button>
           <div id="photo-preview" style="margin-top:.6rem;display:none">
             <img id="photo-thumb" alt="preview" style="width:100%;max-height:220px;object-fit:cover;border-radius:12px;border:1px solid var(--border)" />
-            <button type="button" onclick="retakePhoto()" style="margin-top:.4rem;background:none;border:none;color:#4f46e5;font-size:.8rem;font-weight:700;cursor:pointer">🔄 Dobara lein</button>
+            <button type="button" onclick="retakePhoto()" style="margin-top:.4rem;background:none;border:none;color:#4f46e5;font-size:.8rem;font-weight:700;cursor:pointer">🔄 Retake</button>
           </div>
           <canvas id="cam-canvas" style="display:none"></canvas>
 
@@ -97,13 +97,13 @@
         </div>
 
         <div style="margin-top:1.5rem">
-          <div style="font-size:.75rem;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:.5rem">Aaj ke 3 check-in</div>
+          <div style="font-size:.75rem;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:.5rem">Today's 3 check-ins</div>
           <div id="slots-panel" style="display:grid;grid-template-columns:repeat(3,1fr);gap:.5rem"></div>
           <div id="slots-hint" style="margin-top:.6rem;font-size:.82rem;text-align:center"></div>
         </div>
 
         <div style="margin-top:1.25rem">
-          <div style="font-size:.75rem;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:.5rem">Aaj ke saare check-ins</div>
+          <div style="font-size:.75rem;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:.5rem">All check-ins today</div>
           <div id="today-list" style="display:flex;flex-direction:column;gap:.5rem"></div>
         </div>
       </main>
@@ -120,9 +120,9 @@
 
     // 3 fixed daily slots — derived from the check-in time (IST). No DB column needed.
     const SLOTS = [
-      { key: 'morning',   icon: '🌅', label: 'Subah',   win: '12 PM se pehle' },
-      { key: 'afternoon', icon: '☀️', label: 'Dopahar', win: '12–4 PM' },
-      { key: 'evening',   icon: '🌆', label: 'Shaam',   win: '4 PM ke baad' },
+      { key: 'morning',   icon: '🌅', label: 'Morning',   win: 'Before 12 PM' },
+      { key: 'afternoon', icon: '☀️', label: 'Afternoon', win: '12–4 PM' },
+      { key: 'evening',   icon: '🌆', label: 'Evening',   win: 'After 4 PM' },
     ];
     function slotOf(iso) {
       const ist = new Date(new Date(iso).getTime() + 5.5 * 3600 * 1000); // shift to IST, read UTC hour
@@ -151,22 +151,22 @@
       if (Notification.permission === 'granted') {
         const reg = await navigator.serviceWorker.ready;
         if (await reg.pushManager.getSubscription()) {
-          title.textContent = 'Verify check-in ON hai ✓'; btn.textContent = 'ON ✓'; btn.style.background = '#16a34a'; btn.disabled = true;
+          title.textContent = 'Check-in verification is ON ✓'; btn.textContent = 'ON ✓'; btn.style.background = '#16a34a'; btn.disabled = true;
           // Test button is a verification tool — only for admins, not regular employees.
           if (currentProfile && ['admin', 'hr', 'audit', 'super_admin'].includes(currentProfile.role)) {
             document.getElementById('notif-test-btn').style.display = '';
           }
         }
       } else if (Notification.permission === 'denied') {
-        title.textContent = 'Notifications blocked — browser settings se allow karo'; btn.style.display = 'none';
+        title.textContent = 'Notifications blocked — allow them in browser settings'; btn.style.display = 'none';
       }
     }
     async function enableNotifications() {
       const btn = document.getElementById('notif-btn');
       try {
-        if (!('serviceWorker' in navigator) || !('PushManager' in window) || !('Notification' in window)) return showMessage('Is browser mein push support nahi hai.', 'error');
+        if (!('serviceWorker' in navigator) || !('PushManager' in window) || !('Notification' in window)) return showMessage('Push isn\'t supported in this browser.', 'error');
         const perm = await Notification.requestPermission();
-        if (perm !== 'granted') return showMessage('Notification permission chahiye — Allow karo.', 'error');
+        if (perm !== 'granted') return showMessage('Notification permission needed — click Allow.', 'error');
         btn.disabled = true; btn.textContent = '…';
         const reg = await navigator.serviceWorker.ready;
         let sub = await reg.pushManager.getSubscription();
@@ -174,9 +174,9 @@
         const token = (await db.auth.getSession()).data.session?.access_token;
         const res = await fetch('/api/receipt-url', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: JSON.stringify({ subscribe_push: sub.toJSON() }) });
         if (!res.ok) { const b = await res.json(); throw new Error(b.error || 'Save fail'); }
-        showMessage('Verify check-in ON ho gaya ✓', 'success');
+        showMessage('Check-in verification is ON ✓', 'success');
         refreshNotifState();
-      } catch (err) { btn.disabled = false; btn.textContent = 'ON'; showMessage('Notification on nahi hua: ' + err.message, 'error'); }
+      } catch (err) { btn.disabled = false; btn.textContent = 'ON'; showMessage('Couldn\'t turn on notifications: ' + err.message, 'error'); }
     }
     async function sendTestPush() {
       const b = document.getElementById('notif-test-btn'), orig = b.textContent;
@@ -186,8 +186,8 @@
         const res = await fetch('/api/receipt-url', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: JSON.stringify({ test_push: true }) });
         const body = await res.json();
         if (!res.ok) throw new Error(body.error || 'Fail');
-        showMessage(`Test notification bheji (${body.sent}/${body.total} device). Aayi?`, 'success');
-      } catch (err) { showMessage('Test fail: ' + err.message, 'error'); }
+        showMessage(`Test notification sent (${body.sent}/${body.total} device). Did it arrive?`, 'success');
+      } catch (err) { showMessage('Test failed: ' + err.message, 'error'); }
       finally { b.disabled = false; b.textContent = orig; }
     }
 
@@ -195,7 +195,7 @@
     // MUST take the photo on the spot (rear camera preferred).
     async function openCamera() {
       if (!navigator.mediaDevices?.getUserMedia) {
-        return showMessage('Is device/browser pe live camera support nahi hai.', 'error');
+        return showMessage('Live camera isn\'t supported on this device/browser.', 'error');
       }
       try {
         camStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' } }, audio: false });
@@ -206,19 +206,19 @@
         document.getElementById('btn-open-cam').style.display = 'none';
         document.getElementById('photo-preview').style.display = 'none';
       } catch (e) {
-        showMessage('Camera nahi khula — location/camera permission allow karo.', 'error');
+        showMessage('Camera didn\'t open — allow camera permission.', 'error');
       }
     }
 
     function capturePhoto() {
       const v = document.getElementById('cam-video');
       const w = v.videoWidth, h = v.videoHeight;
-      if (!w || !h) return showMessage('Camera abhi ready nahi — 1 second ruk ke try karo.', 'error');
+      if (!w || !h) return showMessage('Camera isn\'t ready yet — wait a second and try again.', 'error');
       const c = document.getElementById('cam-canvas');
       c.width = w; c.height = h;
       c.getContext('2d').drawImage(v, 0, 0, w, h);
       c.toBlob(blob => {
-        if (!blob) return showMessage('Photo capture fail — dobara try karo.', 'error');
+        if (!blob) return showMessage('Photo capture failed — try again.', 'error');
         photoFile = new File([blob], `checkin_${Date.now()}.jpg`, { type: 'image/jpeg' });
         document.getElementById('photo-thumb').src = URL.createObjectURL(blob);
         document.getElementById('photo-preview').style.display = '';
@@ -253,7 +253,7 @@
       const user = await requireAuth();
       if (!user) return;
       currentProfile = await getUserProfile();
-      if (!currentProfile) { showMessage('Profile load nahi hua.', 'error'); return; }
+      if (!currentProfile) { showMessage('Could not load profile.', 'error'); return; }
       if (typeof populateSidebar === 'function') populateSidebar(currentProfile);
       await loadSites();
       loadToday();
@@ -284,12 +284,12 @@
     async function doCheckin() {
       const val = document.getElementById('site-input').value;
       const site = resolveSite(val);
-      if (!site) return showMessage('Site list mein se chuno (naam ya LOC code).', 'error');
-      if (!photoFile) return showMessage('Pehle live photo lein — bina photo check-in nahi hoga.', 'error');
-      if (!navigator.geolocation) return showMessage('Is device pe GPS support nahi hai.', 'error');
+      if (!site) return showMessage('Choose from the site list (name or LOC code).', 'error');
+      if (!photoFile) return showMessage('Take a live photo first — check-in needs a photo.', 'error');
+      if (!navigator.geolocation) return showMessage('GPS isn\'t supported on this device.', 'error');
 
       const btn = document.getElementById('btn-checkin');
-      const orig = btn.innerHTML; btn.disabled = true; btn.innerHTML = 'GPS le rahe hain…';
+      const orig = btn.innerHTML; btn.disabled = true; btn.innerHTML = 'Getting GPS…';
       const result = document.getElementById('checkin-result');
       result.innerHTML = '';
 
@@ -297,36 +297,36 @@
         const { latitude, longitude, accuracy } = pos.coords;
         try {
           const token = (await db.auth.getSession()).data.session?.access_token;
-          btn.innerHTML = 'Photo upload ho rahi…';
+          btn.innerHTML = 'Uploading photo…';
           const photo_url = await uploadReceipt(photoFile, currentProfile.id);
-          if (!photo_url) throw new Error('Photo upload nahi hui — network check karke dobara try karo.');
-          btn.innerHTML = 'Check-in ho raha…';
+          if (!photo_url) throw new Error('Photo upload failed — check your network and try again.');
+          btn.innerHTML = 'Checking in…';
           const res = await fetch('/api/receipt-url', {
             method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
             body: JSON.stringify({ checkin: { site_code: site.code, site_name: site.name, latitude, longitude, accuracy, photo_url } })
           });
           const body = await res.json();
-          if (!res.ok) throw new Error(body.error || 'Check-in fail');
+          if (!res.ok) throw new Error(body.error || 'Check-in failed');
           const nm = escHtml(site.name);
           if (!body.has_fence) {
             result.innerHTML = `<div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:12px;padding:1rem;color:#1e40af">
-              <div style="font-size:1.05rem;font-weight:800">✅ Check-in record ho gaya</div>
-              <div style="font-size:.85rem;margin-top:.25rem"><b>${nm}</b> ka geo-fence abhi set nahi hai — aapki location save ho gayi, HR verify karega.</div>
+              <div style="font-size:1.05rem;font-weight:800">✅ Check-in recorded</div>
+              <div style="font-size:.85rem;margin-top:.25rem"><b>${nm}</b>'s geo-fence isn't set yet — your location is saved, HR will verify.</div>
             </div>`;
           } else if (body.inside_fence) {
             result.innerHTML = `<div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:12px;padding:1rem;color:#166534">
               <div style="font-size:1.05rem;font-weight:800">✅ Check-in successful</div>
-              <div style="font-size:.85rem;margin-top:.25rem">Aap <b>${nm}</b> pe hain — site se <b>${body.distance_m} m</b> (fence ${body.radius_m} m). Attendance mark ho gayi.</div>
+              <div style="font-size:.85rem;margin-top:.25rem">You're at <b>${nm}</b> — <b>${body.distance_m} m</b> from the site (fence ${body.radius_m} m). Attendance marked.</div>
             </div>`;
           } else {
             result.innerHTML = `<div style="background:#fffbeb;border:1px solid #fde68a;border-radius:12px;padding:1rem;color:#92400e">
-              <div style="font-size:1.05rem;font-weight:800">⚠️ Site se bahar</div>
-              <div style="font-size:.85rem;margin-top:.25rem">Aap <b>${nm}</b> se <b>${body.distance_m} m</b> door hain (fence ${body.radius_m} m). Check-in record ho gaya par "outside" mark hua — HR review karega.</div>
+              <div style="font-size:1.05rem;font-weight:800">⚠️ Outside the site</div>
+              <div style="font-size:.85rem;margin-top:.25rem">You're <b>${body.distance_m} m</b> from <b>${nm}</b> (fence ${body.radius_m} m). Check-in recorded but marked "outside" — HR will review.</div>
             </div>`;
           }
           if (body.site_mismatch && body.nearest_site_name) {
             result.innerHTML += `<div style="background:#fef2f2;border:1px solid #fecaca;border-radius:12px;padding:.75rem 1rem;color:#991b1b;margin-top:.6rem;font-size:.82rem">
-              📍 Aapne <b>${nm}</b> chuna, par aapki GPS location <b>${escHtml(body.nearest_site_name)}</b> (${body.nearest_distance_m} m) ke zyada paas hai. Sahi site chuni hai? HR is note ko dekhega.
+              📍 You chose <b>${nm}</b>, but your GPS is closer to <b>${escHtml(body.nearest_site_name)}</b> (${body.nearest_distance_m} m). Did you pick the right site? HR will see this note.
             </div>`;
           }
           resetPhotoUI();
@@ -336,7 +336,7 @@
         } finally { btn.disabled = false; btn.innerHTML = orig; }
       }, (err) => {
         btn.disabled = false; btn.innerHTML = orig;
-        const msg = err.code === 1 ? 'GPS permission deni padegi (browser location allow karo).' : 'GPS location nahi mili — khule mein try karo.';
+        const msg = err.code === 1 ? 'GPS permission needed (allow location in the browser).' : 'Couldn\'t get GPS location — try in the open.';
         result.innerHTML = `<div style="color:#dc2626;font-size:.85rem">${msg}</div>`;
       }, { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 });
     }
@@ -352,7 +352,7 @@
           .order('checked_at', { ascending: false });
         renderSlots(data || []);
         const el = document.getElementById('today-list');
-        if (!data || !data.length) { el.innerHTML = `<div style="color:var(--text-muted);font-size:.85rem">Aaj koi check-in nahi.</div>`; return; }
+        if (!data || !data.length) { el.innerHTML = `<div style="color:var(--text-muted);font-size:.85rem">No check-ins today.</div>`; return; }
         el.innerHTML = data.map(c => {
           const t = new Date(c.checked_at).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' });
           const ok = c.inside_fence;
@@ -387,7 +387,7 @@
           <div style="font-weight:800;font-size:.82rem;margin-top:.1rem">${s.label}</div>
           <div style="font-size:.62rem;color:var(--text-muted)">${s.win}</div>
           <div style="margin-top:.35rem;font-size:.75rem;font-weight:800;color:${done ? '#166534' : isNow ? '#1d4ed8' : '#9ca3af'}">
-            ${done ? '✓ ' + done : isNow ? 'Abhi karo' : '—'}
+            ${done ? '✓ ' + done : isNow ? 'Do now' : '—'}
           </div>
         </div>`;
       }).join('');
@@ -395,13 +395,13 @@
       const n = Object.keys(doneAt).length;
       const hint = document.getElementById('slots-hint');
       if (n >= 3) {
-        hint.innerHTML = `<span style="color:#166534;font-weight:800">✅ Full day — teeno check-in ho gaye (3/3)</span>`;
+        hint.innerHTML = `<span style="color:#166534;font-weight:800">✅ Full day — all 3 check-ins done (3/3)</span>`;
       } else if (n === 0) {
-        hint.innerHTML = `<span style="color:var(--text-muted)">Aaj ke <b>3</b> check-in karne hain — abhi shuru karo.</span>`;
+        hint.innerHTML = `<span style="color:var(--text-muted)">You need to do <b>3</b> check-ins today — start now.</span>`;
       } else {
         const pending = SLOTS.filter(s => !doneAt[s.key]).map(s => s.icon + ' ' + s.label).join(', ');
         const tag = n === 1 ? '🟠 Half day (1/3)' : '🟡 Present (2/3)';
-        hint.innerHTML = `<span style="font-weight:700">${tag}</span> — baaki: <b>${pending}</b>`;
+        hint.innerHTML = `<span style="font-weight:700">${tag}</span> — remaining: <b>${pending}</b>`;
       }
     }
   </script>
