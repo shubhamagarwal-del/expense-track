@@ -472,6 +472,24 @@ function populateSidebar(profile) {
 
   // Site Check-in (the check-in page itself): everyone — field staff need quick access.
   if (el('sb-checkin-link')) el('sb-checkin-link').style.display = '';
+
+  // Location Request (respond to HR location requests): everyone.
+  if (el('sb-location-request-link')) el('sb-location-request-link').style.display = '';
+  updateLocationRequestBadge();
+}
+
+/** Show a red count badge on the "Location Request" sidebar link when requests are pending. */
+async function updateLocationRequestBadge() {
+  const el = document.getElementById('lr-badge');
+  if (!el) return;
+  try {
+    const token = (await db.auth.getSession()).data.session?.access_token;
+    const res = await fetch('/api/receipt-url?my_requests=1', { headers: { Authorization: `Bearer ${token}` } });
+    const body = await res.json();
+    const n = res.ok ? (body.requests || []).length : 0;
+    el.textContent = n || '';
+    el.style.display = n ? 'flex' : 'none';
+  } catch (_) { /* non-fatal */ }
 }
 
 

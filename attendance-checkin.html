@@ -40,6 +40,11 @@
           <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M17.657 16.657L13.414 20.9a2 2 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" /><path stroke-linecap="round" stroke-linejoin="round" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
           Site Check-in
         </a>
+        <a href="location-request.html" class="sidebar-link" id="sb-location-request-link" style="display:none">
+          <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" /></svg>
+          Location Request
+          <span id="lr-badge" style="display:none;margin-left:auto;background:#dc2626;color:#fff;border-radius:999px;min-width:18px;height:18px;font-size:.68rem;font-weight:800;align-items:center;justify-content:center;padding:0 5px"></span>
+        </a>
         <a href="profile.html" class="sidebar-link">
           <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" /></svg>
           My Profile
@@ -66,10 +71,6 @@
           <p id="pg-sub" style="margin:0;color:var(--text-muted);font-size:.88rem">Choose your site and check in — GPS will confirm you're at the site.</p>
         </div>
 
-        <div id="pending-request-card" style="display:none;background:#fef3c7;border:1.5px solid #fbbf24;border-radius:14px;padding:1rem 1.25rem;margin-bottom:1rem">
-          <div style="font-weight:800;color:#92400e;font-size:.95rem">🔔 HR has requested your location</div>
-          <div id="pending-request-sub" style="font-size:.82rem;color:#92400e;margin-top:.25rem"></div>
-        </div>
 
         <div id="notif-card" style="background:#eef2ff;border:1px solid #c7d2fe;border-radius:14px;padding:.85rem 1rem;margin-bottom:1rem;display:flex;align-items:center;gap:.75rem">
           <span style="font-size:1.3rem">🔔</span>
@@ -81,7 +82,6 @@
           <button id="notif-test-btn" onclick="sendTestPush()" style="display:none;background:#fff;color:#4f46e5;border:1px solid #c7d2fe;border-radius:9px;padding:.5rem .7rem;font-weight:800;font-size:.78rem;cursor:pointer;white-space:nowrap">Test</button>
         </div>
 
-        <div id="verify-banner" style="display:none;background:#eff6ff;border:1px solid #bfdbfe;border-radius:12px;padding:.7rem 1rem;margin-bottom:1rem;font-size:.85rem;color:#1e40af"><b>📍 Location verification</b> — HR has requested your current location. This won't count toward your 3 daily check-ins — it only records where you are right now.</div>
 
         <div style="background:var(--card-bg,#fff);border:1px solid var(--border);border-radius:16px;padding:1.25rem;box-shadow:0 1px 3px rgba(0,0,0,.05)">
           <label id="site-label" style="display:block;font-size:.75rem;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:.4rem">Site</label>
@@ -100,9 +100,7 @@
 
           <div id="notif-required-note" style="display:none;background:#fef2f2;border:1px solid #fecaca;border-radius:10px;padding:.6rem .8rem;margin-top:.9rem;font-size:.82rem;color:#991b1b;font-weight:600">⚠️ Turn on <b>🔔 notifications</b> above first — required to check in.</div>
 
-          <button id="btn-checkin" onclick="doCheckin(false)" style="margin-top:1rem;width:100%;height:52px;background:#15803d;color:#fff;border:none;border-radius:12px;font-size:1.05rem;font-weight:800;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:.5rem">📍 Check in</button>
-
-          <button id="btn-respond" onclick="doCheckin(true)" style="display:none;margin-top:.6rem;width:100%;height:52px;background:#b45309;color:#fff;border:none;border-radius:12px;font-size:1.05rem;font-weight:800;cursor:pointer;align-items:center;justify-content:center;gap:.5rem">🔔 Respond to HR request</button>
+          <button id="btn-checkin" onclick="doCheckin()" style="margin-top:1rem;width:100%;height:52px;background:#15803d;color:#fff;border:none;border-radius:12px;font-size:1.05rem;font-weight:800;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:.5rem">📍 Check in</button>
 
           <div id="checkin-result" style="margin-top:1rem"></div>
         </div>
@@ -212,26 +210,6 @@
         enforceNotif();
       } catch (err) { btn.disabled = false; btn.textContent = 'ON'; showMessage('Couldn\'t turn on notifications: ' + err.message, 'error'); }
     }
-    // Fallback for a missed push: fetch the employee's own pending HR requests and show them
-    // on the page so they can respond even if the notification never arrived.
-    async function loadMyRequests() {
-      try {
-        const token = (await db.auth.getSession()).data.session?.access_token;
-        const res = await fetch('/api/receipt-url?my_requests=1', { headers: { Authorization: `Bearer ${token}` } });
-        const body = await res.json();
-        const reqs = res.ok ? (body.requests || []) : [];
-        const card = document.getElementById('pending-request-card');
-        const respBtn = document.getElementById('btn-respond');
-        if (!reqs.length) { card.style.display = 'none'; respBtn.style.display = 'none'; return; }
-        const r = reqs[0];
-        const mins = Math.max(0, Math.round((Date.now() - new Date(r.sent_at)) / 60000));
-        const left = Math.max(0, (r.window_min || 30) - mins);
-        document.getElementById('pending-request-sub').innerHTML =
-          `Requested ${mins} min ago.${left > 0 ? ` <b>${left} min left.</b>` : ' <b>Window passed — respond soon (marked late).</b>'} Take a photo, then tap <b>"🔔 Respond to HR request"</b> below.`;
-        card.style.display = '';
-        respBtn.style.display = 'flex';
-      } catch (_) { }
-    }
     async function sendTestPush() {
       const b = document.getElementById('notif-test-btn'), orig = b.textContent;
       b.disabled = true; b.textContent = '…';
@@ -313,7 +291,6 @@
       loadToday();
       refreshNotifState();
       enforceNotif(); // notifications must be ON to check in
-      loadMyRequests(); // show any pending HR request (a separate "Respond" button appears)
       // Opening this page = the employee responded → clear any ringing check-in notifications.
       try { const reg = await navigator.serviceWorker?.ready; (await reg?.getNotifications())?.forEach(n => n.close()); } catch (_) { }
     })();
@@ -339,10 +316,8 @@
           || sites.find(s => v.includes(s.code.toLowerCase()));
     }
 
-    async function doCheckin(asVerify) {
-      // Regular check-in requires notifications ON (enforced). Responding to an HR request is a
-      // fallback (they may have missed the push because notifications are off) → no such gate.
-      if (!asVerify && !(await notificationsOn())) {
+    async function doCheckin() {
+      if (!(await notificationsOn())) {
         document.getElementById('notif-required-note').style.display = '';
         document.getElementById('notif-card').scrollIntoView({ behavior: 'smooth', block: 'center' });
         return showMessage('Turn on notifications first — required to check in.', 'error');
@@ -352,7 +327,7 @@
       if (!photoFile) return showMessage('Take a live photo first — a photo is required.', 'error');
       if (!navigator.geolocation) return showMessage('GPS isn\'t supported on this device.', 'error');
 
-      const btn = document.getElementById(asVerify ? 'btn-respond' : 'btn-checkin');
+      const btn = document.getElementById('btn-checkin');
       const orig = btn.innerHTML; btn.disabled = true; btn.innerHTML = 'Getting GPS…';
       const result = document.getElementById('checkin-result');
       result.innerHTML = '';
@@ -367,7 +342,7 @@
           btn.innerHTML = 'Checking in…';
           const res = await fetch('/api/receipt-url', {
             method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-            body: JSON.stringify({ checkin: { site_code: site.code, site_name: site.name, latitude, longitude, accuracy, photo_url, source: asVerify ? 'notification' : 'regular' } })
+            body: JSON.stringify({ checkin: { site_code: site.code, site_name: site.name, latitude, longitude, accuracy, photo_url, source: 'regular' } })
           });
           const body = await res.json();
           if (!res.ok) throw new Error(body.error || 'Check-in failed');
@@ -395,7 +370,6 @@
           }
           resetPhotoUI();
           loadToday();
-          if (asVerify) loadMyRequests(); // request answered → refresh/hide the pending card
         } catch (err) {
           result.innerHTML = `<div style="color:#dc2626;font-size:.85rem">${escHtml(err.message)}</div>`;
         } finally { btn.disabled = false; btn.innerHTML = orig; }

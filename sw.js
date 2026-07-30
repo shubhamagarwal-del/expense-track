@@ -12,7 +12,7 @@
 // This string MUST change with every deployment so the browser
 // detects a new SW, evicts the old cache, and reloads clients.
 // Format: YYYY-MM-DD-NNN  (increment NNN for same-day deploys)
-const CACHE_VERSION = '2026-07-30-019';
+const CACHE_VERSION = '2026-07-30-020';
 const CACHE_NAME    = `expensetrack-${CACHE_VERSION}`;
 
 // Same-origin static assets (CSS / JS / icons / manifest)
@@ -179,7 +179,7 @@ self.addEventListener('push', (event) => {
   try { data = event.data ? event.data.json() : {}; } catch { data = {}; }
   const title = data.title || '📍 Site check-in';
   const body  = data.body  || 'Check in now — live photo + location.';
-  const url   = data.url   || '/attendance-checkin.html';
+  const url   = data.url   || '/location-request.html';
   const tag   = data.tag   || 'site-checkin';
   const REPEATS = data.repeats || 10, GAP = data.gapMs || 2000; // re-alert up to 10×, 2s apart
 
@@ -190,7 +190,7 @@ self.addEventListener('push', (event) => {
     let prevTag = null;
     for (let i = 0; i < REPEATS; i++) {
       const wins = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
-      const onPage = wins.some(w => w.url.includes('attendance-checkin') && (w.focused || w.visibilityState === 'visible'));
+      const onPage = wins.some(w => (w.url.includes('attendance-checkin') || w.url.includes('location-request')) && (w.focused || w.visibilityState === 'visible'));
       if (onPage) break; // employee is on the check-in page → stop ringing
 
       const roundTag = `${tag}-${i}`;
@@ -211,7 +211,7 @@ self.addEventListener('push', (event) => {
     }
     // Clear everything once done/stopped (e.g. employee opened the page).
     const wins2 = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
-    if (wins2.some(w => w.url.includes('attendance-checkin') && (w.focused || w.visibilityState === 'visible'))) {
+    if (wins2.some(w => (w.url.includes('attendance-checkin') || w.url.includes('location-request')) && (w.focused || w.visibilityState === 'visible'))) {
       (await self.registration.getNotifications()).forEach(n => n.close());
     }
   })());
@@ -219,10 +219,10 @@ self.addEventListener('push', (event) => {
 
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
-  const url = event.notification.data?.url || '/attendance-checkin.html';
+  const url = event.notification.data?.url || '/location-request.html';
   event.waitUntil(
     clients.matchAll({ type: 'window', includeUncontrolled: true }).then((wins) => {
-      for (const w of wins) { if (w.url.includes('attendance-checkin') && 'focus' in w) return w.focus(); }
+      for (const w of wins) { if ((w.url.includes('attendance-checkin') || w.url.includes('location-request')) && 'focus' in w) return w.focus(); }
       return clients.openWindow(url);
     })
   );

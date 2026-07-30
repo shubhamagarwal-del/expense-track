@@ -509,7 +509,7 @@ export default async function handler(req, res) {
       }
       if (!vapidReady()) return res.status(500).json({ error: 'Server pe push configure nahi hai (VAPID missing).' });
       const istDate = new Date(Date.now() + 5.5 * 3600 * 1000).toISOString().slice(0, 10);
-      const payload = { title: '📍 Site check-in', body: 'Check in now — live photo + location (site verify).', url: '/attendance-checkin.html?verify=1' };
+      const payload = { title: '📍 Location request', body: 'HR requested your location — open and send a live photo.', url: '/location-request.html' };
 
       // Which subscriptions to hit: one employee, or everyone subscribed
       let q = supabaseAdmin.from('push_subscriptions').select('endpoint, p256dh, auth, user_id, emp_no').eq('active', true);
@@ -1374,8 +1374,8 @@ async function runPushTick(res, db, sendRandom = false) {
 
   // Collect every notification to send this tick, then burst them together (each rings 5×).
   const items = [];
-  const NEW_PAYLOAD = { title: '📍 Site check-in', body: 'Abhi check-in karo — live photo + location (site verify).', url: '/attendance-checkin.html?verify=1' };
-  const REM_PAYLOAD = { title: '⏰ Check-in reminder', body: 'Thoda time bacha hai — abhi check-in karo.', url: '/attendance-checkin.html?verify=1' };
+  const NEW_PAYLOAD = { title: '📍 Location request', body: 'HR requested your location — open and send a live photo.', url: '/location-request.html' };
+  const REM_PAYLOAD = { title: '⏰ Location request reminder', body: 'Still pending — please send your location now.', url: '/location-request.html' };
 
   // 2. Reminders (pending, past half-window, none sent yet)
   const remCutoff = new Date(now.getTime() - (WINDOW_MIN / 2) * 60000).toISOString();
