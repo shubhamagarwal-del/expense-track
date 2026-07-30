@@ -287,17 +287,9 @@
       if (typeof populateSidebar === 'function') populateSidebar(currentProfile);
       await loadSites();
       loadToday();
-      if (isVerify) {
-        // Reframe as a simple "send location" task so the employee isn't confused with a normal check-in.
-        document.getElementById('verify-banner').style.display = '';
-        document.getElementById('pg-title').textContent = '📍 Location Verification';
-        document.getElementById('pg-sub').textContent = 'HR requested your location — just take a live photo. Your GPS is sent automatically.';
-        document.getElementById('site-label').style.display = 'none';
-        document.getElementById('site-input').style.display = 'none';
-        document.getElementById('slots-section').style.display = 'none';
-        document.getElementById('today-section').style.display = 'none';
-        document.getElementById('btn-checkin').innerHTML = '📍 Send Location';
-      }
+      // Notification (verify) check-in uses the SAME flow as a normal check-in — it just
+      // doesn't count toward the 3 daily slots (source='notification'). Show a small note.
+      if (isVerify) document.getElementById('verify-banner').style.display = '';
       refreshNotifState();
       enforceNotif(); // notifications must be ON to check in
       // Opening this page = the employee responded → clear any ringing check-in notifications.
@@ -331,14 +323,8 @@
         document.getElementById('notif-card').scrollIntoView({ behavior: 'smooth', block: 'center' });
         return showMessage('Turn on notifications first — required to check in.', 'error');
       }
-      // Verify (location) mode needs no site — use the employee's usual site, else a generic marker.
-      let site;
-      if (isVerify) {
-        site = resolveSite(currentProfile.site_name || '') || { code: 'VERIFY', name: 'Location Verify' };
-      } else {
-        site = resolveSite(document.getElementById('site-input').value);
-        if (!site) return showMessage('Choose from the site list (name or LOC code).', 'error');
-      }
+      const site = resolveSite(document.getElementById('site-input').value);
+      if (!site) return showMessage('Choose from the site list (name or LOC code).', 'error');
       if (!photoFile) return showMessage('Take a live photo first — a photo is required.', 'error');
       if (!navigator.geolocation) return showMessage('GPS isn\'t supported on this device.', 'error');
 
@@ -362,16 +348,6 @@
           const body = await res.json();
           if (!res.ok) throw new Error(body.error || 'Check-in failed');
           const nm = escHtml(site.name);
-          if (isVerify) {
-            // Location-only spot-check → simple confirmation, no site/attendance wording.
-            result.innerHTML = `<div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:12px;padding:1rem;color:#166534">
-              <div style="font-size:1.05rem;font-weight:800">✅ Location sent to HR</div>
-              <div style="font-size:.85rem;margin-top:.25rem">${body.location_name ? escHtml(body.location_name) : 'Your current location'} recorded. Thank you.</div>
-            </div>`;
-            resetPhotoUI();
-            btn.disabled = false; btn.innerHTML = orig;
-            return;
-          }
           if (!body.has_fence) {
             result.innerHTML = `<div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:12px;padding:1rem;color:#1e40af">
               <div style="font-size:1.05rem;font-weight:800">✅ Check-in recorded</div>
