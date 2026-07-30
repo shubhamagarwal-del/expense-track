@@ -469,6 +469,9 @@ function populateSidebar(profile) {
   if (['admin', 'hr', 'audit', 'super_admin'].includes(role)) {
     if (el('sb-checkins-link')) el('sb-checkins-link').style.display = '';
   }
+
+  // Site Check-in (the check-in page itself): everyone — field staff need quick access.
+  if (el('sb-checkin-link')) el('sb-checkin-link').style.display = '';
 }
 
 
