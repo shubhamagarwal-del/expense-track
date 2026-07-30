@@ -106,16 +106,20 @@ export default async function handler(req, res) {
       if (emps.length && dates.length) {
         const { data: att } = await supabaseAdmin
           .from('employee_attendance')
-          .select('emp_no, att_date, status')
+          .select('emp_no, att_date, status, source_month')
           .in('emp_no', emps).in('att_date', dates);
-        (att || []).forEach(a => { attMap[`${String(a.emp_no).trim()}|${a.att_date}`] = a.status; });
+        (att || []).forEach(a => { attMap[`${String(a.emp_no).trim()}|${a.att_date}`] = { status: a.status, source: a.source_month }; });
       }
-      const out = (rows || []).map(r => ({
-        ...r,
-        name: nameMap[r.user_id]?.name || null,
-        department: nameMap[r.user_id]?.department || null,
-        att_status: attMap[`${String(r.emp_no || '').trim()}|${r.check_date}`] || null,
-      }));
+      const out = (rows || []).map(r => {
+        const a = attMap[`${String(r.emp_no || '').trim()}|${r.check_date}`];
+        return {
+          ...r,
+          name: nameMap[r.user_id]?.name || null,
+          department: nameMap[r.user_id]?.department || null,
+          att_status: a?.status || null,
+          att_source: a?.source || null,
+        };
+      });
       return res.status(200).json({ checkins: out });
     }
 
@@ -319,24 +323,40 @@ export default async function handler(req, res) {
       });
       if (error) return res.status(500).json({ error: error.message });
 
-      // Feed daily attendance: mark the employee Present for today — but ONLY if no
-      // attendance row exists yet. ignoreDuplicates = INSERT ... ON CONFLICT DO NOTHING,
-      // so an imported off-day (Leave/Absent) is NEVER overwritten by a check-in.
-      // A later monthly-Excel upload (which upserts with overwrite) still wins over this 'P'.
-      let marked_present = false;
+      // Feed daily attendance from this check-in: auto Present / Half Day based on how many
+      // of the 3 slots the employee has done today. Never overwrites an imported off-day or
+      // an HR manual override (see autoMarkAttendance). Best-effort — never fails the check-in.
+      let attendance_status = null;
       if (prof?.emp_no) {
         const istDate = new Date(Date.now() + 5.5 * 3600 * 1000).toISOString().slice(0, 10);
-        const { error: attErr, count } = await supabaseAdmin.from('employee_attendance').upsert(
-          { emp_no: String(prof.emp_no).trim(), att_date: istDate, status: 'P', location: 'SITE', source_month: 'checkin' },
-          { onConflict: 'emp_no,att_date', ignoreDuplicates: true, count: 'exact' }
-        );
-        if (!attErr) marked_present = (count || 0) > 0; // false if an off-day/row already existed
+        try { attendance_status = (await autoMarkAttendance(supabaseAdmin, String(prof.emp_no).trim(), istDate)).status; } catch { /* non-fatal */ }
       }
 
       return res.status(200).json({
         ok: true, has_fence, distance_m, inside_fence, radius_m, location_name,
-        nearest_site_code, nearest_site_name, nearest_distance_m, site_mismatch, marked_present,
+        nearest_site_code, nearest_site_name, nearest_distance_m, site_mismatch, attendance_status,
       });
+    }
+
+    // ── POST { set_attendance: { emp_no, att_date, status } } → HR/Admin manual attendance override ──
+    // Sets a day's status to anything (Present/Half Day/Absent/Leave/...). Marked source 'manual'
+    // so it sticks: later check-ins won't auto-change it (autoMarkAttendance only touches 'checkin').
+    if (req.body?.set_attendance) {
+      const { data: profile } = await supabaseAdmin.from('users').select('role').eq('id', user.id).single();
+      if (!profile || !['admin', 'hr', 'audit', 'super_admin'].includes(profile.role)) {
+        return res.status(403).json({ error: 'Not authorised' });
+      }
+      const { emp_no, att_date, status } = req.body.set_attendance;
+      const ALLOWED = ['P', 'HD', 'A', 'L', 'CO', 'H', 'SAT', 'SUN', 'Paternity Leave'];
+      if (!emp_no || !att_date || !ALLOWED.includes(status)) {
+        return res.status(400).json({ error: 'emp_no, att_date and a valid status are required' });
+      }
+      const { error } = await supabaseAdmin.from('employee_attendance').upsert(
+        { emp_no: String(emp_no).trim(), att_date, status, source_month: 'manual' },
+        { onConflict: 'emp_no,att_date' }
+      );
+      if (error) return res.status(500).json({ error: error.message });
+      return res.status(200).json({ ok: true, emp_no: String(emp_no).trim(), att_date, status });
     }
 
     // ── POST { upload_attendance: { source_month, rows:[{emp_no,att_date,status}] } } → replace a month's off-day attendance ──
@@ -1105,4 +1125,33 @@ async function reverseGeocodePlace(lat, lon) {
     const name = parts.join(', ');
     return name || j.display_name || null;
   } catch { return null; }
+}
+
+// Which of the 3 daily slots a timestamp falls in (IST): morning <12, afternoon 12–4, evening ≥4.
+function slotOfIST(iso) {
+  const ist = new Date(new Date(iso).getTime() + 5.5 * 3600 * 1000);
+  const h = ist.getUTCHours();
+  return h < 12 ? 'morning' : h < 16 ? 'afternoon' : 'evening';
+}
+
+// Auto-set daily attendance from a check-in, safely:
+//  • 2+ distinct slots today → Present ('P'); exactly 1 slot → Half Day ('HD').
+//  • Never touches an imported off-day or an HR 'manual' override — only inserts a
+//    new row (source 'checkin') or updates a prior 'checkin' row as more slots come in.
+async function autoMarkAttendance(db, empNo, istDate) {
+  const { data: todays } = await db.from('attendance_checkins')
+    .select('checked_at').eq('emp_no', empNo).eq('check_date', istDate);
+  const slots = new Set((todays || []).map(c => slotOfIST(c.checked_at)));
+  const desired = slots.size >= 2 ? 'P' : 'HD';
+  const { data: existing } = await db.from('employee_attendance')
+    .select('source_month').eq('emp_no', empNo).eq('att_date', istDate).maybeSingle();
+  if (!existing) {
+    await db.from('employee_attendance').insert({ emp_no: empNo, att_date: istDate, status: desired, location: 'SITE', source_month: 'checkin' });
+    return { status: desired, changed: true };
+  }
+  if (existing.source_month === 'checkin') {
+    await db.from('employee_attendance').update({ status: desired }).eq('emp_no', empNo).eq('att_date', istDate);
+    return { status: desired, changed: true };
+  }
+  return { status: null, changed: false }; // imported off-day or manual override — leave it
 }

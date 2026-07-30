@@ -115,6 +115,9 @@
     // Attendance codes that mean the employee was OFF that day — a check-in on such a
     // day is a conflict (they claimed leave but were physically at a site).
     const OFF_LABEL = { A: 'Absent', L: 'Leave', CO: 'Comp-off', SUN: 'Sunday', SAT: 'Saturday', H: 'Holiday', 'Paternity Leave': 'Paternity Leave' };
+    // Full status label map + the codes HR can pick from the roll-up dropdown.
+    const STATUS_LABEL = { P: 'Present', HD: 'Half Day', A: 'Absent', L: 'Leave', CO: 'Comp-off', H: 'Holiday', SAT: 'Saturday', SUN: 'Sunday', 'Paternity Leave': 'Paternity Leave' };
+    const STATUS_PICK = ['P', 'HD', 'A', 'L', 'CO', 'H'];
     function attConflict(r) {
       const s = r.att_status;
       return s && OFF_LABEL[s] ? (OFF_LABEL[s] || s) : null;
@@ -254,7 +257,7 @@
       attRows.forEach(r => {
         const k = r.user_id || r.emp_no;
         if (!k) return;
-        if (!byUser[k]) byUser[k] = { name: r.name, emp_no: r.emp_no, department: r.department, att_status: r.att_status, slots: {} };
+        if (!byUser[k]) byUser[k] = { name: r.name, emp_no: r.emp_no, department: r.department, att_status: r.att_status, att_source: r.att_source, slots: {} };
         const s = slotOf(r.checked_at);
         const time = new Date(r.checked_at).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' });
         if (!byUser[k].slots[s] || (!byUser[k].slots[s].photo_url && r.photo_url)) {
@@ -276,22 +279,56 @@
           <th style="text-align:center;padding:.6rem .5rem;font-weight:700">🌅 Subah</th>
           <th style="text-align:center;padding:.6rem .5rem;font-weight:700">☀️ Dopahar</th>
           <th style="text-align:center;padding:.6rem .5rem;font-weight:700">🌆 Shaam</th>
-          <th style="text-align:left;padding:.6rem .8rem;font-weight:700">Status</th>
+          <th style="text-align:center;padding:.6rem .5rem;font-weight:700">Slots</th>
+          <th style="text-align:left;padding:.6rem .8rem;font-weight:700">Attendance (badla ja sakta hai)</th>
         </tr></thead><tbody>
         ${emps.map(e => {
           const n = Object.keys(e.slots).length;
-          const conf = e.att_status && OFF_LABEL[e.att_status];
-          const label = conf ? `🔴 ${OFF_LABEL[e.att_status]} (checked in!)` : n >= 3 ? '🟢 Full day (3/3)' : n === 2 ? '🟡 Present (2/3)' : '🟠 Half day (1/3)';
-          const css = conf ? 'background:#fee2e2;color:#991b1b' : n >= 3 ? 'background:#dcfce7;color:#166534' : n === 2 ? 'background:#fef9c3;color:#854d0e' : 'background:#ffedd5;color:#9a3412';
+          const slotLabel = n >= 3 ? '🟢 3/3' : n === 2 ? '🟡 2/3' : '🟠 1/3';
+          const slotCss = n >= 3 ? 'background:#dcfce7;color:#166534' : n === 2 ? 'background:#fef9c3;color:#854d0e' : 'background:#ffedd5;color:#9a3412';
+          const cur = e.att_status || (n >= 2 ? 'P' : 'HD');
+          const opts = (STATUS_PICK.includes(cur) ? STATUS_PICK : [cur, ...STATUS_PICK])
+            .map(v => `<option value="${v}" ${v === cur ? 'selected' : ''}>${STATUS_LABEL[v] || v}</option>`).join('');
+          const srcTag = e.att_source === 'manual'
+            ? '<div style="font-size:.62rem;color:#7c3aed;font-weight:700;margin-top:2px">✏️ HR ne set kiya</div>'
+            : e.att_source === 'checkin'
+            ? '<div style="font-size:.62rem;color:var(--text-muted);margin-top:2px">auto (check-in)</div>'
+            : e.att_source
+            ? '<div style="font-size:.62rem;color:var(--text-muted);margin-top:2px">imported</div>' : '';
           return `<tr style="border-top:1px solid var(--border)">
             <td style="padding:.55rem .8rem"><div style="font-weight:600">${escHtml(e.name || '—')}</div><div style="font-size:.72rem;color:var(--text-muted)">${escHtml(e.emp_no || '')}${e.department ? ' · ' + escHtml(e.department) : ''}</div></td>
             <td style="padding:.55rem .5rem;text-align:center">${cell(e, 'morning')}</td>
             <td style="padding:.55rem .5rem;text-align:center">${cell(e, 'afternoon')}</td>
             <td style="padding:.55rem .5rem;text-align:center">${cell(e, 'evening')}</td>
-            <td style="padding:.55rem .8rem"><span style="${css};border-radius:6px;padding:2px 9px;font-size:.72rem;font-weight:800;white-space:nowrap">${label}</span></td>
+            <td style="padding:.55rem .5rem;text-align:center"><span style="${slotCss};border-radius:6px;padding:2px 8px;font-size:.72rem;font-weight:800;white-space:nowrap">${slotLabel}</span></td>
+            <td style="padding:.55rem .8rem">
+              <select data-emp="${escHtml(e.emp_no || '')}" onchange="setAttendance(this)" ${e.emp_no ? '' : 'disabled'} style="height:32px;border:1px solid var(--border);border-radius:7px;padding:0 .4rem;font-family:inherit;font-size:.8rem;font-weight:700;background:#fff;color:var(--text-1);cursor:pointer">${opts}</select>
+              ${srcTag}
+            </td>
           </tr>`;
         }).join('')}
         </tbody></table></div>`;
+    }
+
+    // HR/Admin manual override — set an employee's attendance status for the selected date.
+    async function setAttendance(sel) {
+      const emp_no = sel.getAttribute('data-emp');
+      const att_date = document.getElementById('f-date').value;
+      const status = sel.value;
+      if (!emp_no || !att_date) return;
+      sel.disabled = true;
+      try {
+        const token = (await db.auth.getSession()).data.session?.access_token;
+        const res = await fetch('/api/receipt-url', {
+          method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+          body: JSON.stringify({ set_attendance: { emp_no, att_date, status } }),
+        });
+        const body = await res.json();
+        if (!res.ok) throw new Error(body.error || 'Update fail');
+        rows.forEach(r => { if (String(r.emp_no || '') === emp_no && r.check_date === att_date) { r.att_status = status; r.att_source = 'manual'; } });
+        showMessage('Attendance set: ' + (STATUS_LABEL[status] || status), 'success');
+        render();
+      } catch (err) { showMessage('Update fail: ' + err.message, 'error'); sel.disabled = false; }
     }
 
     function exportExcel() {
