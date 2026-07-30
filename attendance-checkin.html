@@ -100,7 +100,9 @@
 
           <div id="notif-required-note" style="display:none;background:#fef2f2;border:1px solid #fecaca;border-radius:10px;padding:.6rem .8rem;margin-top:.9rem;font-size:.82rem;color:#991b1b;font-weight:600">⚠️ Turn on <b>🔔 notifications</b> above first — required to check in.</div>
 
-          <button id="btn-checkin" onclick="doCheckin()" style="margin-top:1rem;width:100%;height:52px;background:#15803d;color:#fff;border:none;border-radius:12px;font-size:1.05rem;font-weight:800;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:.5rem">📍 Check in</button>
+          <button id="btn-checkin" onclick="doCheckin(false)" style="margin-top:1rem;width:100%;height:52px;background:#15803d;color:#fff;border:none;border-radius:12px;font-size:1.05rem;font-weight:800;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:.5rem">📍 Check in</button>
+
+          <button id="btn-respond" onclick="doCheckin(true)" style="display:none;margin-top:.6rem;width:100%;height:52px;background:#b45309;color:#fff;border:none;border-radius:12px;font-size:1.05rem;font-weight:800;cursor:pointer;align-items:center;justify-content:center;gap:.5rem">🔔 Respond to HR request</button>
 
           <div id="checkin-result" style="margin-top:1rem"></div>
         </div>
@@ -126,9 +128,6 @@
     let sites = [];
     let photoFile = null;
     let camStream = null;
-    // Opened from a push prompt, OR there's a pending HR request → this is a location spot-check
-    // (source 'notification'): records location only, NOT counted in the 3 daily slots / attendance.
-    let isVerify = new URLSearchParams(location.search).get('verify') === '1';
 
     // Notifications must be ON to check in (enforced).
     async function notificationsOn() {
@@ -221,15 +220,16 @@
         const res = await fetch('/api/receipt-url?my_requests=1', { headers: { Authorization: `Bearer ${token}` } });
         const body = await res.json();
         const reqs = res.ok ? (body.requests || []) : [];
-        if (!reqs.length) return;
-        isVerify = true; // responding to a request → location-only spot-check (not counted in slots)
+        const card = document.getElementById('pending-request-card');
+        const respBtn = document.getElementById('btn-respond');
+        if (!reqs.length) { card.style.display = 'none'; respBtn.style.display = 'none'; return; }
         const r = reqs[0];
         const mins = Math.max(0, Math.round((Date.now() - new Date(r.sent_at)) / 60000));
         const left = Math.max(0, (r.window_min || 30) - mins);
         document.getElementById('pending-request-sub').innerHTML =
-          `Requested ${mins} min ago — please check in now.${left > 0 ? ` <b>${left} min left.</b>` : ' <b>Window passed — respond soon (will be marked late).</b>'}`;
-        document.getElementById('pending-request-card').style.display = '';
-        document.getElementById('verify-banner').style.display = '';
+          `Requested ${mins} min ago.${left > 0 ? ` <b>${left} min left.</b>` : ' <b>Window passed — respond soon (marked late).</b>'} Take a photo, then tap <b>"🔔 Respond to HR request"</b> below.`;
+        card.style.display = '';
+        respBtn.style.display = 'flex';
       } catch (_) { }
     }
     async function sendTestPush() {
@@ -311,12 +311,9 @@
       if (typeof populateSidebar === 'function') populateSidebar(currentProfile);
       await loadSites();
       loadToday();
-      // Notification (verify) check-in uses the SAME flow as a normal check-in — it just
-      // doesn't count toward the 3 daily slots (source='notification'). Show a small note.
-      if (isVerify) document.getElementById('verify-banner').style.display = '';
       refreshNotifState();
       enforceNotif(); // notifications must be ON to check in
-      loadMyRequests(); // show any pending HR request even if the push wasn't received
+      loadMyRequests(); // show any pending HR request (a separate "Respond" button appears)
       // Opening this page = the employee responded → clear any ringing check-in notifications.
       try { const reg = await navigator.serviceWorker?.ready; (await reg?.getNotifications())?.forEach(n => n.close()); } catch (_) { }
     })();
@@ -342,8 +339,10 @@
           || sites.find(s => v.includes(s.code.toLowerCase()));
     }
 
-    async function doCheckin() {
-      if (!(await notificationsOn())) {
+    async function doCheckin(asVerify) {
+      // Regular check-in requires notifications ON (enforced). Responding to an HR request is a
+      // fallback (they may have missed the push because notifications are off) → no such gate.
+      if (!asVerify && !(await notificationsOn())) {
         document.getElementById('notif-required-note').style.display = '';
         document.getElementById('notif-card').scrollIntoView({ behavior: 'smooth', block: 'center' });
         return showMessage('Turn on notifications first — required to check in.', 'error');
@@ -353,7 +352,7 @@
       if (!photoFile) return showMessage('Take a live photo first — a photo is required.', 'error');
       if (!navigator.geolocation) return showMessage('GPS isn\'t supported on this device.', 'error');
 
-      const btn = document.getElementById('btn-checkin');
+      const btn = document.getElementById(asVerify ? 'btn-respond' : 'btn-checkin');
       const orig = btn.innerHTML; btn.disabled = true; btn.innerHTML = 'Getting GPS…';
       const result = document.getElementById('checkin-result');
       result.innerHTML = '';
@@ -368,7 +367,7 @@
           btn.innerHTML = 'Checking in…';
           const res = await fetch('/api/receipt-url', {
             method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-            body: JSON.stringify({ checkin: { site_code: site.code, site_name: site.name, latitude, longitude, accuracy, photo_url, source: isVerify ? 'notification' : 'regular' } })
+            body: JSON.stringify({ checkin: { site_code: site.code, site_name: site.name, latitude, longitude, accuracy, photo_url, source: asVerify ? 'notification' : 'regular' } })
           });
           const body = await res.json();
           if (!res.ok) throw new Error(body.error || 'Check-in failed');
@@ -396,6 +395,7 @@
           }
           resetPhotoUI();
           loadToday();
+          if (asVerify) loadMyRequests(); // request answered → refresh/hide the pending card
         } catch (err) {
           result.innerHTML = `<div style="color:#dc2626;font-size:.85rem">${escHtml(err.message)}</div>`;
         } finally { btn.disabled = false; btn.innerHTML = orig; }

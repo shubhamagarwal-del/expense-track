@@ -431,9 +431,11 @@ export default async function handler(req, res) {
       }).select('id').single();
       if (error) return res.status(500).json({ error: error.message });
 
-      // This check-in answers a push-check: a pending one → 'responded' (on time); if none
-      // pending but one was already 'missed' (window passed) → 'late' (still counted, flagged).
-      if (prof?.emp_no) {
+      // Only a spot-check response (the explicit "Respond to HR request" action, source
+      // 'notification') answers a pending request — a normal attendance check-in does NOT,
+      // so the two stay clearly separate. Pending → 'responded' (on time); if the window
+      // already passed and it's 'missed' → 'late' (still counted, flagged).
+      if (prof?.emp_no && source === 'notification') {
         const empN = String(prof.emp_no).trim();
         const istDate = new Date(Date.now() + 5.5 * 3600 * 1000).toISOString().slice(0, 10);
         const nowIso = new Date().toISOString();
