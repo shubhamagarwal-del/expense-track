@@ -23,7 +23,8 @@ async function sendPush(db, sub, payload) {
   try {
     await webpush.sendNotification(
       { endpoint: sub.endpoint, keys: { p256dh: sub.p256dh, auth: sub.auth } },
-      JSON.stringify(payload)
+      JSON.stringify(payload),
+      { urgency: 'high', TTL: 600 }
     );
     return true;
   } catch (err) {
@@ -32,6 +33,20 @@ async function sendPush(db, sub, payload) {
     }
     return false;
   }
+}
+
+// Repeat a push a few times, a short gap apart, so it re-alerts (rings) and isn't missed.
+// `items` is [{ sub, payload }]. All items fire together each round (parallel), so total
+// wall time ≈ (repeats-1)*gapMs regardless of how many devices. Returns round-1 delivery count.
+const PUSH_REPEATS = 5, PUSH_GAP_MS = 1000;
+async function sendBurst(db, items, repeats = PUSH_REPEATS, gapMs = PUSH_GAP_MS) {
+  let delivered = 0;
+  for (let r = 0; r < repeats; r++) {
+    const results = await Promise.all((items || []).map(x => sendPush(db, x.sub, x.payload)));
+    if (r === 0) delivered = results.filter(Boolean).length;
+    if (r < repeats - 1) await new Promise(res => setTimeout(res, gapMs));
+  }
+  return delivered;
 }
 
 /**
@@ -436,8 +451,8 @@ export default async function handler(req, res) {
         .select('endpoint, p256dh, auth').eq('user_id', user.id).eq('active', true);
       if (!subs?.length) return res.status(400).json({ error: 'Pehle notifications ON karo — koi device subscribe nahi hai.' });
       if (!vapidReady()) return res.status(500).json({ error: 'Server pe push configure nahi hai (VAPID missing).' });
-      let sent = 0;
-      for (const s of subs) { if (await sendPush(supabaseAdmin, s, { title: '✅ Test notification', body: 'Push chal raha hai! Yeh ek test hai — tap karke check-in page khulega.', url: '/attendance-checkin.html' })) sent++; }
+      const payload = { title: '✅ Test notification', body: 'Push chal raha hai! Yeh ek test hai — tap karke check-in page khulega.', url: '/attendance-checkin.html' };
+      const sent = await sendBurst(supabaseAdmin, subs.map(s => ({ sub: s, payload })));
       return res.status(200).json({ ok: true, sent, total: subs.length });
     }
 
@@ -1281,15 +1296,22 @@ async function runPushTick(res, db) {
     result.missed = overdue.length;
   }
 
+  // Collect every notification to send this tick, then burst them together (each rings 5×).
+  const items = [];
+  const NEW_PAYLOAD = { title: '📍 Site check-in', body: 'Abhi check-in karo — live photo + location (site verify).', url: '/attendance-checkin.html' };
+  const REM_PAYLOAD = { title: '⏰ Check-in reminder', body: 'Thoda time bacha hai — abhi check-in karo.', url: '/attendance-checkin.html' };
+
   // 2. Reminders (pending, past half-window, none sent yet)
   const remCutoff = new Date(now.getTime() - (WINDOW_MIN / 2) * 60000).toISOString();
   const { data: pendingRem } = await db.from('push_checks')
     .select('id, user_id').eq('status', 'pending').eq('reminders_sent', 0).lt('sent_at', remCutoff);
   for (const pc of (pendingRem || [])) {
     const { data: subs } = await db.from('push_subscriptions').select('endpoint, p256dh, auth').eq('user_id', pc.user_id).eq('active', true);
-    let ok = false;
-    for (const s of (subs || [])) { if (await sendPush(db, s, { title: '⏰ Check-in reminder', body: 'Thoda time bacha hai — abhi check-in karo.', url: '/attendance-checkin.html' })) ok = true; }
-    if (ok) { await db.from('push_checks').update({ reminders_sent: 1 }).eq('id', pc.id); result.reminders++; }
+    if (subs?.length) {
+      subs.forEach(s => items.push({ sub: s, payload: REM_PAYLOAD }));
+      await db.from('push_checks').update({ reminders_sent: 1 }).eq('id', pc.id);
+      result.reminders++;
+    }
   }
 
   // 3. New random checks — only during work hours
@@ -1310,14 +1332,15 @@ async function runPushTick(res, db) {
         if (last[emp] && (now - new Date(last[emp])) < MIN_GAP_MIN * 60000) continue;
         if (Math.random() >= PROB) continue;
         const g = byEmp[emp];
-        const { data: created } = await db.from('push_checks').insert({ user_id: g.user_id, emp_no: emp, window_min: WINDOW_MIN, status: 'pending' }).select('id').single();
-        let ok = false;
-        for (const s of g.subs) { if (await sendPush(db, s, { title: '📍 Site check-in', body: 'Abhi check-in karo — live photo + location (site verify).', url: '/attendance-checkin.html' })) ok = true; }
-        if (ok) result.sent++;
-        else if (created?.id) await db.from('push_checks').delete().eq('id', created.id); // no live sub → undo
+        await db.from('push_checks').insert({ user_id: g.user_id, emp_no: emp, window_min: WINDOW_MIN, status: 'pending' });
+        g.subs.forEach(s => items.push({ sub: s, payload: NEW_PAYLOAD }));
+        result.sent++;
       }
     }
   }
+
+  // 4. Burst-send everything so each notification rings 5× (1s apart).
+  if (items.length) await sendBurst(db, items);
 
   return res.status(200).json({ ok: true, ...result, ist_hour: istHour });
 }
