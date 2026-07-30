@@ -66,6 +66,11 @@
           <p id="pg-sub" style="margin:0;color:var(--text-muted);font-size:.88rem">Choose your site and check in — GPS will confirm you're at the site.</p>
         </div>
 
+        <div id="pending-request-card" style="display:none;background:#fef3c7;border:1.5px solid #fbbf24;border-radius:14px;padding:1rem 1.25rem;margin-bottom:1rem">
+          <div style="font-weight:800;color:#92400e;font-size:.95rem">🔔 HR has requested your location</div>
+          <div id="pending-request-sub" style="font-size:.82rem;color:#92400e;margin-top:.25rem"></div>
+        </div>
+
         <div id="notif-card" style="background:#eef2ff;border:1px solid #c7d2fe;border-radius:14px;padding:.85rem 1rem;margin-bottom:1rem;display:flex;align-items:center;gap:.75rem">
           <span style="font-size:1.3rem">🔔</span>
           <div style="flex:1;font-size:.82rem;color:#3730a3">
@@ -121,9 +126,9 @@
     let sites = [];
     let photoFile = null;
     let camStream = null;
-    // Opened from a push prompt? Then this is a location spot-check (source 'notification') —
-    // it records location only, NOT counted in the 3 daily slots / attendance.
-    const isVerify = new URLSearchParams(location.search).get('verify') === '1';
+    // Opened from a push prompt, OR there's a pending HR request → this is a location spot-check
+    // (source 'notification'): records location only, NOT counted in the 3 daily slots / attendance.
+    let isVerify = new URLSearchParams(location.search).get('verify') === '1';
 
     // Notifications must be ON to check in (enforced).
     async function notificationsOn() {
@@ -207,6 +212,25 @@
         refreshNotifState();
         enforceNotif();
       } catch (err) { btn.disabled = false; btn.textContent = 'ON'; showMessage('Couldn\'t turn on notifications: ' + err.message, 'error'); }
+    }
+    // Fallback for a missed push: fetch the employee's own pending HR requests and show them
+    // on the page so they can respond even if the notification never arrived.
+    async function loadMyRequests() {
+      try {
+        const token = (await db.auth.getSession()).data.session?.access_token;
+        const res = await fetch('/api/receipt-url?my_requests=1', { headers: { Authorization: `Bearer ${token}` } });
+        const body = await res.json();
+        const reqs = res.ok ? (body.requests || []) : [];
+        if (!reqs.length) return;
+        isVerify = true; // responding to a request → location-only spot-check (not counted in slots)
+        const r = reqs[0];
+        const mins = Math.max(0, Math.round((Date.now() - new Date(r.sent_at)) / 60000));
+        const left = Math.max(0, (r.window_min || 30) - mins);
+        document.getElementById('pending-request-sub').innerHTML =
+          `Requested ${mins} min ago — please check in now.${left > 0 ? ` <b>${left} min left.</b>` : ' <b>Window passed — respond soon (will be marked late).</b>'}`;
+        document.getElementById('pending-request-card').style.display = '';
+        document.getElementById('verify-banner').style.display = '';
+      } catch (_) { }
     }
     async function sendTestPush() {
       const b = document.getElementById('notif-test-btn'), orig = b.textContent;
@@ -292,6 +316,7 @@
       if (isVerify) document.getElementById('verify-banner').style.display = '';
       refreshNotifState();
       enforceNotif(); // notifications must be ON to check in
+      loadMyRequests(); // show any pending HR request even if the push wasn't received
       // Opening this page = the employee responded → clear any ringing check-in notifications.
       try { const reg = await navigator.serviceWorker?.ready; (await reg?.getNotifications())?.forEach(n => n.close()); } catch (_) { }
     })();

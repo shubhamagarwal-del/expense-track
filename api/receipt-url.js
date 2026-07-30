@@ -135,6 +135,18 @@ export default async function handler(req, res) {
     const { data: profile } = await supabaseAdmin.from('users').select('role').eq('id', user.id).single();
     if (!profile) return res.status(403).json({ error: 'Not authorised' });
 
+    // ?my_requests=1 → the caller's own pending check-in requests (so an employee who missed
+    // the push notification can still see it on the check-in page and respond). Any signed-in user.
+    if (req.query?.my_requests) {
+      const istDate = new Date(Date.now() + 5.5 * 3600 * 1000).toISOString().slice(0, 10);
+      const { data, error } = await supabaseAdmin.from('push_checks')
+        .select('id, sent_at, window_min, status')
+        .eq('user_id', user.id).eq('check_date', istDate).eq('status', 'pending')
+        .order('sent_at', { ascending: false });
+      if (error) return res.status(500).json({ error: error.message });
+      return res.status(200).json({ requests: data || [] });
+    }
+
     // ?checkins=1[&date=YYYY-MM-DD] → site check-ins for HR / Manager / Audit / Super Admin.
     if (req.query?.checkins) {
       if (!['admin', 'hr', 'audit', 'super_admin'].includes(profile.role)) {
