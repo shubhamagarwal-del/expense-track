@@ -151,7 +151,10 @@
       if (Notification.permission === 'granted') {
         const reg = await navigator.serviceWorker.ready;
         if (await reg.pushManager.getSubscription()) {
-          title.textContent = 'Check-in verification is ON ✓'; btn.textContent = 'ON ✓'; btn.style.background = '#16a34a'; btn.disabled = true;
+          title.textContent = 'Check-in verification is ON ✓'; btn.textContent = 'ON ✓'; btn.style.background = '#16a34a';
+          // Keep the button tappable — a subscription can silently expire (esp. after app
+          // updates); tapping re-registers a fresh one so the employee is never stuck.
+          btn.disabled = false; btn.title = 'Notifications nahi aa rahi? Tap karo re-enable ke liye';
           // Test button is a verification tool — only for admins, not regular employees.
           if (currentProfile && ['admin', 'hr', 'audit', 'super_admin'].includes(currentProfile.role)) {
             document.getElementById('notif-test-btn').style.display = '';
@@ -169,8 +172,11 @@
         if (perm !== 'granted') return showMessage('Notification permission needed — click Allow.', 'error');
         btn.disabled = true; btn.textContent = '…';
         const reg = await navigator.serviceWorker.ready;
-        let sub = await reg.pushManager.getSubscription();
-        if (!sub) sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: urlB64ToUint8(VAPID_PUBLIC) });
+        // Drop any existing subscription (it may have silently expired) and make a fresh one,
+        // so a dead endpoint is never re-registered.
+        const existing = await reg.pushManager.getSubscription();
+        if (existing) { try { await existing.unsubscribe(); } catch (_) { } }
+        const sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: urlB64ToUint8(VAPID_PUBLIC) });
         const token = (await db.auth.getSession()).data.session?.access_token;
         const res = await fetch('/api/receipt-url', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: JSON.stringify({ subscribe_push: sub.toJSON() }) });
         if (!res.ok) { const b = await res.json(); throw new Error(b.error || 'Save fail'); }
