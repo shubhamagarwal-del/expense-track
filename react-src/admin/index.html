@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ExpenseTrack — Check-ins</title>
+  <link rel="stylesheet" href="/style.css" />
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <link rel="manifest" href="/manifest.json" />
+  <meta name="theme-color" content="#6366f1" />
+  <link rel="shortcut icon" href="/favicon.ico" />
+  <link rel="icon" type="image/png" sizes="192x192" href="/icon-192.png" />
+  <script src="/pwa-register.js" defer></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <script src="/app.js"></script>
+  <style>
+    :root { --text-muted: #64748b; --card-bg: #ffffff; --bg-2: #f4f4f5; }
+    .form-input, .form-select { width: 100%; border: 1px solid var(--border); border-radius: 8px; padding: 0 .6rem; font-family: inherit; font-size: .85rem; background: #fff; color: var(--text-1); }
+    .form-input:focus, .form-select:focus { outline: none; border-color: var(--primary); }
+    .loading-state { display: flex; align-items: center; justify-content: center; gap: .6rem; padding: 2rem; color: var(--text-muted); font-size: .88rem; }
+    .spinner { width: 18px; height: 18px; border: 2px solid var(--border); border-top-color: var(--primary); border-radius: 50%; animation: spin .7s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+  </style>
+</head>
+
+<body>
+  <div id="root"></div>
+  <script type="module" src="./main.jsx"></script>
+</body>
+
+</html>

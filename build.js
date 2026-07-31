@@ -50,4 +50,20 @@ for (const dir of COPY_DIRS) {
   } catch { /* directory doesn't exist — skip */ }
 }
 
+// React pages (built by `vite build` into dist-react/<page>/ as one
+// self-contained HTML file each) → publish under their public names.
+// Skipped if vite hasn't run (fine for CSS-only local builds).
+const REACT_PAGES = [
+  ['checkin', 'checkin-react.html'],           // employee Site Check-in
+  ['admin', 'checkins-react.html'],            // HR/admin Site Check-ins view
+  ['locreq', 'location-request-react.html'],   // employee Location Request
+];
+for (const [dir, out] of REACT_PAGES) {
+  try {
+    copyFileSync(join('dist-react', dir, 'index.html'), join(OUT, out));
+    copied++;
+    console.log(`  ✓ ${out} (React build)`);
+  } catch { /* not built */ }
+}
+
 console.log(`\nBuild complete — ${copied} files copied to /${OUT}`);

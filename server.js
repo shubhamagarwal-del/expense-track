@@ -172,6 +172,17 @@ app.post('/api/delete-expenses', async (req, res) => {
   }
 });
 
+// React pages: built by `vite build` into dist-react/<page>/ (prod serves them from public/)
+app.get('/checkin-react.html', (req, res) => {
+  res.sendFile(path.join(__dirname, 'dist-react', 'checkin', 'index.html'));
+});
+app.get('/checkins-react.html', (req, res) => {
+  res.sendFile(path.join(__dirname, 'dist-react', 'admin', 'index.html'));
+});
+app.get('/location-request-react.html', (req, res) => {
+  res.sendFile(path.join(__dirname, 'dist-react', 'locreq', 'index.html'));
+});
+
 // Serve static files from current directory
 app.use(express.static(__dirname));
 
