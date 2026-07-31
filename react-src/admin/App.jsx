@@ -208,6 +208,7 @@ export default function App() {
     else if (st === 'nofence') l = l.filter((r) => r.inside_fence == null);
     else if (st === 'mismatch') l = l.filter((r) => r.site_mismatch === true);
     else if (st === 'conflict') l = l.filter((r) => attConflict(r));
+    else if (st === 'locreq') l = l.filter((r) => r.source === 'notification');
     return l;
   }, [rows, q, st]);
 
@@ -309,6 +310,7 @@ export default function App() {
   const outside = list.filter((r) => r.inside_fence === false).length;
   const mismatch = list.filter((r) => r.site_mismatch === true).length;
   const conflict = list.filter((r) => attConflict(r)).length;
+  const locreq = list.filter((r) => r.source === 'notification').length;
 
   const verifyCell = (empNo) => {
     const p = pcByEmp[String(empNo || '').trim()];
@@ -379,6 +381,7 @@ export default function App() {
                 <option value="nofence">No fence</option>
                 <option value="mismatch">Site mismatch</option>
                 <option value="conflict">Attendance conflict</option>
+                <option value="locreq">🔔 Location requests</option>
               </select>
             </div>
             <div>
@@ -394,6 +397,7 @@ export default function App() {
             {card('⚠️ Outside', outside, '#92400e')}
             {card('📍 Site mismatch', mismatch, '#b45309')}
             {card('🔴 Att. conflict', conflict, '#991b1b')}
+            {card('🔔 Location requests', locreq, '#4338ca')}
           </div>
 
           {/* Daily rollup */}
@@ -486,8 +490,9 @@ export default function App() {
                         const conf = attConflict(r);
                         const geoKey = r.latitude != null && r.longitude != null ? (+r.latitude).toFixed(4) + ',' + (+r.longitude).toFixed(4) : null;
                         const place = r.location_name || (geoKey && geoNames[geoKey]) || null;
+                        const isLocReq = r.source === 'notification';
                         return (
-                          <tr key={i} style={{ borderTop: '1px solid var(--border)' }}>
+                          <tr key={i} style={{ borderTop: '1px solid var(--border)', borderLeft: isLocReq ? '3px solid #4338ca' : '3px solid transparent', background: isLocReq ? 'rgba(79,70,229,.05)' : undefined }}>
                             <td style={td}>
                               <div style={{ fontWeight: 600 }}>{r.name || '—'}</div>
                               <div style={{ fontSize: '.72rem', color: 'var(--text-muted)' }}>{r.emp_no || ''}{r.department ? ' · ' + r.department : ''}</div>
@@ -503,7 +508,7 @@ export default function App() {
                               {r.inside_fence === true ? badge('✅ Inside', '#dcfce7', '#166534')
                                 : r.inside_fence === false ? badge('⚠️ Outside', '#fef3c7', '#92400e')
                                 : badge('No fence', '#f3f4f6', '#6b7280')}
-                              {r.source === 'notification' && <div style={{ marginTop: '.25rem' }}>{badge('🔔 Verify', '#eef2ff', '#4338ca')}</div>}
+                              {isLocReq && <div style={{ marginTop: '.25rem' }}>{badge('🔔 Location Request', '#eef2ff', '#4338ca')}</div>}
                               {r.site_mismatch && <div style={{ marginTop: '.25rem' }}>{badge('📍 Mismatch', '#fef3c7', '#b45309')}</div>}
                               {conf && <div style={{ marginTop: '.25rem' }}>{badge(`🔴 Att: ${conf}`, '#fee2e2', '#991b1b')}</div>}
                             </td>
