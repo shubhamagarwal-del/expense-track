@@ -105,6 +105,9 @@ export default function App() {
   const [sheetOpen, setSheetOpen] = useState(false);
   const [sheetQ, setSheetQ] = useState('');
   const [siteGeo, setSiteGeo] = useState(null);      // { latitude, longitude, radius_m } | null
+  const [allSiteGeo, setAllSiteGeo] = useState([]);  // every site's geo-fence — used to find the nearest one
+  const [userPicked, setUserPicked] = useState(false); // true once the employee explicitly chose a site — stop auto-selecting after that
+  const [autoPicked, setAutoPicked] = useState(false); // true when the current selection came from GPS proximity, not a manual pick
   const [camOn, setCamOn] = useState(false);
   const [camReady, setCamReady] = useState(false);
   const [photoPreview, setPhotoPreview] = useState(null); // { file, url } | null — awaiting Retake/confirm
@@ -208,6 +211,36 @@ export default function App() {
       } catch { setSiteGeo(null); }
     })();
   }, [siteVal, profile]);
+
+  // Fetch every site's geo-fence once — needed to find which site is nearest
+  // (not just the currently-selected one).
+  useEffect(() => {
+    if (!profile) return;
+    (async () => {
+      try {
+        const { data } = await getDb().from('site_locations').select('site_code, latitude, longitude, radius_m').eq('active', true);
+        setAllSiteGeo((data || []).filter((s) => s.latitude != null && s.longitude != null));
+      } catch { setAllSiteGeo([]); }
+    })();
+  }, [profile]);
+
+  // Auto-select the nearest site from live GPS — but only until the employee
+  // manually picks one themselves (userPicked). A profile-based guess may already
+  // be selected from the boot effect; GPS proximity is more reliable and is
+  // allowed to replace that, but never a real manual choice.
+  useEffect(() => {
+    if (userPicked || !gpsPos || !allSiteGeo.length || !sites.length) return;
+    let best = null;
+    for (const g of allSiteGeo) {
+      const d = hav(gpsPos.lat, gpsPos.lon, g.latitude, g.longitude);
+      if (!best || d < best.d) best = { d, code: g.site_code };
+    }
+    const NEAR_THRESHOLD_M = 450; // only auto-pick when genuinely close to a known site
+    if (best && best.d <= NEAR_THRESHOLD_M) {
+      const s = sites.find((x) => x.code === best.code);
+      if (s) { setSiteVal(`${s.name} — ${s.code}`); setAutoPicked(true); }
+    }
+  }, [gpsPos, allSiteGeo, sites, userPicked]);
 
   // ── Leaflet map ──
   useEffect(() => {
@@ -455,6 +488,9 @@ export default function App() {
                   <>
                     <div style={{ fontWeight: 800, fontSize: '.88rem', color: '#0f172a', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                       {selected.name} <span style={{ color: '#64748b', fontWeight: 600, fontSize: '.72rem' }}>{selected.code}</span>
+                      {autoPicked && !userPicked && (
+                        <span style={{ marginLeft: 6, background: '#eff6ff', color: '#2563eb', borderRadius: 5, padding: '1px 6px', fontSize: '.62rem', fontWeight: 800, whiteSpace: 'nowrap' }}>📍 auto-detected</span>
+                      )}
                     </div>
                     <div style={{ fontSize: '.74rem', fontWeight: 700, marginTop: 1, color: liveInside === true ? '#16a34a' : liveInside === false ? '#b45309' : '#64748b' }}>
                       {!siteGeo ? 'Fence not set — GPS will still be recorded'
@@ -612,7 +648,7 @@ export default function App() {
               {sheetMatches.map((s) => {
                 const isSel = selected && selected.code === s.code;
                 return (
-                  <div key={s.code} onClick={() => { setSiteVal(`${s.name} — ${s.code}`); setSheetOpen(false); buzz(30); }}
+                  <div key={s.code} onClick={() => { setSiteVal(`${s.name} — ${s.code}`); setUserPicked(true); setAutoPicked(false); setSheetOpen(false); buzz(30); }}
                     style={{ padding: '.7rem .8rem', borderRadius: 12, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '.6rem', background: isSel ? '#f0fdf4' : 'transparent' }}>
                     <span style={{ fontSize: '1rem' }}>📍</span>
                     <span style={{ flex: 1 }}>
