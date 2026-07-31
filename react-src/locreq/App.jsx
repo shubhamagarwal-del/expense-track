@@ -92,6 +92,29 @@ export default function App() {
   useEffect(() => { if (profile && window.populateSidebar) window.populateSidebar(profile); }, [profile]);
   useEffect(() => { const iv = setInterval(() => setNow(new Date()), 30000); return () => clearInterval(iv); }, []);
 
+  // Fallback readiness check: onLoadedMetadata doesn't fire reliably on every
+  // browser/device, so also poll the video element directly. Whichever signal
+  // arrives first clears the "Starting camera…" state.
+  useEffect(() => {
+    if (!camOn) return;
+    const iv = setInterval(() => {
+      const v = videoRef.current;
+      if (v && v.videoWidth > 0) { setCamReady(true); clearInterval(iv); }
+    }, 200);
+    return () => clearInterval(iv);
+  }, [camOn]);
+
+  // Stuck-buffering guard: if no frame ever arrives, say so instead of an
+  // infinite spinner — likely another app/tab holding the camera, or a
+  // hardware/driver issue.
+  useEffect(() => {
+    if (!camOn) return;
+    const to = setTimeout(() => {
+      if (!videoRef.current?.videoWidth) window.showMessage("Camera is taking too long to start — close it (✕) and try again, or check if another app is using it.", 'error');
+    }, 8000);
+    return () => clearTimeout(to);
+  }, [camOn]);
+
   // LIVE: a new HR request (or status change) appears instantly via Realtime.
   useEffect(() => {
     if (!profile) return;
@@ -132,11 +155,23 @@ export default function App() {
         else throw e;
       }
       streamRef.current = stream;
-      setCamOn(true); setCamReady(false); setResult(null);
-      setTimeout(() => { if (videoRef.current) videoRef.current.srcObject = stream; }, 0);
+      setResult(null); setCamReady(false);
+      // The <video> is always mounted (see render), so the ref is already attached —
+      // assign the stream immediately, exactly like the vanilla page did, instead of
+      // waiting for a React re-render to (re)create the element.
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+        videoRef.current.play().catch(() => { }); // belt-and-braces for autoPlay quirks
+      }
+      setCamOn(true);
     } catch (err) { window.showMessage(cameraErrorMessage(err), 'error'); }
   }
-  function stopCamera() { streamRef.current?.getTracks().forEach((t) => t.stop()); streamRef.current = null; setCamOn(false); setCamReady(false); }
+  function stopCamera() {
+    streamRef.current?.getTracks().forEach((t) => t.stop());
+    streamRef.current = null;
+    if (videoRef.current) videoRef.current.srcObject = null;
+    setCamOn(false); setCamReady(false);
+  }
   async function capturePhoto() {
     const v = videoRef.current;
     // The stream can take a beat to deliver its first frame — wait for it
@@ -229,23 +264,28 @@ export default function App() {
             <div className="loading-state"><div className="spinner"></div><span>Loading…</span></div>
           ) : (
             <>
-              {/* Camera (one-tap flow) */}
-              {camOn && (
-                <div style={{ position: 'relative', marginBottom: '.9rem' }}>
-                  <video ref={videoRef} playsInline autoPlay muted onLoadedMetadata={() => setCamReady(true)}
-                    style={{ width: '100%', height: 320, objectFit: 'cover', borderRadius: 16, background: '#000', display: 'block', transform: 'scaleX(-1)' }} />
-                  {!camReady && (
-                    <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                      <div className="loading-state" style={{ background: 'rgba(15,23,42,.55)', borderRadius: 12, color: '#fff' }}><div className="spinner"></div><span>Starting camera…</span></div>
-                    </div>
-                  )}
-                  <button onClick={capturePhoto} aria-label="Take photo" disabled={!camReady}
-                    style={{ position: 'absolute', bottom: 16, left: '50%', transform: 'translateX(-50%)', width: 64, height: 64, borderRadius: '50%', background: '#fff', border: '4px solid rgba(255,255,255,.45)', boxShadow: '0 2px 10px rgba(0,0,0,.35)', cursor: camReady ? 'pointer' : 'wait', opacity: camReady ? 1 : .5 }} />
-                  <button onClick={stopCamera} aria-label="Close camera"
-                    style={{ position: 'absolute', top: 10, right: 10, width: 34, height: 34, borderRadius: '50%', background: 'rgba(15,23,42,.7)', color: '#fff', border: 'none', fontWeight: 800, cursor: 'pointer' }}>✕</button>
-                  <div style={{ position: 'absolute', top: 12, left: 12, background: 'rgba(15,23,42,.7)', color: '#fff', borderRadius: 8, padding: '3px 10px', fontSize: '.7rem', fontWeight: 700 }}>Photo captures → auto send</div>
-                </div>
-              )}
+              {/* Camera (one-tap flow). The <video> stays mounted at all times (like the
+                  working vanilla page did) — only hidden via display:none — so when
+                  openCamera() runs, the element already exists and srcObject can be
+                  assigned immediately with no mount-timing race. */}
+              <div style={{ position: 'relative', marginBottom: camOn ? '.9rem' : 0, display: camOn ? 'block' : 'none' }}>
+                <video ref={videoRef} playsInline autoPlay muted onLoadedMetadata={() => setCamReady(true)}
+                  style={{ width: '100%', height: 320, objectFit: 'cover', borderRadius: 16, background: '#000', display: 'block', transform: 'scaleX(-1)' }} />
+                {camOn && !camReady && (
+                  <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <div className="loading-state" style={{ background: 'rgba(15,23,42,.55)', borderRadius: 12, color: '#fff' }}><div className="spinner"></div><span>Starting camera…</span></div>
+                  </div>
+                )}
+                {camOn && (
+                  <>
+                    <button onClick={capturePhoto} aria-label="Take photo" disabled={!camReady}
+                      style={{ position: 'absolute', bottom: 16, left: '50%', transform: 'translateX(-50%)', width: 64, height: 64, borderRadius: '50%', background: '#fff', border: '4px solid rgba(255,255,255,.45)', boxShadow: '0 2px 10px rgba(0,0,0,.35)', cursor: camReady ? 'pointer' : 'wait', opacity: camReady ? 1 : .5 }} />
+                    <button onClick={stopCamera} aria-label="Close camera"
+                      style={{ position: 'absolute', top: 10, right: 10, width: 34, height: 34, borderRadius: '50%', background: 'rgba(15,23,42,.7)', color: '#fff', border: 'none', fontWeight: 800, cursor: 'pointer' }}>✕</button>
+                    <div style={{ position: 'absolute', top: 12, left: 12, background: 'rgba(15,23,42,.7)', color: '#fff', borderRadius: 8, padding: '3px 10px', fontSize: '.7rem', fontWeight: 700 }}>Photo captures → auto send</div>
+                  </>
+                )}
+              </div>
 
               {/* Round send button (only when a request is pending) */}
               {r && !camOn && (
