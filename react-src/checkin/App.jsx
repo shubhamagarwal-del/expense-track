@@ -90,6 +90,7 @@ export default function App() {
   const [sheetQ, setSheetQ] = useState('');
   const [siteGeo, setSiteGeo] = useState(null);      // { latitude, longitude, radius_m } | null
   const [camOn, setCamOn] = useState(false);
+  const [camReady, setCamReady] = useState(false);
   const [today, setToday] = useState([]);
   const [notifState, setNotifState] = useState('off');
   const [notifBusy, setNotifBusy] = useState(false);
@@ -226,15 +227,20 @@ export default function App() {
   async function openCamera() {
     if (!navigator.mediaDevices?.getUserMedia) return window.showMessage("Live camera isn't supported on this device/browser.", 'error');
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' } }, audio: false });
+      // Front camera by default (selfie — proves the employee themselves is present).
+      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'user' } }, audio: false });
       streamRef.current = stream;
-      setCamOn(true); setResult(null);
+      setCamOn(true); setCamReady(false); setResult(null);
       setTimeout(() => { if (videoRef.current) videoRef.current.srcObject = stream; }, 0);
     } catch { window.showMessage("Camera didn't open — allow camera permission.", 'error'); }
   }
-  function stopCamera() { streamRef.current?.getTracks().forEach((t) => t.stop()); streamRef.current = null; setCamOn(false); }
-  function capturePhoto() {
+  function stopCamera() { streamRef.current?.getTracks().forEach((t) => t.stop()); streamRef.current = null; setCamOn(false); setCamReady(false); }
+  async function capturePhoto() {
     const v = videoRef.current;
+    // The stream can take a beat to deliver its first frame — wait for it
+    // instead of failing immediately (fixes "camera isn't ready" on tap).
+    let tries = 0;
+    while (v && !v.videoWidth && tries < 30) { await new Promise((res) => setTimeout(res, 100)); tries++; }
     if (!v || !v.videoWidth) return window.showMessage("Camera isn't ready yet — wait a second and try again.", 'error');
     const c = document.createElement('canvas');
     c.width = v.videoWidth; c.height = v.videoHeight;
@@ -386,9 +392,15 @@ export default function App() {
           {/* Camera (one-tap flow) */}
           {camOn && (
             <div style={{ position: 'relative', marginBottom: '.9rem' }}>
-              <video ref={videoRef} playsInline autoPlay muted style={{ width: '100%', height: 320, objectFit: 'cover', borderRadius: 16, background: '#000', display: 'block' }} />
-              <button onClick={capturePhoto} aria-label="Take photo"
-                style={{ position: 'absolute', bottom: 16, left: '50%', transform: 'translateX(-50%)', width: 64, height: 64, borderRadius: '50%', background: '#fff', border: '4px solid rgba(255,255,255,.45)', boxShadow: '0 2px 10px rgba(0,0,0,.35)', cursor: 'pointer' }} />
+              <video ref={videoRef} playsInline autoPlay muted onLoadedMetadata={() => setCamReady(true)}
+                style={{ width: '100%', height: 320, objectFit: 'cover', borderRadius: 16, background: '#000', display: 'block', transform: 'scaleX(-1)' }} />
+              {!camReady && (
+                <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <div className="loading-state" style={{ background: 'rgba(15,23,42,.55)', borderRadius: 12, color: '#fff' }}><div className="spinner"></div><span>Starting camera…</span></div>
+                </div>
+              )}
+              <button onClick={capturePhoto} aria-label="Take photo" disabled={!camReady}
+                style={{ position: 'absolute', bottom: 16, left: '50%', transform: 'translateX(-50%)', width: 64, height: 64, borderRadius: '50%', background: '#fff', border: '4px solid rgba(255,255,255,.45)', boxShadow: '0 2px 10px rgba(0,0,0,.35)', cursor: camReady ? 'pointer' : 'wait', opacity: camReady ? 1 : .5 }} />
               <button onClick={stopCamera} aria-label="Close camera"
                 style={{ position: 'absolute', top: 10, right: 10, width: 34, height: 34, borderRadius: '50%', background: 'rgba(15,23,42,.7)', color: '#fff', border: 'none', fontWeight: 800, cursor: 'pointer' }}>✕</button>
               <div style={{ position: 'absolute', top: 12, left: 12, background: 'rgba(15,23,42,.7)', color: '#fff', borderRadius: 8, padding: '3px 10px', fontSize: '.7rem', fontWeight: 700 }}>Photo captures → auto check-in</div>
