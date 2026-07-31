@@ -71,6 +71,7 @@ export default function App() {
   const [loading, setLoading] = useState(true);
   const [camOn, setCamOn] = useState(false);
   const [camReady, setCamReady] = useState(false);
+  const [photoPreview, setPhotoPreview] = useState(null); // { file, url } | null — awaiting Retake/confirm
   const [busy, setBusy] = useState('');
   const [result, setResult] = useState(null);
   const [now, setNow] = useState(new Date());
@@ -186,8 +187,18 @@ export default function App() {
       if (!blob) return window.showMessage('Photo capture failed — try again.', 'error');
       buzz(60);
       stopCamera();
-      submitLocation(new File([blob], `verify_${Date.now()}.jpg`, { type: 'image/jpeg' }));
+      const file = new File([blob], `verify_${Date.now()}.jpg`, { type: 'image/jpeg' });
+      setPhotoPreview({ file, url: URL.createObjectURL(blob) }); // show preview → Retake / confirm
     }, 'image/jpeg', 0.9);
+  }
+  function retakePhoto() {
+    if (photoPreview) URL.revokeObjectURL(photoPreview.url);
+    setPhotoPreview(null);
+    openCamera();
+  }
+  function confirmPhoto() {
+    if (!photoPreview) return;
+    submitLocation(photoPreview.file);
   }
 
   function resolveUsualSite() {
@@ -216,7 +227,9 @@ export default function App() {
         setResult({ ok: true, text: `${body.location_name || 'Your current location'} recorded. Thank you.` });
         buzz([80, 60, 80]);
         setTimeout(() => loadRequests(true), 1200);
-      } catch (err) { setResult({ ok: false, text: err.message }); }
+        if (photoPreview) URL.revokeObjectURL(photoPreview.url);
+        setPhotoPreview(null); // success → clear preview, show the result card below
+      } catch (err) { setResult({ ok: false, text: err.message }); } // keep the preview so Retake/confirm stay available to retry
       finally { setBusy(''); }
     }, (err) => {
       setBusy('');
@@ -227,7 +240,7 @@ export default function App() {
   const r = reqs[0];
   const mins = r ? Math.max(0, Math.round((now - new Date(r.sent_at)) / 60000)) : 0;
   const left = r ? Math.max(0, (r.window_min || 30) - mins) : 0;
-  const ready = !!r && !busy && !camOn;
+  const ready = !!r && !busy && !camOn && !photoPreview;
 
   return (
     <div className="app-layout">
@@ -287,8 +300,26 @@ export default function App() {
                 )}
               </div>
 
+              {/* Photo preview — review before sending (Retake or confirm) */}
+              {r && !camOn && photoPreview && (
+                <div style={{ marginBottom: '.9rem' }}>
+                  <div style={{ position: 'relative', borderRadius: 16, overflow: 'hidden' }}>
+                    <img src={photoPreview.url} alt="Captured" style={{ width: '100%', height: 320, objectFit: 'cover', display: 'block' }} />
+                    <span style={{ position: 'absolute', top: 10, left: 10, background: 'rgba(15,23,42,.7)', color: '#fff', borderRadius: 8, padding: '3px 10px', fontSize: '.7rem', fontWeight: 700 }}>Review your photo</span>
+                  </div>
+                  <div style={{ display: 'flex', gap: '.6rem', marginTop: '.7rem' }}>
+                    <button onClick={retakePhoto} disabled={!!busy}
+                      style={{ flex: 1, height: 50, background: '#fff', border: '1.5px solid #e2e8f0', borderRadius: 999, fontWeight: 800, fontSize: '.9rem', color: '#334155', cursor: busy ? 'wait' : 'pointer' }}>🔄 Retake</button>
+                    <button onClick={confirmPhoto} disabled={!!busy}
+                      style={{ flex: 2, height: 50, background: busy ? 'linear-gradient(135deg,#0ea5e9,#0369a1)' : 'linear-gradient(135deg,#3b82f6,#1d4ed8)', color: '#fff', border: 'none', borderRadius: 999, fontWeight: 800, fontSize: '.9rem', cursor: busy ? 'wait' : 'pointer', boxShadow: '0 8px 20px rgba(29,78,216,.3)' }}>
+                      {busy || '📍 Send this photo'}
+                    </button>
+                  </div>
+                </div>
+              )}
+
               {/* Round send button (only when a request is pending) */}
-              {r && !camOn && (
+              {r && !camOn && !photoPreview && (
                 <>
                   <div style={{ display: 'flex', justifyContent: 'center', padding: '.6rem 0 .5rem' }}>
                     <div style={{ position: 'relative', width: 150, height: 150 }}>
@@ -302,7 +333,7 @@ export default function App() {
                       </button>
                     </div>
                   </div>
-                  <div style={{ textAlign: 'center', fontSize: '.72rem', color: '#94a3b8', marginBottom: '.9rem' }}>Tap → camera → photo → auto send</div>
+                  <div style={{ textAlign: 'center', fontSize: '.72rem', color: '#94a3b8', marginBottom: '.9rem' }}>Tap → camera → photo → review → send</div>
                 </>
               )}
 

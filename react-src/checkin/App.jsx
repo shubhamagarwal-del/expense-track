@@ -107,6 +107,8 @@ export default function App() {
   const [siteGeo, setSiteGeo] = useState(null);      // { latitude, longitude, radius_m } | null
   const [camOn, setCamOn] = useState(false);
   const [camReady, setCamReady] = useState(false);
+  const [photoPreview, setPhotoPreview] = useState(null); // { file, url } | null — awaiting Retake/confirm
+  const [vh, setVh] = useState(() => (typeof window !== 'undefined' ? (window.visualViewport?.height || window.innerHeight) : 800));
   const [today, setToday] = useState([]);
   const [notifState, setNotifState] = useState('off');
   const [notifBusy, setNotifBusy] = useState(false);
@@ -144,6 +146,18 @@ export default function App() {
 
   useEffect(() => { if (profile && window.populateSidebar) window.populateSidebar(profile); }, [profile]);
   useEffect(() => { if (sheetOpen) setTimeout(() => sheetInputRef.current?.focus(), 80); }, [sheetOpen]);
+
+  // Track the visual viewport height so the site-picker sheet shrinks when the
+  // on-screen keyboard opens — otherwise the results list ends up hidden behind
+  // the keyboard (vh units don't account for it).
+  useEffect(() => {
+    const vv = window.visualViewport;
+    if (!vv) return;
+    const onResize = () => setVh(vv.height);
+    vv.addEventListener('resize', onResize);
+    vv.addEventListener('scroll', onResize);
+    return () => { vv.removeEventListener('resize', onResize); vv.removeEventListener('scroll', onResize); };
+  }, []);
 
   // Fallback readiness check: onLoadedMetadata doesn't fire reliably on every
   // browser/device, so also poll the video element directly. Whichever signal
@@ -307,8 +321,18 @@ export default function App() {
       if (!blob) return window.showMessage('Photo capture failed — try again.', 'error');
       buzz(60);
       stopCamera();
-      submitCheckin(new File([blob], `checkin_${Date.now()}.jpg`, { type: 'image/jpeg' }));
+      const file = new File([blob], `checkin_${Date.now()}.jpg`, { type: 'image/jpeg' });
+      setPhotoPreview({ file, url: URL.createObjectURL(blob) }); // show preview → Retake / Check in
     }, 'image/jpeg', 0.9);
+  }
+  function retakePhoto() {
+    if (photoPreview) URL.revokeObjectURL(photoPreview.url);
+    setPhotoPreview(null);
+    openCamera();
+  }
+  function confirmPhoto() {
+    if (!photoPreview) return;
+    submitCheckin(photoPreview.file);
   }
 
   async function submitCheckin(file) {
@@ -331,7 +355,9 @@ export default function App() {
         setResult({ ...body, siteName: selected.name });
         buzz([80, 60, 80]);
         loadToday();
-      } catch (err) { setResult({ error: err.message }); }
+        if (photoPreview) URL.revokeObjectURL(photoPreview.url);
+        setPhotoPreview(null); // success → clear preview, show the result card below
+      } catch (err) { setResult({ error: err.message }); } // keep the preview so Retake/Check in stay available to retry
       finally { setBusy(''); }
     }, (err) => {
       setBusy('');
@@ -367,7 +393,7 @@ export default function App() {
   }
   sheetMatches = sheetMatches.slice(0, 80);
 
-  const punchReady = notifOn && !!selected && !busy && !camOn;
+  const punchReady = notifOn && !!selected && !busy && !camOn && !photoPreview;
   const punchLabel = busy ? busy : !notifOn ? 'NOTIFS OFF' : !selected ? 'SELECT SITE' : 'CHECK IN';
 
   const slotChip = (key, label) => {
@@ -470,8 +496,26 @@ export default function App() {
             )}
           </div>
 
+          {/* Photo preview — review before submitting (Retake or confirm) */}
+          {!camOn && photoPreview && (
+            <div style={{ marginBottom: '.9rem' }}>
+              <div style={{ position: 'relative', borderRadius: 16, overflow: 'hidden' }}>
+                <img src={photoPreview.url} alt="Captured" style={{ width: '100%', height: 320, objectFit: 'cover', display: 'block' }} />
+                <span style={{ position: 'absolute', top: 10, left: 10, background: 'rgba(15,23,42,.7)', color: '#fff', borderRadius: 8, padding: '3px 10px', fontSize: '.7rem', fontWeight: 700 }}>Review your photo</span>
+              </div>
+              <div style={{ display: 'flex', gap: '.6rem', marginTop: '.7rem' }}>
+                <button onClick={retakePhoto} disabled={!!busy}
+                  style={{ flex: 1, height: 50, background: '#fff', border: '1.5px solid #e2e8f0', borderRadius: 999, fontWeight: 800, fontSize: '.9rem', color: '#334155', cursor: busy ? 'wait' : 'pointer' }}>🔄 Retake</button>
+                <button onClick={confirmPhoto} disabled={!!busy}
+                  style={{ flex: 2, height: 50, background: busy ? 'linear-gradient(135deg,#0ea5e9,#0369a1)' : 'linear-gradient(135deg,#22c55e,#15803d)', color: '#fff', border: 'none', borderRadius: 999, fontWeight: 800, fontSize: '.9rem', cursor: busy ? 'wait' : 'pointer', boxShadow: '0 8px 20px rgba(21,128,61,.3)' }}>
+                  {busy || '✅ Check in with this photo'}
+                </button>
+              </div>
+            </div>
+          )}
+
           {/* Round punch button */}
-          {!camOn && (
+          {!camOn && !photoPreview && (
             <>
               <div style={{ display: 'flex', justifyContent: 'center', padding: '.4rem 0 .5rem' }}>
                 <div style={{ position: 'relative', width: 150, height: 150 }}>
@@ -486,7 +530,7 @@ export default function App() {
                 </div>
               </div>
               <div style={{ textAlign: 'center', fontSize: '.72rem', color: '#94a3b8', marginBottom: '.9rem' }}>
-                {punchReady ? 'Tap → camera → photo → auto check-in' : !notifOn ? 'Enable notifications above to continue' : !selected ? 'Tap to choose your site' : ''}
+                {punchReady ? 'Tap → camera → photo → review → check in' : !notifOn ? 'Enable notifications above to continue' : !selected ? 'Tap to choose your site' : ''}
               </div>
             </>
           )}
@@ -554,7 +598,7 @@ export default function App() {
       {/* Bottom-sheet site picker */}
       {sheetOpen && (
         <div onClick={() => setSheetOpen(false)} style={{ position: 'fixed', inset: 0, zIndex: 1000, background: 'rgba(15,23,42,.45)', backdropFilter: 'blur(3px)', display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}>
-          <div onClick={(e) => e.stopPropagation()} style={{ width: '100%', maxWidth: 560, background: '#fff', borderRadius: '24px 24px 0 0', maxHeight: '78vh', display: 'flex', flexDirection: 'column', boxShadow: '0 -12px 40px rgba(15,23,42,.25)' }}>
+          <div onClick={(e) => e.stopPropagation()} style={{ width: '100%', maxWidth: 560, background: '#fff', borderRadius: '24px 24px 0 0', maxHeight: Math.round(vh * 0.85), display: 'flex', flexDirection: 'column', boxShadow: '0 -12px 40px rgba(15,23,42,.25)' }}>
             <div style={{ padding: '.9rem 1rem .5rem' }}>
               <div style={{ width: 40, height: 4, background: '#e2e8f0', borderRadius: 4, margin: '0 auto .7rem' }} />
               <div style={{ display: 'flex', alignItems: 'center', gap: '.6rem' }}>
