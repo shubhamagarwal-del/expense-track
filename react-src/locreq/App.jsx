@@ -7,6 +7,13 @@ import React, { useEffect, useRef, useState } from 'react';
 const getSites = () => (typeof SITE_DATA !== 'undefined' ? SITE_DATA : []);
 const getDb = () => (typeof db !== 'undefined' ? db : window.db);
 
+const hav = (a, b, c, d) => {
+  const R = 6371000, r = (x) => x * Math.PI / 180;
+  const dLat = r(c - a), dLon = r(d - b);
+  const q = Math.sin(dLat / 2) ** 2 + Math.cos(r(a)) * Math.cos(r(c)) * Math.sin(dLon / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(q), Math.sqrt(1 - q));
+};
+
 const buzz = (ms = 120) => { try { navigator.vibrate?.(ms); } catch { } };
 
 // getUserMedia failures are opaque by default ("camera didn't open") — surface the
@@ -75,8 +82,15 @@ export default function App() {
   const [busy, setBusy] = useState('');
   const [result, setResult] = useState(null);
   const [now, setNow] = useState(new Date());
+  const [gpsPos, setGpsPos] = useState(null);        // { lat, lon, acc } live
+  const [gpsErr, setGpsErr] = useState(false);
+  const [siteGeo, setSiteGeo] = useState(null);      // { latitude, longitude, radius_m } | null — usual site's fence
   const videoRef = useRef(null);
   const streamRef = useRef(null);
+  const mapDivRef = useRef(null);
+  const mapRef = useRef(null);
+  const userLayerRef = useRef(null);
+  const siteLayerRef = useRef(null);
 
   useEffect(() => {
     (async () => {
@@ -127,6 +141,58 @@ export default function App() {
     document.addEventListener('visibilitychange', refresh);
     return () => { getDb().removeChannel(ch); clearInterval(iv); document.removeEventListener('visibilitychange', refresh); };
   }, [profile]);
+
+  // live GPS (watch — powers the header chip, map dot, and live distance)
+  useEffect(() => {
+    if (!profile || !navigator.geolocation) return;
+    const id = navigator.geolocation.watchPosition(
+      (p) => { setGpsPos({ lat: p.coords.latitude, lon: p.coords.longitude, acc: Math.round(p.coords.accuracy) }); setGpsErr(false); },
+      () => setGpsErr(true),
+      { enableHighAccuracy: true, maximumAge: 5000, timeout: 15000 }
+    );
+    return () => navigator.geolocation.clearWatch(id);
+  }, [profile]);
+
+  // Resolve the employee's usual site (if any) and fetch its geo-fence — informational
+  // only here, there's no picker: the site to verify against is whatever the profile says.
+  useEffect(() => {
+    (async () => {
+      if (!profile) { setSiteGeo(null); return; }
+      const site = resolveUsualSite();
+      if (!site) { setSiteGeo(null); return; }
+      try {
+        const { data } = await getDb().from('site_locations').select('latitude, longitude, radius_m').eq('site_code', site.code).maybeSingle();
+        setSiteGeo(data && data.latitude != null ? data : null);
+      } catch { setSiteGeo(null); }
+    })();
+  }, [profile]);
+
+  // ── Leaflet map ──
+  useEffect(() => {
+    if (!mapDivRef.current || mapRef.current || typeof window.L === 'undefined') return;
+    const m = window.L.map(mapDivRef.current, { zoomControl: false, dragging: false, scrollWheelZoom: false, doubleClickZoom: false, boxZoom: false, keyboard: false, touchZoom: false });
+    window.L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '© OpenStreetMap' }).addTo(m);
+    m.setView([26.9124, 75.7873], 12);
+    mapRef.current = m;
+  });
+  useEffect(() => {
+    const m = mapRef.current;
+    if (!m || typeof window.L === 'undefined') return;
+    if (userLayerRef.current) { m.removeLayer(userLayerRef.current); userLayerRef.current = null; }
+    if (siteLayerRef.current) { m.removeLayer(siteLayerRef.current); siteLayerRef.current = null; }
+    const pts = [];
+    if (siteGeo) {
+      siteLayerRef.current = window.L.circle([siteGeo.latitude, siteGeo.longitude], { radius: siteGeo.radius_m || 200, color: '#22c55e', weight: 2, fillColor: '#22c55e', fillOpacity: 0.15 }).addTo(m);
+      pts.push([siteGeo.latitude, siteGeo.longitude]);
+    }
+    if (gpsPos) {
+      userLayerRef.current = window.L.circleMarker([gpsPos.lat, gpsPos.lon], { radius: 7, color: '#fff', weight: 2.5, fillColor: '#2563eb', fillOpacity: 1 }).addTo(m);
+      pts.push([gpsPos.lat, gpsPos.lon]);
+    }
+    if (pts.length === 2) m.fitBounds(pts, { padding: [34, 34], maxZoom: 16 });
+    else if (pts.length === 1) m.setView(pts[0], 15);
+    setTimeout(() => m.invalidateSize(), 120);
+  }, [gpsPos, siteGeo, camOn]);
 
   async function loadRequests(silent = false) {
     if (!silent) setLoading(true);
@@ -241,6 +307,11 @@ export default function App() {
   const mins = r ? Math.max(0, Math.round((now - new Date(r.sent_at)) / 60000)) : 0;
   const left = r ? Math.max(0, (r.window_min || 30) - mins) : 0;
   const ready = !!r && !busy && !camOn && !photoPreview;
+  const hm = now.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' });
+
+  const usualSite = resolveUsualSite();
+  const liveDist = gpsPos && siteGeo ? Math.round(hav(gpsPos.lat, gpsPos.lon, siteGeo.latitude, siteGeo.longitude)) : null;
+  const liveInside = liveDist != null ? liveDist <= (siteGeo.radius_m || 200) : null;
 
   return (
     <div className="app-layout">
@@ -253,7 +324,10 @@ export default function App() {
               <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 12h16M4 18h16" /></svg>
             </button>
             <span className="topbar-title" style={{ color: '#e2e8f0' }}>Location request</span>
-            <div className="topbar-right"></div>
+            <div className="topbar-right">
+              {gpsPos && <span style={{ fontSize: '.68rem', fontWeight: 800, color: gpsPos.acc <= 100 ? '#4ade80' : '#fbbf24', background: 'rgba(255,255,255,.08)', border: '1px solid rgba(255,255,255,.15)', borderRadius: 999, padding: '3px 9px' }}>📡 ±{gpsPos.acc}m</span>}
+              {gpsErr && !gpsPos && <span style={{ fontSize: '.68rem', fontWeight: 800, color: '#f87171', background: 'rgba(255,255,255,.08)', borderRadius: 999, padding: '3px 9px' }}>📡 GPS off</span>}
+            </div>
           </header>
           <div style={{ textAlign: 'center' }}>
             {r ? (
@@ -269,6 +343,7 @@ export default function App() {
                 <div style={{ fontSize: '.78rem', color: '#94a3b8', marginTop: 6 }}>No pending requests — new ones appear here live.</div>
               </>
             )}
+            <div style={{ fontSize: '.7rem', color: '#64748b', marginTop: 8, fontVariantNumeric: 'tabular-nums' }}>{hm}</div>
           </div>
         </div>
 
@@ -277,6 +352,29 @@ export default function App() {
             <div className="loading-state"><div className="spinner"></div><span>Loading…</span></div>
           ) : (
             <>
+              {/* Map + site card — informational only; the site is whatever the employee's
+                  profile says (no picker here, that's the check-in page's job). */}
+              <div style={{ background: '#fff', borderRadius: 16, overflow: 'hidden', marginBottom: '.9rem', boxShadow: '0 4px 16px rgba(15,23,42,.08)' }}>
+                <div ref={mapDivRef} style={{ height: 150, background: '#dbeafe' }} />
+                <div style={{ padding: '.65rem .85rem' }}>
+                  {usualSite ? (
+                    <>
+                      <div style={{ fontWeight: 800, fontSize: '.88rem', color: '#0f172a', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {usualSite.name} <span style={{ color: '#64748b', fontWeight: 600, fontSize: '.72rem' }}>{usualSite.code}</span>
+                      </div>
+                      <div style={{ fontSize: '.74rem', fontWeight: 700, marginTop: 1, color: liveInside === true ? '#16a34a' : liveInside === false ? '#b45309' : '#64748b' }}>
+                        {!siteGeo ? 'Fence not set — GPS will still be recorded'
+                          : liveDist == null ? 'Waiting for GPS…'
+                          : liveInside ? `You are ${liveDist} m from site — inside fence`
+                          : `You are ${liveDist} m from site — outside fence`}
+                      </div>
+                    </>
+                  ) : (
+                    <div style={{ fontSize: '.85rem', color: '#64748b', fontWeight: 600 }}>No usual site on file — your live location will be recorded for HR</div>
+                  )}
+                </div>
+              </div>
+
               {/* Camera (one-tap flow). The <video> stays mounted at all times (like the
                   working vanilla page did) — only hidden via display:none — so when
                   openCamera() runs, the element already exists and srcObject can be

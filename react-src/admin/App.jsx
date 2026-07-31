@@ -512,7 +512,7 @@ export default function App() {
                               {r.site_mismatch && <div style={{ marginTop: '.25rem' }}>{badge('📍 Mismatch', '#fef3c7', '#b45309')}</div>}
                               {conf && <div style={{ marginTop: '.25rem' }}>{badge(`🔴 Att: ${conf}`, '#fee2e2', '#991b1b')}</div>}
                             </td>
-                            <td style={{ ...td, textAlign: 'right' }}>{r.distance_m != null ? `${r.distance_m} m` : '—'}</td>
+                            <td style={{ ...td, textAlign: 'right' }}>{r.distance_m != null ? `${r.distance_m} m` : r.nearest_distance_m != null ? `${r.nearest_distance_m} m` : '—'}</td>
                             <td style={{ ...td, textAlign: 'center' }}>
                               {r.photo_url
                                 ? <button onClick={() => window.viewReceipt(r.photo_url)} style={{ background: 'none', border: '1px solid var(--border)', borderRadius: 6, padding: '2px 8px', cursor: 'pointer', fontSize: '.72rem', fontWeight: 700, color: 'var(--primary)' }}>📷 View</button>
