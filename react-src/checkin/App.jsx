@@ -42,6 +42,22 @@ async function notificationsOn() {
 
 const buzz = (ms = 120) => { try { navigator.vibrate?.(ms); } catch { } };
 
+// getUserMedia failures are opaque by default ("camera didn't open") — surface the
+// actual reason so the employee (and we) know whether it's permission, another app
+// holding the camera, no camera at all, or an insecure origin.
+function cameraErrorMessage(err) {
+  const msgs = {
+    NotAllowedError: 'Camera permission denied — allow it in your browser/site settings, then reload.',
+    PermissionDeniedError: 'Camera permission denied — allow it in your browser/site settings, then reload.',
+    NotFoundError: 'No camera found on this device.',
+    DevicesNotFoundError: 'No camera found on this device.',
+    NotReadableError: 'Camera is in use by another app (or tab) — close it and try again.',
+    TrackStartError: 'Camera is in use by another app (or tab) — close it and try again.',
+    SecurityError: 'Camera needs a secure (https) connection.',
+  };
+  return msgs[err?.name] || `Camera didn't open${err?.name ? ` (${err.name})` : ''} — try again.`;
+}
+
 const Sidebar = () => (
   <>
     <div className="sidebar-overlay" id="sidebar-overlay" onClick={() => window.closeSidebar()}></div>
@@ -225,14 +241,21 @@ export default function App() {
     openCamera();
   }
   async function openCamera() {
+    if (!window.isSecureContext) return window.showMessage('Camera needs a secure (https) connection — open this page via the https link.', 'error');
     if (!navigator.mediaDevices?.getUserMedia) return window.showMessage("Live camera isn't supported on this device/browser.", 'error');
     try {
-      // Front camera by default (selfie — proves the employee themselves is present).
-      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'user' } }, audio: false });
+      let stream;
+      try {
+        // Front camera by default (selfie — proves the employee themselves is present).
+        stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'user' } }, audio: false });
+      } catch (e) {
+        if (e?.name === 'OverconstrainedError') stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false }); // any camera
+        else throw e;
+      }
       streamRef.current = stream;
       setCamOn(true); setCamReady(false); setResult(null);
       setTimeout(() => { if (videoRef.current) videoRef.current.srcObject = stream; }, 0);
-    } catch { window.showMessage("Camera didn't open — allow camera permission.", 'error'); }
+    } catch (err) { window.showMessage(cameraErrorMessage(err), 'error'); }
   }
   function stopCamera() { streamRef.current?.getTracks().forEach((t) => t.stop()); streamRef.current = null; setCamOn(false); setCamReady(false); }
   async function capturePhoto() {
