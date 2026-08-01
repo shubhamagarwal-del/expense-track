@@ -505,7 +505,7 @@ export default async function handler(req, res) {
         .select('endpoint, p256dh, auth').eq('user_id', user.id).eq('active', true);
       if (!subs?.length) return res.status(400).json({ error: 'Pehle notifications ON karo — koi device subscribe nahi hai.' });
       if (!vapidReady()) return res.status(500).json({ error: 'Server pe push configure nahi hai (VAPID missing).' });
-      const payload = { title: '✅ Test notification', body: 'Push chal raha hai! Yeh ek test hai — tap karke check-in page khulega.', url: '/attendance-checkin.html' };
+      const payload = { title: '✅ Test notification', body: 'Push chal raha hai! Yeh ek test hai — tap karke check-in page khulega.', url: '/checkin-react.html' };
       const sent = await sendBurst(supabaseAdmin, subs.map(s => ({ sub: s, payload })));
       return res.status(200).json({ ok: true, sent, total: subs.length });
     }
@@ -517,7 +517,7 @@ export default async function handler(req, res) {
         return res.status(403).json({ error: 'Not authorised' });
       }
       const istDate = new Date(Date.now() + 5.5 * 3600 * 1000).toISOString().slice(0, 10);
-      const payload = { title: '📍 Location request', body: 'HR requested your location — open and send a live photo.', url: '/location-request.html' };
+      const payload = { title: '📍 Location request', body: 'HR requested your location — open and send a live photo.', url: '/location-request-react.html' };
 
       if (req.body.ping_employee) {
         const emp = String(req.body.ping_employee.emp_no || '').trim();
@@ -1391,8 +1391,8 @@ async function runPushTick(res, db, sendRandom = false) {
 
   // Collect every notification to send this tick, then burst them together (each rings 5×).
   const items = [];
-  const NEW_PAYLOAD = { title: '📍 Location request', body: 'HR requested your location — open and send a live photo.', url: '/location-request.html' };
-  const REM_PAYLOAD = { title: '⏰ Location request reminder', body: 'Still pending — please send your location now.', url: '/location-request.html' };
+  const NEW_PAYLOAD = { title: '📍 Location request', body: 'HR requested your location — open and send a live photo.', url: '/location-request-react.html' };
+  const REM_PAYLOAD = { title: '⏰ Location request reminder', body: 'Still pending — please send your location now.', url: '/location-request-react.html' };
 
   // 2. Reminders (pending, past half-window, none sent yet)
   const remCutoff = new Date(now.getTime() - (WINDOW_MIN / 2) * 60000).toISOString();
