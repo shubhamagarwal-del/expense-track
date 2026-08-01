@@ -494,6 +494,7 @@ function populateSidebar(profile) {
   // Location Request (respond to HR location requests): everyone.
   if (el('sb-location-request-link')) el('sb-location-request-link').style.display = '';
   updateLocationRequestBadge();
+  startLocationRequestBadgeLive();
 }
 
 /** Show a red count badge on the "Location Request" sidebar link when requests are pending. */
@@ -508,6 +509,21 @@ async function updateLocationRequestBadge() {
     el.textContent = n || '';
     el.style.display = n ? 'flex' : 'none';
   } catch (_) { /* non-fatal */ }
+}
+
+// Keep the badge live on every page — a location request can land while the
+// employee already has a page open (dashboard, add-expense, ...), and this
+// doesn't depend on push notifications working at all, so it's the one
+// guaranteed way they'll notice. Guarded so populateSidebar() being called
+// more than once per page load doesn't stack up duplicate timers.
+let _lrBadgeLiveStarted = false;
+function startLocationRequestBadgeLive() {
+  if (_lrBadgeLiveStarted) return;
+  _lrBadgeLiveStarted = true;
+  setInterval(updateLocationRequestBadge, 60000);
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') updateLocationRequestBadge();
+  });
 }
 
 

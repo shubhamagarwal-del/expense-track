@@ -165,7 +165,7 @@ export default function App() {
     setPingMsg({ ok: true, text: 'Sending…' });
     try {
       const t = await token();
-      const res = await fetch('/api/receipt-url', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${t}` }, body: JSON.stringify({ ping_employee: { emp_no: emp.emp_no } }) });
+      const res = await fetch('/api/receipt-url', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${t}` }, body: JSON.stringify({ ping_employee: { user_id: emp.id, emp_no: emp.emp_no } }) });
       const body = await res.json();
       if (!res.ok) throw new Error(body.error || 'Failed');
       setPingMsg(body.push_enabled

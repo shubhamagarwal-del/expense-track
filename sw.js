@@ -12,7 +12,7 @@
 // This string MUST change with every deployment so the browser
 // detects a new SW, evicts the old cache, and reloads clients.
 // Format: YYYY-MM-DD-NNN  (increment NNN for same-day deploys)
-const CACHE_VERSION = '2026-08-01-002';
+const CACHE_VERSION = '2026-08-01-003';
 const CACHE_NAME    = `expensetrack-${CACHE_VERSION}`;
 
 // Same-origin static assets (CSS / JS / icons / manifest)
@@ -181,7 +181,10 @@ self.addEventListener('push', (event) => {
   const body  = data.body  || 'Check in now — live photo + location.';
   const url   = data.url   || '/location-request-react.html';
   const tag   = data.tag   || 'site-checkin';
-  const REPEATS = data.repeats || 10, GAP = data.gapMs || 2000; // re-alert up to 10×, 2s apart
+  // Re-alert up to 10×, 5s apart. Was 2s — too fast to reliably tap before the
+  // notification got closed and replaced by the next round (real reaction time,
+  // from buzz to a registered tap, is easily 2-4s on its own).
+  const REPEATS = data.repeats || 10, GAP = data.gapMs || 5000;
 
   // Ring several times: a *new* notification (new tag) alerts every time, while the previous
   // one is closed first — so the tray shows ~one at a time but it re-rings each round.
@@ -220,10 +223,10 @@ self.addEventListener('push', (event) => {
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
   const url = event.notification.data?.url || '/location-request-react.html';
-  event.waitUntil(
-    clients.matchAll({ type: 'window', includeUncontrolled: true }).then((wins) => {
-      for (const w of wins) { if ((w.url.includes('attendance-checkin') || w.url.includes('checkin-react') || w.url.includes('location-request')) && 'focus' in w) return w.focus(); }
-      return clients.openWindow(url);
-    })
-  );
+  // Always open fresh instead of trying to focus an existing window first: on Android,
+  // matchAll() can't tell a background browser tab apart from the installed PWA's own
+  // window, so it was sometimes focusing a stray Chrome tab instead of the installed
+  // app. openWindow() lets the OS route to the installed app directly, and if it's
+  // already running, the OS brings that instance forward on its own.
+  event.waitUntil(clients.openWindow(url));
 });

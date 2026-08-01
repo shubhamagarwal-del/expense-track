@@ -217,15 +217,17 @@ export default async function handler(req, res) {
     }
 
     // ?ping_employees=1 → employee list for the manual "send check-in request" picker (with push status).
+    // Keyed by user id, not emp_no: some managers have two accounts sharing one emp_no
+    // (role='admin' + a "<Name> emp" role='employee' account) — emp_no alone is ambiguous.
     if (req.query?.ping_employees) {
       if (!['admin', 'hr', 'audit', 'super_admin'].includes(profile.role)) {
         return res.status(403).json({ error: 'Not authorised' });
       }
-      const { data: users } = await supabaseAdmin.from('users').select('name, emp_no, department').not('emp_no', 'is', null).order('name');
-      const { data: subs } = await supabaseAdmin.from('push_subscriptions').select('emp_no').eq('active', true);
-      const subbed = new Set((subs || []).map(s => String(s.emp_no || '').trim()));
-      const out = (users || []).map(u => ({ name: u.name, emp_no: u.emp_no, department: u.department, has_push: subbed.has(String(u.emp_no || '').trim()) }));
-      return res.status(200).json({ employees: out, subscribed: subbed.size });
+      const { data: users } = await supabaseAdmin.from('users').select('id, name, emp_no, department').not('emp_no', 'is', null).order('name');
+      const { data: subs } = await supabaseAdmin.from('push_subscriptions').select('user_id').eq('active', true);
+      const subbedIds = new Set((subs || []).map(s => s.user_id));
+      const out = (users || []).map(u => ({ id: u.id, name: u.name, emp_no: u.emp_no, department: u.department, has_push: subbedIds.has(u.id) }));
+      return res.status(200).json({ employees: out, subscribed: subbedIds.size });
     }
 
     // ?audit_checks=1 → all recorded audit-check rows (Audit / Super Admin manual "checked for payment" marker)
@@ -520,16 +522,29 @@ export default async function handler(req, res) {
       const payload = { title: '📍 Location request', body: 'HR requested your location — open and send a live photo.', url: '/location-request-react.html' };
 
       if (req.body.ping_employee) {
+        const targetId = req.body.ping_employee.user_id || null;
         const emp = String(req.body.ping_employee.emp_no || '').trim();
-        if (!emp) return res.status(400).json({ error: 'emp_no required' });
-        const { data: targetUser } = await supabaseAdmin.from('users').select('id').eq('emp_no', emp).maybeSingle();
+        if (!targetId && !emp) return res.status(400).json({ error: 'user_id or emp_no required' });
+
+        // Resolve by user id when given (unambiguous). Falls back to emp_no for older
+        // callers — but emp_no isn't unique (a manager can have a second "<Name> emp"
+        // account sharing the same emp_no), so .maybeSingle() would error on 2 matches;
+        // .limit(1) just picks one instead of hard-failing.
+        let targetUser = null;
+        if (targetId) {
+          const { data } = await supabaseAdmin.from('users').select('id, emp_no').eq('id', targetId).maybeSingle();
+          targetUser = data;
+        } else {
+          const { data } = await supabaseAdmin.from('users').select('id, emp_no').eq('emp_no', emp).limit(1);
+          targetUser = data?.[0] || null;
+        }
         if (!targetUser) return res.status(404).json({ error: 'Employee not found' });
 
         // Always record the request, even with no push subscription — the employee will
         // see it in-app (location-request page) next time they open it, push or not.
-        await supabaseAdmin.from('push_checks').insert({ user_id: targetUser.id, emp_no: emp, window_min: 30, status: 'pending', check_date: istDate });
+        await supabaseAdmin.from('push_checks').insert({ user_id: targetUser.id, emp_no: targetUser.emp_no, window_min: 30, status: 'pending', check_date: istDate });
 
-        const { data: subs } = await supabaseAdmin.from('push_subscriptions').select('endpoint, p256dh, auth').eq('emp_no', emp).eq('active', true);
+        const { data: subs } = await supabaseAdmin.from('push_subscriptions').select('endpoint, p256dh, auth').eq('user_id', targetUser.id).eq('active', true);
         const sent = (subs?.length && vapidReady()) ? await sendBurst(supabaseAdmin, subs.map(s => ({ sub: s, payload }))) : 0;
         return res.status(200).json({ ok: true, employees: 1, devices: subs?.length || 0, sent, push_enabled: !!subs?.length });
       }
