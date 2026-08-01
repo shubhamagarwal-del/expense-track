@@ -201,7 +201,7 @@ export default async function handler(req, res) {
       }
       const date = req.query.date;
       let q = supabaseAdmin.from('push_checks')
-        .select('user_id, emp_no, sent_at, status, responded_at, window_min, check_date')
+        .select('user_id, emp_no, sent_at, status, responded_at, window_min, check_date, sent_by_name')
         .order('sent_at', { ascending: false }).limit(3000);
       if (date) q = q.eq('check_date', date);
       const { data: pc, error } = await q;
@@ -542,7 +542,7 @@ export default async function handler(req, res) {
 
         // Always record the request, even with no push subscription — the employee will
         // see it in-app (location-request page) next time they open it, push or not.
-        await supabaseAdmin.from('push_checks').insert({ user_id: targetUser.id, emp_no: targetUser.emp_no, window_min: 30, status: 'pending', check_date: istDate });
+        await supabaseAdmin.from('push_checks').insert({ user_id: targetUser.id, emp_no: targetUser.emp_no, window_min: 30, status: 'pending', check_date: istDate, sent_by: user.id, sent_by_name: pprof.name });
 
         const { data: subs } = await supabaseAdmin.from('push_subscriptions').select('endpoint, p256dh, auth').eq('user_id', targetUser.id).eq('active', true);
         const sent = (subs?.length && vapidReady()) ? await sendBurst(supabaseAdmin, subs.map(s => ({ sub: s, payload }))) : 0;
@@ -558,7 +558,7 @@ export default async function handler(req, res) {
       const byEmp = {};
       subs.forEach(s => { const k = String(s.emp_no || '').trim(); if (k) (byEmp[k] ||= s); });
       for (const k of Object.keys(byEmp)) {
-        await supabaseAdmin.from('push_checks').insert({ user_id: byEmp[k].user_id, emp_no: k, window_min: 30, status: 'pending', check_date: istDate });
+        await supabaseAdmin.from('push_checks').insert({ user_id: byEmp[k].user_id, emp_no: k, window_min: 30, status: 'pending', check_date: istDate, sent_by: user.id, sent_by_name: pprof.name });
       }
       const sent = await sendBurst(supabaseAdmin, subs.map(s => ({ sub: s, payload })));
       return res.status(200).json({ ok: true, employees: Object.keys(byEmp).length, devices: subs.length, sent });

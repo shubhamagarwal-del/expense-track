@@ -236,14 +236,17 @@ export default function App() {
 
   const pcByEmp = useMemo(() => {
     const m = {};
+    // pushChecks arrives sorted newest-first (server orders by sent_at desc), so the
+    // first row seen per employee is their most recent request — used for "last sent by".
     pushChecks.forEach((p) => {
       const k = String(p.emp_no || '').trim(); if (!k) return;
-      const t = (m[k] ||= { sent: 0, responded: 0, late: 0, missed: 0, pending: 0 });
+      const t = (m[k] ||= { sent: 0, responded: 0, late: 0, missed: 0, pending: 0, lastSentBy: null });
       t.sent++;
       if (p.status === 'responded') t.responded++;
       else if (p.status === 'late') t.late++;
       else if (p.status === 'missed') t.missed++;
       else if (p.status === 'pending') t.pending++;
+      if (t.lastSentBy === null) t.lastSentBy = p.sent_by_name || 'Automatic';
     });
     return m;
   }, [pushChecks]);
@@ -318,7 +321,7 @@ export default function App() {
     if (!p || !p.sent) return <span style={{ color: 'var(--text-muted)', fontSize: '.72rem' }}>—</span>;
     const col = p.missed ? '#991b1b' : p.late ? '#854d0e' : p.responded === p.sent ? '#166534' : '#6b7280';
     return (
-      <span style={{ fontWeight: 700, fontSize: '.75rem', color: col }}>
+      <span style={{ fontWeight: 700, fontSize: '.75rem', color: col }} title={`Last sent by: ${p.lastSentBy}`}>
         {p.responded}/{p.sent} ✓
         {p.late ? <span style={{ color: '#854d0e' }}> · {p.late} late</span> : null}
         {p.missed ? <span style={{ color: '#991b1b' }}> · {p.missed} missed</span> : null}
