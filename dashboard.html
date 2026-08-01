@@ -2845,7 +2845,7 @@
           const orig = findOriginalOf(e);
           return orig ? `<div style="color: #475569; font-size: 0.75rem; margin-top: 0.4rem; background: #f1f5f9; padding: 0.4rem; border-radius: 4px; white-space: normal; overflow-wrap: break-word;">${t('resubmission_note', formatCurrency(orig.amount), formatDate(orig.created_at))}</div>` : '';
         })() : ''}
-        ${(e.status === 'rejected' || e.status === 'l1_rejected' || e.status === 'audit_query') ? `<a href="add-expense.html?editDate=${encodeURIComponent(e.created_at)}" style="display:inline-block;margin-top:.4rem;font-size:.75rem;font-weight:700;color:var(--primary);white-space:normal;overflow-wrap:break-word">${t('fix_resubmit_link')}</a>` : ''}
+        ${(e.status === 'rejected' || e.status === 'l1_rejected' || e.status === 'audit_query' || e.status === 'deleted') ? `<a href="add-expense.html?editDate=${encodeURIComponent(e.created_at)}" style="display:inline-block;margin-top:.4rem;font-size:.75rem;font-weight:700;color:var(--primary);white-space:normal;overflow-wrap:break-word">${t('fix_resubmit_link')}</a>` : ''}
       </td>
       <td class="td-amount">
         ${amtChanged ? `<div style="text-decoration:line-through;color:var(--text-muted);font-size:.78rem">${formatCurrency(e.amount)}</div>` : ''}
@@ -2936,7 +2936,7 @@
         const orig = findOriginalOf(e);
         return orig ? `<div class="expense-card-desc" style="color: #475569; background: #f1f5f9; padding: 0.5rem; border-radius: 4px; margin-top: 0.5rem;">${t('resubmission_note', formatCurrency(orig.amount), formatDate(orig.created_at))}</div>` : '';
       })() : ''}
-      ${(e.status === 'rejected' || e.status === 'l1_rejected' || e.status === 'audit_query') ? `<a href="add-expense.html?editDate=${encodeURIComponent(e.created_at)}" style="display:inline-block;margin-top:.5rem;font-size:.78rem;font-weight:700;color:var(--primary)">${t('fix_resubmit_link')}</a>` : ''}
+      ${(e.status === 'rejected' || e.status === 'l1_rejected' || e.status === 'audit_query' || e.status === 'deleted') ? `<a href="add-expense.html?editDate=${encodeURIComponent(e.created_at)}" style="display:inline-block;margin-top:.5rem;font-size:.78rem;font-weight:700;color:var(--primary)">${t('fix_resubmit_link')}</a>` : ''}
       ${receiptCardFooter(e)}
     </div>`;
     }

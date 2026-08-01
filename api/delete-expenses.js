@@ -49,12 +49,13 @@ export default async function handler(req, res) {
 
   const { ids, date_start, date_end } = req.body;
   // Pending entries are being replaced by their edited version — no reviewer
-  // feedback attached yet, safe to hard-delete. Rejected/l1_rejected/audit_query
-  // entries are being resubmitted after reviewer feedback — soft-mark them
-  // 'superseded' instead of deleting, so the original submission and the
-  // rejection_reason/audit_note stay visible in history instead of vanishing.
+  // feedback attached yet, safe to hard-delete. Rejected/l1_rejected/audit_query/
+  // deleted entries are being resubmitted after reviewer feedback — soft-mark
+  // them 'superseded' instead of deleting, so the original submission and the
+  // rejection_reason/audit_note/deleted_reason stay visible in history instead
+  // of vanishing (and a deleted entry can't be resubmitted twice).
   const HARD_DELETE_STATUSES = ['pending'];
-  const SOFT_SUPERSEDE_STATUSES = ['rejected', 'l1_rejected', 'audit_query'];
+  const SOFT_SUPERSEDE_STATUSES = ['rejected', 'l1_rejected', 'audit_query', 'deleted'];
   const now = new Date().toISOString();
 
   // Pass 1 — by specific UUIDs (user's own rows only)

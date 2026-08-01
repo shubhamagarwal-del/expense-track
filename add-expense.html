@@ -1108,6 +1108,13 @@
         reasonEl.style.cssText = 'background:#fee2e2;color:#991b1b;font-size:.78rem;border-radius:8px;padding:.55rem .75rem;margin-bottom:.75rem;font-weight:600';
         reasonEl.innerHTML = t('rejected_generic', data.rejection_reason);
         card.insertBefore(reasonEl, card.firstChild);
+      } else if (data.status === 'deleted' && data.deleted_reason) {
+        // Editable deleted row — show who deleted it and why, so the employee
+        // knows what to fix before resubmitting.
+        const reasonEl = document.createElement('div');
+        reasonEl.style.cssText = 'background:#fee2e2;color:#991b1b;font-size:.78rem;border-radius:8px;padding:.55rem .75rem;margin-bottom:.75rem;font-weight:600';
+        reasonEl.innerHTML = t('deleted_by', data.deleted_by_name, data.deleted_reason);
+        card.insertBefore(reasonEl, card.firstChild);
       }
       calcPanelTotal();
     }
@@ -1406,15 +1413,16 @@
       container.innerHTML = '';
 
       const dayStr = date.toDateString();
-      // Deleted entries aren't shown here at all — nothing to edit, and locking
-      // them would just be confusing. They're only visible in the Expense
-      // History "Deleted" tab.
-      const dayExpenses = expensesForMonth.filter(e => new Date(e.created_at).toDateString() === dayStr && e.status !== 'deleted' && e.status !== 'superseded');
-      // Rejected/audit_query entries can be edited and resubmitted (fixing and
-      // re-saving replaces the row with a fresh pending one) — only entries
-      // actively in the approval pipeline stay locked.
-      const lockedExp  = dayExpenses.filter(e => !['pending', 'rejected', 'l1_rejected', 'audit_query'].includes(e.status));
-      const editableExp = dayExpenses.filter(e => ['pending', 'rejected', 'l1_rejected', 'audit_query'].includes(e.status));
+      // Superseded entries aren't shown here — they were already replaced by a
+      // resubmission. Deleted entries DO appear (editable), so the employee can
+      // fix and resubmit them — e.g. a manager deleting with "Wrong Site"
+      // expects exactly that.
+      const dayExpenses = expensesForMonth.filter(e => new Date(e.created_at).toDateString() === dayStr && e.status !== 'superseded');
+      // Rejected/audit_query/deleted entries can be edited and resubmitted
+      // (fixing and re-saving replaces the row with a fresh pending one) — only
+      // entries actively in the approval pipeline stay locked.
+      const lockedExp  = dayExpenses.filter(e => !['pending', 'rejected', 'l1_rejected', 'audit_query', 'deleted'].includes(e.status));
+      const editableExp = dayExpenses.filter(e => ['pending', 'rejected', 'l1_rejected', 'audit_query', 'deleted'].includes(e.status));
 
       // Locked entries (approved / in-review / audit stages) — shown read-only at top
       if (lockedExp.length > 0) {
@@ -1502,7 +1510,7 @@
         // day with several flagged entries links each new row to its own original, not just one.
         const origId = row.dataset.expenseId || null;
         const origExp = origId ? expensesForMonth.find(x => x.id === origId) : null;
-        const wasReviewed = origExp && ['audit_query', 'rejected', 'l1_rejected'].includes(origExp.status);
+        const wasReviewed = origExp && ['audit_query', 'rejected', 'l1_rejected', 'deleted'].includes(origExp.status);
         const rowResubmittedFrom = wasReviewed ? origId : null;
         const rowResubmittedNote = (wasReviewed && origExp.status === 'audit_query') ? origExp.audit_note : null;
         const existingUrlsForRow = parseReceiptUrls(oldUrl);
