@@ -233,6 +233,24 @@ async function submitNewPassword(userId) {
 /** Sign out and return to login. */
 async function logout() {
   await initSupabase();
+  // Stop this browser from receiving further push notifications for this account —
+  // otherwise a signed-out device keeps ringing (for this person, or worse, whoever
+  // logs in next on the same device/browser).
+  try {
+    const reg = await navigator.serviceWorker?.ready;
+    const sub = await reg?.pushManager.getSubscription();
+    if (sub) {
+      const { data: { session } } = await db.auth.getSession();
+      if (session) {
+        await fetch('/api/receipt-url', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` },
+          body: JSON.stringify({ unsubscribe_push: { endpoint: sub.endpoint } }),
+        }).catch(() => {});
+      }
+      await sub.unsubscribe().catch(() => {});
+    }
+  } catch { }
   await db.auth.signOut();
   window.location.href = 'index.html';
 }

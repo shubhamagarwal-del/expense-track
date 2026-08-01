@@ -486,6 +486,15 @@ export default async function handler(req, res) {
       return res.status(200).json({ ok: true });
     }
 
+    // ── POST { unsubscribe_push: { endpoint } } → deactivate this browser's push subscription
+    //    (called on logout, so a signed-out device stops ringing for this account) ──
+    if (req.body?.unsubscribe_push) {
+      const endpoint = req.body.unsubscribe_push.endpoint;
+      if (!endpoint) return res.status(400).json({ error: 'endpoint required' });
+      await supabaseAdmin.from('push_subscriptions').update({ active: false }).eq('endpoint', endpoint).eq('user_id', user.id);
+      return res.status(200).json({ ok: true });
+    }
+
     // ── POST { test_push: true } → send a test notification to the caller's own devices (admins only) ──
     if (req.body?.test_push) {
       const { data: tprofile } = await supabaseAdmin.from('users').select('role').eq('id', user.id).single();
@@ -507,22 +516,30 @@ export default async function handler(req, res) {
       if (!pprof || !['admin', 'hr', 'audit', 'super_admin'].includes(pprof.role)) {
         return res.status(403).json({ error: 'Not authorised' });
       }
-      if (!vapidReady()) return res.status(500).json({ error: 'Server pe push configure nahi hai (VAPID missing).' });
       const istDate = new Date(Date.now() + 5.5 * 3600 * 1000).toISOString().slice(0, 10);
       const payload = { title: '📍 Location request', body: 'HR requested your location — open and send a live photo.', url: '/location-request.html' };
 
-      // Which subscriptions to hit: one employee, or everyone subscribed
-      let q = supabaseAdmin.from('push_subscriptions').select('endpoint, p256dh, auth, user_id, emp_no').eq('active', true);
       if (req.body.ping_employee) {
         const emp = String(req.body.ping_employee.emp_no || '').trim();
         if (!emp) return res.status(400).json({ error: 'emp_no required' });
-        q = q.eq('emp_no', emp);
+        const { data: targetUser } = await supabaseAdmin.from('users').select('id').eq('emp_no', emp).maybeSingle();
+        if (!targetUser) return res.status(404).json({ error: 'Employee not found' });
+
+        // Always record the request, even with no push subscription — the employee will
+        // see it in-app (location-request page) next time they open it, push or not.
+        await supabaseAdmin.from('push_checks').insert({ user_id: targetUser.id, emp_no: emp, window_min: 30, status: 'pending', check_date: istDate });
+
+        const { data: subs } = await supabaseAdmin.from('push_subscriptions').select('endpoint, p256dh, auth').eq('emp_no', emp).eq('active', true);
+        const sent = (subs?.length && vapidReady()) ? await sendBurst(supabaseAdmin, subs.map(s => ({ sub: s, payload }))) : 0;
+        return res.status(200).json({ ok: true, employees: 1, devices: subs?.length || 0, sent, push_enabled: !!subs?.length });
       }
-      const { data: subs } = await q;
-      if (!subs?.length) {
-        return res.status(400).json({ error: req.body.ping_employee ? 'Is employee ke device pe notifications ON nahi hai.' : 'Kisi employee ne notifications ON nahi kiya.' });
-      }
-      // One pending push_check per distinct employee (trackable → responded/missed)
+
+      // ping_all: everyone currently subscribed. Left as-is (unlike the single-employee path
+      // above) — expanding this to every employee regardless of subscription would silently
+      // create pending requests for people who've never touched the notification feature.
+      if (!vapidReady()) return res.status(500).json({ error: 'Server pe push configure nahi hai (VAPID missing).' });
+      const { data: subs } = await supabaseAdmin.from('push_subscriptions').select('endpoint, p256dh, auth, user_id, emp_no').eq('active', true);
+      if (!subs?.length) return res.status(400).json({ error: 'Kisi employee ne notifications ON nahi kiya.' });
       const byEmp = {};
       subs.forEach(s => { const k = String(s.emp_no || '').trim(); if (k) (byEmp[k] ||= s); });
       for (const k of Object.keys(byEmp)) {

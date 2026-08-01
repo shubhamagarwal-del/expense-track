@@ -162,14 +162,15 @@ export default function App() {
   async function pingEmployee() {
     const emp = resolveEmp(pingVal);
     if (!emp) return setPingMsg({ ok: false, text: 'Choose an employee from the list (name or emp no).' });
-    if (!emp.has_push) return setPingMsg({ ok: false, text: `${emp.name} hasn't enabled notifications — they need to turn on 🔔 on the check-in page first.` });
     setPingMsg({ ok: true, text: 'Sending…' });
     try {
       const t = await token();
       const res = await fetch('/api/receipt-url', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${t}` }, body: JSON.stringify({ ping_employee: { emp_no: emp.emp_no } }) });
       const body = await res.json();
       if (!res.ok) throw new Error(body.error || 'Failed');
-      setPingMsg({ ok: true, text: `✅ Request sent to ${emp.name} — their phone will ring.` });
+      setPingMsg(body.push_enabled
+        ? { ok: true, text: `✅ Request sent to ${emp.name} — their phone will ring.` }
+        : { ok: true, text: `📝 Recorded for ${emp.name} — notifications aren't ON for them, so no alert rang, but they'll see the request next time they open the app.` });
       setTimeout(load, 1200);
     } catch (err) { setPingMsg({ ok: false, text: 'Failed: ' + err.message }); }
   }
