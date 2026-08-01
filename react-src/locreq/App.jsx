@@ -85,6 +85,8 @@ export default function App() {
   const [gpsPos, setGpsPos] = useState(null);        // { lat, lon, acc } live
   const [gpsErr, setGpsErr] = useState(false);
   const [siteGeo, setSiteGeo] = useState(null);      // { latitude, longitude, radius_m } | null — usual site's fence
+  const [allSiteGeo, setAllSiteGeo] = useState([]);  // every site's geo-fence — used to find the nearest one
+  const [autoSiteCode, setAutoSiteCode] = useState(null); // nearest site code from GPS, when no profile match
   const videoRef = useRef(null);
   const streamRef = useRef(null);
   const mapDivRef = useRef(null);
@@ -153,19 +155,46 @@ export default function App() {
     return () => navigator.geolocation.clearWatch(id);
   }, [profile]);
 
-  // Resolve the employee's usual site (if any) and fetch its geo-fence — informational
-  // only here, there's no picker: the site to verify against is whatever the profile says.
+  // Fetch every site's geo-fence once — needed to find the nearest one when the
+  // profile has no usual site match (mirrors the check-in page's auto-select).
+  useEffect(() => {
+    if (!profile) return;
+    (async () => {
+      try {
+        const { data } = await getDb().from('site_locations').select('site_code, latitude, longitude, radius_m').eq('active', true);
+        setAllSiteGeo((data || []).filter((s) => s.latitude != null && s.longitude != null));
+      } catch { setAllSiteGeo([]); }
+    })();
+  }, [profile]);
+
+  // Auto-detect the nearest site from live GPS when the profile has no usual-site
+  // match — same 450m threshold as the check-in page. Display-only guess; setting
+  // the same code again is a no-op re-render-wise, so this is safe on every GPS tick.
+  useEffect(() => {
+    if (resolveUsualSite() || !gpsPos || !allSiteGeo.length) return;
+    let best = null;
+    for (const g of allSiteGeo) {
+      const d = hav(gpsPos.lat, gpsPos.lon, g.latitude, g.longitude);
+      if (!best || d < best.d) best = { d, code: g.site_code };
+    }
+    if (best && best.d <= 450) setAutoSiteCode(best.code);
+  }, [gpsPos, allSiteGeo, profile]);
+
+  const displaySite = resolveUsualSite() || (autoSiteCode ? getSites().find((s) => s.code === autoSiteCode) : null);
+  const displayAutoPicked = !resolveUsualSite() && !!autoSiteCode;
+
+  // Fetch the resolved site's geo-fence. Depends on the site *code* (a stable
+  // primitive), not the gpsPos-driven object above, so it only re-fetches when the
+  // resolved site actually changes — not on every GPS tick.
   useEffect(() => {
     (async () => {
-      if (!profile) { setSiteGeo(null); return; }
-      const site = resolveUsualSite();
-      if (!site) { setSiteGeo(null); return; }
+      if (!displaySite) { setSiteGeo(null); return; }
       try {
-        const { data } = await getDb().from('site_locations').select('latitude, longitude, radius_m').eq('site_code', site.code).maybeSingle();
+        const { data } = await getDb().from('site_locations').select('latitude, longitude, radius_m').eq('site_code', displaySite.code).maybeSingle();
         setSiteGeo(data && data.latitude != null ? data : null);
       } catch { setSiteGeo(null); }
     })();
-  }, [profile]);
+  }, [displaySite?.code]);
 
   // ── Leaflet map ──
   useEffect(() => {
@@ -283,7 +312,7 @@ export default function App() {
         const photo_url = await window.uploadReceipt(file, profile.id);
         if (!photo_url) throw new Error('Photo upload failed — check your network and try again.');
         setBusy('Sending…');
-        const site = resolveUsualSite() || { code: 'VERIFY', name: 'Location Verify' };
+        const site = displaySite || { code: 'VERIFY', name: 'Location Verify' };
         const res = await fetch('/api/receipt-url', {
           method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
           body: JSON.stringify({ checkin: { site_code: site.code, site_name: site.name, latitude, longitude, accuracy, photo_url, source: 'notification' } }),
@@ -309,7 +338,6 @@ export default function App() {
   const ready = !!r && !busy && !camOn && !photoPreview;
   const hm = now.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' });
 
-  const usualSite = resolveUsualSite();
   const liveDist = gpsPos && siteGeo ? Math.round(hav(gpsPos.lat, gpsPos.lon, siteGeo.latitude, siteGeo.longitude)) : null;
   const liveInside = liveDist != null ? liveDist <= (siteGeo.radius_m || 200) : null;
 
@@ -348,33 +376,40 @@ export default function App() {
         </div>
 
         <main className="page-content" style={{ maxWidth: 520, margin: '0 auto', paddingTop: '.9rem' }}>
+          {/* Map + site card — informational; resolved from the employee's profile,
+              falling back to the nearest known site from live GPS (same as check-in).
+              Rendered unconditionally (not gated behind `loading`) so mapDivRef is
+              attached on first mount — the Leaflet map must exist before siteGeo/gpsPos
+              resolve, otherwise the draw effect's update is missed (mirrors check-in,
+              which never gates its map behind a loading state either). */}
+          <div style={{ background: '#fff', borderRadius: 16, overflow: 'hidden', marginBottom: '.9rem', boxShadow: '0 4px 16px rgba(15,23,42,.08)' }}>
+            <div ref={mapDivRef} style={{ height: 150, background: '#dbeafe' }} />
+            <div style={{ padding: '.65rem .85rem' }}>
+              {displaySite ? (
+                <>
+                  <div style={{ fontWeight: 800, fontSize: '.88rem', color: '#0f172a', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {displaySite.name} <span style={{ color: '#64748b', fontWeight: 600, fontSize: '.72rem' }}>{displaySite.code}</span>
+                    {displayAutoPicked && (
+                      <span style={{ marginLeft: 6, background: '#eff6ff', color: '#2563eb', borderRadius: 5, padding: '1px 6px', fontSize: '.62rem', fontWeight: 800, whiteSpace: 'nowrap' }}>📍 auto-detected</span>
+                    )}
+                  </div>
+                  <div style={{ fontSize: '.74rem', fontWeight: 700, marginTop: 1, color: liveInside === true ? '#16a34a' : liveInside === false ? '#b45309' : '#64748b' }}>
+                    {!siteGeo ? 'Fence not set — GPS will still be recorded'
+                      : liveDist == null ? 'Waiting for GPS…'
+                      : liveInside ? `You are ${liveDist} m from site — inside fence`
+                      : `You are ${liveDist} m from site — outside fence`}
+                  </div>
+                </>
+              ) : (
+                <div style={{ fontSize: '.85rem', color: '#64748b', fontWeight: 600 }}>No site detected yet — your live location will still be recorded for HR</div>
+              )}
+            </div>
+          </div>
+
           {loading ? (
             <div className="loading-state"><div className="spinner"></div><span>Loading…</span></div>
           ) : (
             <>
-              {/* Map + site card — informational only; the site is whatever the employee's
-                  profile says (no picker here, that's the check-in page's job). */}
-              <div style={{ background: '#fff', borderRadius: 16, overflow: 'hidden', marginBottom: '.9rem', boxShadow: '0 4px 16px rgba(15,23,42,.08)' }}>
-                <div ref={mapDivRef} style={{ height: 150, background: '#dbeafe' }} />
-                <div style={{ padding: '.65rem .85rem' }}>
-                  {usualSite ? (
-                    <>
-                      <div style={{ fontWeight: 800, fontSize: '.88rem', color: '#0f172a', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                        {usualSite.name} <span style={{ color: '#64748b', fontWeight: 600, fontSize: '.72rem' }}>{usualSite.code}</span>
-                      </div>
-                      <div style={{ fontSize: '.74rem', fontWeight: 700, marginTop: 1, color: liveInside === true ? '#16a34a' : liveInside === false ? '#b45309' : '#64748b' }}>
-                        {!siteGeo ? 'Fence not set — GPS will still be recorded'
-                          : liveDist == null ? 'Waiting for GPS…'
-                          : liveInside ? `You are ${liveDist} m from site — inside fence`
-                          : `You are ${liveDist} m from site — outside fence`}
-                      </div>
-                    </>
-                  ) : (
-                    <div style={{ fontSize: '.85rem', color: '#64748b', fontWeight: 600 }}>No usual site on file — your live location will be recorded for HR</div>
-                  )}
-                </div>
-              </div>
-
               {/* Camera (one-tap flow). The <video> stays mounted at all times (like the
                   working vanilla page did) — only hidden via display:none — so when
                   openCamera() runs, the element already exists and srcObject can be
