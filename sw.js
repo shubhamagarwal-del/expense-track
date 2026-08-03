@@ -12,7 +12,7 @@
 // This string MUST change with every deployment so the browser
 // detects a new SW, evicts the old cache, and reloads clients.
 // Format: YYYY-MM-DD-NNN  (increment NNN for same-day deploys)
-const CACHE_VERSION = '2026-08-03-001';
+const CACHE_VERSION = '2026-08-03-002';
 const CACHE_NAME    = `expensetrack-${CACHE_VERSION}`;
 
 // Same-origin static assets (CSS / JS / icons / manifest)
@@ -191,14 +191,17 @@ self.addEventListener('push', (event) => {
 
   // Ring several times: a *new* notification (new tag) alerts every time, while the previous
   // one is closed first — so the tray shows ~one at a time but it re-rings each round.
-  // Stops instantly once the employee has the check-in page open.
+  //
+  // Deliberately does NOT skip/stop based on "is the employee already on the page" (matchAll +
+  // focused/visibilityState) — that check used to gate the very first notification too, so any
+  // stale/incorrect client state (a backgrounded TWA instance still reporting as focused/visible,
+  // a leftover client Android didn't fully tear down, etc.) could silently suppress the
+  // notification entirely, with no way to tell from the outside. Always showing it is the safe
+  // default: worst case is one redundant buzz while the employee is already engaged; the
+  // alternative — a real request silently never alerting anyone — is much worse.
   event.waitUntil((async () => {
     let prevTag = null;
     for (let i = 0; i < REPEATS; i++) {
-      const wins = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
-      const onPage = wins.some(w => (w.url.includes('attendance-checkin') || w.url.includes('checkin-react') || w.url.includes('location-request')) && (w.focused || w.visibilityState === 'visible'));
-      if (onPage) break; // employee is on the check-in page → stop ringing
-
       const roundTag = `${tag}-${i}`;
       if (prevTag) (await self.registration.getNotifications({ tag: prevTag })).forEach(n => n.close());
       await self.registration.showNotification(title, {
@@ -214,11 +217,6 @@ self.addEventListener('push', (event) => {
       });
       prevTag = roundTag;
       if (i < REPEATS - 1) await new Promise(r => setTimeout(r, GAP));
-    }
-    // Clear everything once done/stopped (e.g. employee opened the page).
-    const wins2 = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
-    if (wins2.some(w => (w.url.includes('attendance-checkin') || w.url.includes('checkin-react') || w.url.includes('location-request')) && (w.focused || w.visibilityState === 'visible'))) {
-      (await self.registration.getNotifications()).forEach(n => n.close());
     }
   })());
 });
