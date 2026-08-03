@@ -536,8 +536,9 @@
 
     // Clear only the expense-list cache (keep the users map) so a later
     // navigation/filter refetch is consistent, without re-downloading users.
+    // The payload lives in IndexedDB now (see app.js), so delegate there.
     function _clearExpListCache() {
-      try { Object.keys(sessionStorage).filter(k => k.startsWith('_expc_')).forEach(k => sessionStorage.removeItem(k)); } catch (_) {}
+      try { window.clearExpenseListCache ? window.clearExpenseListCache() : Object.keys(sessionStorage).filter(k => k.startsWith('_expc_')).forEach(k => sessionStorage.removeItem(k)); } catch (_) {}
     }
 
     // Is this row part of what THIS dashboard is meant to show? Mirrors the

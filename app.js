@@ -616,30 +616,69 @@ async function fetchLineManagers() {
 // net against a missed invalidation; it does NOT cause routine refetches.
 const EXP_CACHE_TTL = 12 * 60 * 60_000; // 12h safety net (session-scoped in practice)
 function _expCacheKey(opts) { return '_expc_' + JSON.stringify(opts || {}); }
-function _readExpCache(key) {
+
+// The expense list can be ~5–6 MB, which is right at sessionStorage's ~5 MB
+// limit — on lower-memory phones the write silently fails, so the dashboard
+// refetched the whole list on every open. Store it in IndexedDB instead (much
+// larger quota) so caching is reliable everywhere. Kept session-scoped like
+// before by tagging entries with a per-launch session id: a fresh app launch
+// (empty sessionStorage) gets a new id, so old entries don't match → fresh
+// fetch, exactly as with sessionStorage. Only the big expense payload moved to
+// IndexedDB; the small users/manage-users/advances caches stay in sessionStorage.
+function _sessionId() {
+  try { let s = sessionStorage.getItem('_sid'); if (!s) { s = String(Date.now()) + Math.random().toString(36).slice(2); sessionStorage.setItem('_sid', s); } return s; }
+  catch { return 'nosession'; }
+}
+let _idbPromise = null;
+function _idb() {
+  if (_idbPromise) return _idbPromise;
+  _idbPromise = new Promise((resolve, reject) => {
+    try {
+      const req = indexedDB.open('expensetrack_cache', 1);
+      req.onupgradeneeded = () => { const db = req.result; if (!db.objectStoreNames.contains('kv')) db.createObjectStore('kv'); };
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => reject(req.error);
+    } catch (e) { reject(e); }
+  });
+  return _idbPromise;
+}
+function _idbReq(mode, fn) {
+  return _idb().then(db => new Promise((resolve, reject) => {
+    const tx = db.transaction('kv', mode);
+    const store = tx.objectStore('kv');
+    const r = fn(store);
+    tx.oncomplete = () => resolve(r && r.result);
+    tx.onerror = () => reject(tx.error);
+  }));
+}
+async function _readExpCache(key) {
   try {
-    const raw = sessionStorage.getItem(key);
-    if (!raw) return null;
-    const { ts, data } = JSON.parse(raw);
-    if (Date.now() - ts > EXP_CACHE_TTL) { sessionStorage.removeItem(key); return null; }
-    return data;
+    const rec = await _idbReq('readonly', s => s.get(key));
+    if (!rec) return null;
+    if (rec.sid !== _sessionId() || Date.now() - rec.ts > EXP_CACHE_TTL) { _idbReq('readwrite', s => s.delete(key)).catch(() => {}); return null; }
+    return rec.data;
   } catch { return null; }
 }
-function _writeExpCache(key, data) {
-  try { sessionStorage.setItem(key, JSON.stringify({ ts: Date.now(), data })); }
-  catch { /* quota exceeded — skip caching this payload */ }
+async function _writeExpCache(key, data) {
+  try { await _idbReq('readwrite', s => s.put({ sid: _sessionId(), ts: Date.now(), data }, key)); }
+  catch { /* IDB unavailable/quota — skip caching, page just refetches */ }
 }
 /** Clear every cached expense fetch. Call after any create/approve/delete. */
 function invalidateExpensesCache() {
-  try {
-    Object.keys(sessionStorage)
-      .filter(k => k.startsWith('_expc_'))
-      .forEach(k => sessionStorage.removeItem(k));
-    sessionStorage.removeItem('_usersmap_v1'); // user details may have changed too
-  } catch {}
+  // expense payloads live in IndexedDB now — clear the whole kv store (only
+  // holds _expc_ entries); fire-and-forget so callers can stay synchronous.
+  try { _idbReq('readwrite', s => s.clear()).catch(() => {}); } catch {}
+  try { sessionStorage.removeItem('_usersmap_v1'); } catch {} // user details may have changed too
   _usersMapCache = null;
 }
 window.invalidateExpensesCache = invalidateExpensesCache;
+
+// Clear ONLY the cached expense payloads (IndexedDB), leaving the users map
+// intact. Used by the dashboard's realtime patch: after applying a change in
+// memory the stored list is stale, so drop it → next reopen refetches fresh.
+window.clearExpenseListCache = function () {
+  try { _idbReq('readwrite', s => s.clear()).catch(() => {}); } catch {}
+};
 
 // ── Users lookup map ──────────────────────────────────────
 // The expense list used to embed the full user record (name, dept, bank…) on
@@ -714,7 +753,7 @@ async function fetchExpenses({ from, to, userId, companyId, limit } = {}) {
   const attachUsers = (rows, map) => { (rows || []).forEach(r => { r.users = map[r.user_id] || null; }); return rows; };
 
   const cacheKey = _expCacheKey({ from, to, userId, companyId, limit });
-  const cached = _readExpCache(cacheKey);
+  const cached = await _readExpCache(cacheKey);
   if (cached) return attachUsers(cached, await fetchUsersMap());
 
   await initSupabase();
