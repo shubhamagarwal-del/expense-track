@@ -238,6 +238,16 @@
       await loadAdvances();
       loadEmployeesForPicker();
       loadPortalAdvances();
+
+      // Keep the page fresh without a manual reload: refresh when the admin
+      // returns to this tab, and a slow background poll as a safety net. These
+      // tables are served via the service-role API (not in the realtime
+      // publication), so a focus+poll refresh is the safe way to stay current
+      // without opening client RLS on financial tables.
+      const _silentRefresh = () => { loadAdvances(); loadPortalAdvances(); };
+      document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') _silentRefresh(); });
+      window.addEventListener('focus', _silentRefresh);
+      setInterval(() => { if (document.visibilityState === 'visible') _silentRefresh(); }, 60000);
     })();
 
     // ── Accounts Portal Advances (external mirror — read only) ──
