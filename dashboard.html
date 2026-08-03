@@ -532,6 +532,81 @@
     let _rtDebounce = null;
     let _rtChannel = null;
     let _rtReconnectTimer = null;
+    let _rtBuffer = [];
+
+    // Clear only the expense-list cache (keep the users map) so a later
+    // navigation/filter refetch is consistent, without re-downloading users.
+    function _clearExpListCache() {
+      try { Object.keys(sessionStorage).filter(k => k.startsWith('_expc_')).forEach(k => sessionStorage.removeItem(k)); } catch (_) {}
+    }
+
+    // Is this row part of what THIS dashboard is meant to show? Mirrors the
+    // scoping applied on the full fetch (deptFilter for admin, own rows for employee).
+    function _rowInScope(row) {
+      if (currentProfile.role === 'admin') {
+        const myDept = (currentProfile.department || '').toLowerCase().trim();
+        if (myDept && (row.users?.department || '').toLowerCase().trim() !== myDept) return false;
+      }
+      if (!['admin', 'super_admin', 'hr', 'audit'].includes(currentProfile.role)) {
+        if (row.user_id !== currentProfile.id) return false;
+      }
+      return true;
+    }
+
+    function _rtRerender() {
+      const isAdmin = ['admin', 'super_admin', 'hr', 'audit'].includes(currentProfile.role);
+      if (isAdmin) {
+        recomputeActiveFilteredExpenses();
+        updateAdminStats(allExpensesFetched);
+        refreshListView();
+        if (hierarchyMode) renderHierarchyView(activeFilteredExpenses !== null ? activeFilteredExpenses : allExpensesFetched);
+        renderAdminCharts(allExpensesFetched);
+      } else {
+        updateEmpStats(allExpensesFetched);
+        refreshListView();
+      }
+    }
+
+    // Full refetch — the old behaviour, kept as a safety fallback when patching
+    // can't be applied cleanly (e.g. a realtime payload without the full row).
+    async function _rtFullRefetch() {
+      invalidateExpensesCache();
+      const isAdmin = ['admin', 'super_admin', 'hr', 'audit'].includes(currentProfile.role);
+      if (isAdmin) {
+        const companyId = !['super_admin', 'hr', 'audit'].includes(currentProfile.role) ? (currentProfile.company_id || undefined) : undefined;
+        allExpensesFetched = deptFilter(await fetchExpenses({ companyId, limit: undefined }));
+      } else {
+        allExpensesFetched = await fetchExpenses({ userId: currentProfile.id });
+      }
+      _rtRerender();
+    }
+
+    // Smart patch: apply each buffered change to allExpensesFetched in place
+    // (no network), then re-render — instead of re-downloading the whole list on
+    // every change. Throws on anything unexpected so the caller can fall back.
+    async function _rtApplyBuffer() {
+      const usersMap = await window.fetchUsersMap();
+      const buf = _rtBuffer; _rtBuffer = [];
+      for (const p of buf) {
+        const evt = p.eventType || p.type;
+        if (evt === 'DELETE') {
+          const id = p.old && p.old.id;
+          if (id != null) { const i = allExpensesFetched.findIndex(e => e.id === id); if (i >= 0) allExpensesFetched.splice(i, 1); }
+          continue;
+        }
+        const row = p.new;
+        if (!row || row.id == null) throw new Error('realtime payload missing row');
+        row.users = usersMap[row.user_id] || null;
+        const idx = allExpensesFetched.findIndex(e => e.id === row.id);
+        const inScope = _rowInScope(row);
+        if (idx >= 0) { if (inScope) allExpensesFetched[idx] = row; else allExpensesFetched.splice(idx, 1); }
+        else if (inScope) allExpensesFetched.push(row);
+      }
+      // keep newest-first (created_at desc), matching fetchExpenses' order
+      allExpensesFetched.sort((a, b) => (a.created_at < b.created_at ? 1 : a.created_at > b.created_at ? -1 : 0));
+      _clearExpListCache(); // stored list is now stale; navigation will refetch fresh
+      _rtRerender();
+    }
 
     function setupRealtime() {
       // If a channel from a previous call (or a dropped connection) is still
@@ -539,32 +614,17 @@
       if (_rtChannel) { try { db.removeChannel(_rtChannel); } catch (_) {} }
 
       _rtChannel = db.channel('rt-dashboard-expenses')
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'expenses' }, () => {
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'expenses' }, (payload) => {
+          _rtBuffer.push(payload);
           clearTimeout(_rtDebounce);
           _rtDebounce = setTimeout(async () => {
-            const isAdmin = ['admin', 'super_admin', 'hr', 'audit'].includes(currentProfile.role);
-            try {
-              // A change came from someone else's action, not our own mutating
-              // fetch() call — the cache-invalidation interceptor never fired
-              // for it, so drop the cache ourselves before refetching.
-              invalidateExpensesCache();
-              if (isAdmin) {
-                const companyId = !['super_admin', 'hr', 'audit'].includes(currentProfile.role) ? (currentProfile.company_id || undefined) : undefined;
-                const limit = undefined; // no cap for any role
-                const expenses = deptFilter(await fetchExpenses({ companyId, limit }));
-                allExpensesFetched = expenses;
-                recomputeActiveFilteredExpenses(); // keep an active Month/Cycle filter in sync
-                updateAdminStats(expenses);
-                refreshListView();
-                if (hierarchyMode) renderHierarchyView(activeFilteredExpenses !== null ? activeFilteredExpenses : expenses);
-                renderAdminCharts(expenses);
-              } else {
-                const expenses = await fetchExpenses({ userId: currentProfile.id });
-                allExpensesFetched = expenses;
-                updateEmpStats(expenses);
-                refreshListView();
-              }
-            } catch (err) { console.error('[realtime] refresh failed:', err); }
+            // Patch in place (cheap, no network); on any hiccup fall back to the
+            // old full refetch so the worst case is never worse than before.
+            try { await _rtApplyBuffer(); }
+            catch (err) {
+              console.warn('[realtime] patch failed, full refetch:', err);
+              try { await _rtFullRefetch(); } catch (e) { console.error('[realtime] refresh failed:', e); }
+            }
           }, 700);
         })
         .subscribe((status) => {
