@@ -433,7 +433,18 @@
     })();
 
     // ── Data ──────────────────────────────────────────────────
+    // Session cache so reopening Plans paints instantly instead of a spinner +
+    // refetch every time (stale-while-revalidate). Realtime keeps it live after.
+    function _readPlansCache() {
+      try { const r = sessionStorage.getItem('_plans_v1'); if (!r) return null; const { ts, plans } = JSON.parse(r); if (Date.now() - ts > 12 * 3600 * 1000) return null; return plans; } catch { return null; }
+    }
+    function _writePlansCache(plans) {
+      try { sessionStorage.setItem('_plans_v1', JSON.stringify({ ts: Date.now(), plans })); } catch {}
+    }
+
     async function loadPlans() {
+      const cached = _readPlansCache();
+      if (cached && cached.length) { allPlans = cached; renderStats(); renderPlans(); }
       try {
         let q = db.from('plans').select('*, users(email, name)').order('start_date', { ascending: false });
         if (!isAdmin) q = q.eq('user_id', currentProfile.id);
@@ -441,10 +452,11 @@
         const { data, error } = await q;
         if (error) throw error;
         allPlans = data || [];
+        _writePlansCache(allPlans);
         renderStats();
         renderPlans();
       } catch (err) {
-        document.getElementById('plans-grid').innerHTML =
+        if (!cached || !cached.length) document.getElementById('plans-grid').innerHTML =
           `<div class="plans-empty"><div class="plans-empty-icon">⚠️</div><h3>Failed to load plans</h3><p>${escHtml(err.message)}</p></div>`;
       }
     }

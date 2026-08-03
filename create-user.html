@@ -325,6 +325,16 @@
 
     // ── User Search ─────────────────────────────────────────
     async function loadRegisteredUsers() {
+      // Shares the Manage Users cache (_musers_v1 — same /api/list-users data) so
+      // the list paints instantly; the global fetch interceptor clears it whenever
+      // a user is created/edited/deleted, so it never goes stale.
+      let cached = null;
+      try { const r = sessionStorage.getItem('_musers_v1'); if (r) { const p = JSON.parse(r); if (Date.now() - p.ts <= 12 * 3600 * 1000) cached = p.users; } } catch {}
+      if (cached && cached.length) {
+        allUsers = cached;
+        document.getElementById('user-count-badge').textContent = allUsers.length;
+        renderUserList(allUsers);
+      }
       try {
         const { data: { session } } = await db.auth.getSession();
         const res = await fetch('/api/list-users', {
@@ -333,10 +343,11 @@
         const data = await res.json();
         if (!res.ok) throw new Error(data.error);
         allUsers = data.users || [];
+        try { sessionStorage.setItem('_musers_v1', JSON.stringify({ ts: Date.now(), users: allUsers })); } catch {}
         document.getElementById('user-count-badge').textContent = allUsers.length;
         renderUserList(allUsers);
       } catch (err) {
-        document.getElementById('user-list-container').innerHTML =
+        if (!cached || !cached.length) document.getElementById('user-list-container').innerHTML =
           `<div style="color:#dc2626;padding:1rem;text-align:center;font-size:.85rem">Failed to load users: ${err.message}</div>`;
       }
     }

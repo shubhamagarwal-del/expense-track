@@ -349,7 +349,19 @@
       }
     }
 
+    // Recompute + paint the outstanding/recovered totals from advRows — shared by
+    // the instant cache-paint and the fresh fetch so both stay consistent.
+    function _applyAdvTotals() {
+      const outstanding = advRows.reduce((s, a) => s + Number(a.remaining ?? (a.status === 'outstanding' ? a.amount : 0)), 0);
+      const recovered = advRows.reduce((s, a) => s + Number(a.recovered_amount || 0), 0);
+      document.getElementById('adv-total-outstanding').textContent = formatCurrency(outstanding);
+      document.getElementById('adv-total-recovered').textContent = formatCurrency(recovered);
+    }
+
     async function loadAdvances() {
+      // Instant paint from cache (stale-while-revalidate), then refresh.
+      try { const r = sessionStorage.getItem('_adv_v1'); if (r) { const p = JSON.parse(r); if (Date.now() - p.ts <= 12 * 3600 * 1000 && p.rows) { advRows = p.rows; _applyAdvTotals(); renderAdvances(); } } } catch {}
+      const hadCache = advRows && advRows.length;
       try {
         const token = (await db.auth.getSession()).data.session?.access_token;
         const res = await fetch('/api/receipt-url?advances=1', { headers: { Authorization: `Bearer ${token}` } });
@@ -357,7 +369,6 @@
         if (!res.ok) throw new Error(body.error || 'Failed to load advances');
 
         const advances = body.advances || [];
-        const userIds = [...new Set(advances.map(a => a.user_id))];
         const usersRes = await fetch('/api/list-users', { headers: { Authorization: `Bearer ${token}` } });
         const usersBody = usersRes.ok ? await usersRes.json() : { users: [] };
         const userMap = {};
@@ -366,14 +377,11 @@
         advRows = advances.map(a => ({ ...a, user: userMap[a.user_id] || null }))
           .sort((a, b) => new Date(b.given_at) - new Date(a.given_at));
 
-        const outstanding = advRows.reduce((s, a) => s + Number(a.remaining ?? (a.status === 'outstanding' ? a.amount : 0)), 0);
-        const recovered = advRows.reduce((s, a) => s + Number(a.recovered_amount || 0), 0);
-        document.getElementById('adv-total-outstanding').textContent = formatCurrency(outstanding);
-        document.getElementById('adv-total-recovered').textContent = formatCurrency(recovered);
-
+        try { sessionStorage.setItem('_adv_v1', JSON.stringify({ ts: Date.now(), rows: advRows })); } catch {}
+        _applyAdvTotals();
         renderAdvances();
       } catch (err) {
-        document.getElementById('adv-table-wrap').innerHTML =
+        if (!hadCache) document.getElementById('adv-table-wrap').innerHTML =
           `<div style="padding:2rem;text-align:center;color:var(--text-muted)">Failed to load: ${escHtml(err.message)}</div>`;
       }
     }
