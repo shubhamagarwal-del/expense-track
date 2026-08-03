@@ -681,7 +681,22 @@
   }
 
   // ── Load & render ─────────────────────────────────────────
+  // Session-scoped cache so reopening Manage Users paints instantly instead of
+  // showing a spinner + refetching all users every time (stale-while-revalidate:
+  // show cached list now, refresh in the background). 12h TTL is just a safety net.
+  const _USERS_CACHE = '_musers_v1';
+  function _readUsersCache() {
+    try { const r = sessionStorage.getItem(_USERS_CACHE); if (!r) return null; const { ts, users } = JSON.parse(r); if (Date.now() - ts > 12 * 3600 * 1000) return null; return users; } catch { return null; }
+  }
+  function _writeUsersCache(users) {
+    try { sessionStorage.setItem(_USERS_CACHE, JSON.stringify({ ts: Date.now(), users })); } catch {}
+  }
+
   async function loadUsers() {
+    // Instant paint from cache, if any…
+    const cached = _readUsersCache();
+    if (cached && cached.length) { allUsers = cached; renderStats(); renderGrid(allUsers); }
+    // …then always refresh from the server in the background.
     try {
       const { data: { session } } = await db.auth.getSession();
       const res = await fetch('/api/list-users', {
@@ -692,11 +707,13 @@
       try { data = JSON.parse(raw); } catch { throw new Error('Server error loading users. Please refresh.'); }
       if (!res.ok) throw new Error(data.error || 'Failed to load users');
       allUsers = data.users || [];
+      _writeUsersCache(allUsers);
       renderStats();
       renderGrid(allUsers);
     } catch (err) {
-      document.getElementById('user-grid').innerHTML =
+      if (!cached || !cached.length) document.getElementById('user-grid').innerHTML =
         `<div style="grid-column:1/-1;text-align:center;padding:3rem;color:#dc2626">${escHtml(err.message)}</div>`;
+      // if we already painted a cached list, keep it rather than blanking on a transient error
     }
   }
 
@@ -945,6 +962,7 @@
       const idx = allUsers.findIndex(u => u.id === userId);
       if (idx !== -1) {
         allUsers[idx] = { ...allUsers[idx], ...payload };
+        _writeUsersCache(allUsers); // keep cached list in sync so a reopen shows the edit
         renderStats();
         applyFilters();
       }
@@ -1035,6 +1053,7 @@
       // Remove from local state instantly — no reload needed
       const deletedId = userToDelete.id;
       allUsers = allUsers.filter(u => u.id !== deletedId);
+      _writeUsersCache(allUsers); // keep cached list in sync after delete
       closeDeleteConfirm();
       closeModal();
       renderStats();
