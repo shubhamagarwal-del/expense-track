@@ -688,7 +688,14 @@ try {
     try {
       const url = typeof input === 'string' ? input : (input && input.url) || '';
       const method = ((init && init.method) || (typeof input === 'object' && input && input.method) || 'GET').toUpperCase();
-      if (res.ok && method === 'POST' && MUTATING.some(p => url.includes(p))) invalidateExpensesCache();
+      if (res.ok && method === 'POST' && MUTATING.some(p => url.includes(p))) {
+        invalidateExpensesCache();
+        // A created/edited/deleted user must show up on Manage Users' next open —
+        // drop its cached list too (it lives under a separate key).
+        if (url.includes('/api/create-user') || url.includes('/api/update-user')) {
+          try { sessionStorage.removeItem('_musers_v1'); } catch {}
+        }
+      }
     } catch {}
     return res;
   };
