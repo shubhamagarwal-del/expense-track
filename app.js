@@ -1046,3 +1046,30 @@ function escHtml(str) {
     .replace(/&/g, '&amp;').replace(/</g, '&lt;')
     .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
+
+// ── Instant navigation via browser prerender (Speculation Rules) ──────────
+// Each page is a separate HTML file, so a normal sidebar click fully reloads
+// the page. The Speculation Rules API lets the browser prerender the page the
+// user is about to open (triggered by hover/pointer intent, "moderate"), so the
+// click paints instantly — the same "SPA feel" as a Turbo library but native,
+// with ZERO changes to any page's scripts (a Turbo lib would re-run each page's
+// inline boot code in the same window and hit redeclaration errors). Browsers
+// without support (e.g. iOS Safari) simply ignore this and navigate normally.
+(function enableInstantNav() {
+  try {
+    if (typeof HTMLScriptElement === 'undefined' || !HTMLScriptElement.supports || !HTMLScriptElement.supports('speculationrules')) return;
+    const rules = {
+      prerender: [{
+        where: { and: [
+          { href_matches: '/*.html' },
+          { not: { href_matches: '/index.html' } }   // never prerender the login page
+        ] },
+        eagerness: 'moderate'                          // on hover / pointerdown intent, not every link
+      }]
+    };
+    const s = document.createElement('script');
+    s.type = 'speculationrules';
+    s.textContent = JSON.stringify(rules);
+    document.head.appendChild(s);
+  } catch (_) { /* non-fatal — falls back to normal navigation */ }
+})();
