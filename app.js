@@ -635,9 +635,40 @@ function invalidateExpensesCache() {
     Object.keys(sessionStorage)
       .filter(k => k.startsWith('_expc_'))
       .forEach(k => sessionStorage.removeItem(k));
+    sessionStorage.removeItem('_usersmap_v1'); // user details may have changed too
   } catch {}
+  _usersMapCache = null;
 }
 window.invalidateExpensesCache = invalidateExpensesCache;
+
+// ── Users lookup map ──────────────────────────────────────
+// The expense list used to embed the full user record (name, dept, bank…) on
+// EVERY row via a Supabase join — with thousands of expenses that duplicated the
+// same ~200 users hundreds of times (7 MB payload) and leaked bank details onto
+// every row. Instead we fetch each distinct user once, keyed by id, and attach
+// client-side (see fetchExpenses). RLS returns exactly what the caller may see:
+// all users for admin roles, only their own row for an employee.
+let _usersMapCache = null;
+async function fetchUsersMap() {
+  if (_usersMapCache) return _usersMapCache;
+  try {
+    const raw = sessionStorage.getItem('_usersmap_v1');
+    if (raw) {
+      const { ts, map } = JSON.parse(raw);
+      if (Date.now() - ts <= EXP_CACHE_TTL) { _usersMapCache = map; return map; }
+    }
+  } catch {}
+  await initSupabase();
+  const { data, error } = await db.from('users')
+    .select('id,email,name,role,department,site_name,emp_no,phone,bank_holder,bank_name,bank_ifsc,bank_account');
+  if (error) throw error;
+  const map = {};
+  (data || []).forEach(u => { map[u.id] = u; });
+  _usersMapCache = map;
+  try { sessionStorage.setItem('_usersmap_v1', JSON.stringify({ ts: Date.now(), map })); } catch {}
+  return map;
+}
+window.fetchUsersMap = fetchUsersMap;
 
 // A genuine page reload (F5 / hard refresh / pull-to-refresh) means the user
 // wants fresh data — so drop the cache on reload. Plain navigation between
@@ -670,14 +701,19 @@ try {
  * @param {{ from?: string, to?: string, userId?: string }} opts
  */
 async function fetchExpenses({ from, to, userId, companyId, limit } = {}) {
+  // The joined user record is attached client-side from a separate, once-fetched
+  // users map (see fetchUsersMap) rather than embedded on every row — so both the
+  // cached and freshly-fetched paths must attach it before returning.
+  const attachUsers = (rows, map) => { (rows || []).forEach(r => { r.users = map[r.user_id] || null; }); return rows; };
+
   const cacheKey = _expCacheKey({ from, to, userId, companyId, limit });
   const cached = _readExpCache(cacheKey);
-  if (cached) return cached;
+  if (cached) return attachUsers(cached, await fetchUsersMap());
 
   await initSupabase();
   let q = db
     .from('expenses')
-    .select('*, users!expenses_user_id_fkey(id,email,name,role,department,site_name,emp_no,phone,bank_holder,bank_name,bank_ifsc,bank_account)')
+    .select('*')
     .order('created_at', { ascending: false });
 
   // Only apply a row cap when explicitly requested.
@@ -689,10 +725,10 @@ async function fetchExpenses({ from, to, userId, companyId, limit } = {}) {
   if (from)      q = q.gte('created_at', from);
   if (to)        q = q.lte('created_at', to + 'T23:59:59');
 
-  const { data, error } = await q;
+  const [{ data, error }, usersMap] = await Promise.all([q, fetchUsersMap()]);
   if (error) throw error;
-  _writeExpCache(cacheKey, data);
-  return data;
+  _writeExpCache(cacheKey, data);   // cache lean (no per-row user dup) — smaller, no stale user details
+  return attachUsers(data, usersMap);
 }
 
 // ── Sites ─────────────────────────────────────────────────
