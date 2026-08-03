@@ -15,7 +15,7 @@ const EXTS = new Set(['.html', '.css', '.js', '.json', '.svg', '.png', '.jpg', '
 const SKIP = new Set(['node_modules', '.vercel', '.git', '.claude', 'api', 'migration', 'public', 'build.js', 'server.js', 'package.json', 'package-lock.json', 'vercel.json', 'nodemon.json']);
 
 // Subdirectories to copy recursively (whitelist)
-const COPY_DIRS = ['logo'];
+const COPY_DIRS = ['logo', '.well-known'];
 
 mkdirSync(OUT, { recursive: true });
 

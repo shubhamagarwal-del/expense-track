@@ -12,7 +12,7 @@
 // This string MUST change with every deployment so the browser
 // detects a new SW, evicts the old cache, and reloads clients.
 // Format: YYYY-MM-DD-NNN  (increment NNN for same-day deploys)
-const CACHE_VERSION = '2026-08-01-005';
+const CACHE_VERSION = '2026-08-03-001';
 const CACHE_NAME    = `expensetrack-${CACHE_VERSION}`;
 
 // Same-origin static assets (CSS / JS / icons / manifest)
@@ -181,10 +181,13 @@ self.addEventListener('push', (event) => {
   const body  = data.body  || 'Check in now — live photo + location.';
   const url   = data.url   || '/location-request-react.html';
   const tag   = data.tag   || 'site-checkin';
-  // Re-alert up to 10×, 5s apart. Was 2s — too fast to reliably tap before the
-  // notification got closed and replaced by the next round (real reaction time,
-  // from buzz to a registered tap, is easily 2-4s on its own).
-  const REPEATS = data.repeats || 10, GAP = data.gapMs || 5000;
+  // Re-alert up to 5×, 4s apart (~16s total). Was 10× at 5s (~45s) — holding a service
+  // worker alive that long inside one push event is risky: when the app/PWA is fully
+  // closed (not just backgrounded), the OS/browser is far more aggressive about killing
+  // long-running background work, so later rounds — sometimes even the notification
+  // itself — never fire. Keeping this short maximizes the odds it completes before
+  // getting killed, at some cost to how many times it re-rings.
+  const REPEATS = data.repeats || 5, GAP = data.gapMs || 4000;
 
   // Ring several times: a *new* notification (new tag) alerts every time, while the previous
   // one is closed first — so the tray shows ~one at a time but it re-rings each round.
