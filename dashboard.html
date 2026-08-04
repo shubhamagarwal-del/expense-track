@@ -1994,7 +1994,7 @@
         }
         // Use approved_amount for total, exclude rejected
         g.totalAmount = g.entries.reduce((sum, e) => {
-          if (DUE_EXCLUDED_STATUSES.includes(e.status)) return sum;
+          if (totalsExcludedStatuses().includes(e.status)) return sum;
           return sum + (e.approved_amount != null ? +e.approved_amount : +e.amount);
         }, 0);
       });
@@ -5334,7 +5334,7 @@
               if (e.status === 'pending') dPend++;
               if (e.status === 'l1_approved') dL1++;
               if (['approved','hr_approved','audit_cleared'].includes(e.status)) dAppr += (e.approved_amount != null ? +e.approved_amount : +e.amount);
-              if (!DUE_EXCLUDED_STATUSES.includes(e.status)) dOverall += (e.approved_amount != null ? +e.approved_amount : +e.amount);
+              if (!totalsExcludedStatuses().includes(e.status)) dOverall += (e.approved_amount != null ? +e.approved_amount : +e.amount);
               if (['hr_approved','approved'].includes(e.status)) { dNeedsAudit++; if (auditCheckedMap[e.id]) dAuditChecked++; }
               if (['audit_cleared','audit_review','audit_query'].includes(e.status)) dCompletedAudit++;
               if (expenseOffSeverity(e) === 'strong') dLeaveDay++;
@@ -5362,7 +5362,7 @@
                 if (e.status==='pending') mPend++;
                 if (e.status==='l1_approved') mL1++;
                 if (['approved','hr_approved','audit_cleared'].includes(e.status)) mAppr += (e.approved_amount!=null?+e.approved_amount:+e.amount);
-                if (!DUE_EXCLUDED_STATUSES.includes(e.status)) mOverall += (e.approved_amount!=null?+e.approved_amount:+e.amount);
+                if (!totalsExcludedStatuses().includes(e.status)) mOverall += (e.approved_amount!=null?+e.approved_amount:+e.amount);
                 if (['hr_approved','approved'].includes(e.status)) { mNeedsAudit++; if (auditCheckedMap[e.id]) mAuditChecked++; }
                 if (['audit_cleared','audit_review','audit_query'].includes(e.status)) mCompletedAudit++;
                 if (expenseOffSeverity(e) === 'strong') mLeaveDay++;
@@ -5415,7 +5415,7 @@
                     const eCompletedAudit = exps.filter(e=>['audit_cleared','audit_review','audit_query'].includes(e.status)).length;
                     const eLeaveDay = exps.filter(e=>expenseOffSeverity(e) === 'strong').length;
                     const eAmt  = exps.reduce((s,e)=>{
-                      if(['rejected','l1_rejected','deleted','audit_review','audit_query','superseded'].includes(e.status)) return s;
+                      if(totalsExcludedStatuses().includes(e.status)) return s;
                       return s+(e.approved_amount!=null?+e.approved_amount:+e.amount);
                     },0);
                     const eId = 'emp__' + (user.id||'x').replace(/[^a-z0-9]/gi,'_');
@@ -5534,7 +5534,7 @@
         ${(()=>{
           const siteData = {};
           expenses.forEach(e => {
-            if (DUE_EXCLUDED_STATUSES.includes(e.status)) return;
+            if (totalsExcludedStatuses().includes(e.status)) return;
             const site = extractSite(e) || user.site_name || 'Unassigned';
             const amt  = e.approved_amount != null ? +e.approved_amount : +e.amount;
             if (!siteData[site]) siteData[site] = { total: 0, days: new Set(), count: 0 };
@@ -5568,7 +5568,7 @@
           const cycId = safeKey.replace(/[^a-zA-Z0-9]/g, '_');
           const cycOpen = hierExpanded.cycles.has(cycId);
           const gTotal = g.entries.reduce((s,e)=>{
-            if(['rejected','l1_rejected','deleted','audit_review','audit_query','superseded'].includes(e.status)) return s;
+            if(totalsExcludedStatuses().includes(e.status)) return s;
             return s+(e.approved_amount!=null?+e.approved_amount:+e.amount);
           },0);
           const gPaid = cyclePaidFor(user.id, g.mY, g.cT);

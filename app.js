@@ -15,6 +15,20 @@ const DEPARTMENTS = [
 // (server-side, separate runtime — update both if this list changes).
 const DUE_EXCLUDED_STATUSES = ['rejected', 'l1_rejected', 'deleted', 'audit_review', 'audit_query', 'superseded'];
 
+// Truly-void statuses — these never represent a real, in-pipeline amount.
+const VOID_STATUSES = ['rejected', 'l1_rejected', 'deleted', 'superseded'];
+
+/** Which statuses to leave OUT of the displayed amount totals (Overall / cycle
+ *  "entries · ₹" etc.). Normally the full not-payable set, BUT when the user has
+ *  explicitly filtered the dashboard Status to "Audit Flagged", those flagged
+ *  amounts (audit_review + audit_query) are exactly what they want to see totalled
+ *  — so only the void statuses are excluded then. Normal (unfiltered) view is
+ *  unchanged. Due/Paid/Approved figures keep using DUE_EXCLUDED_STATUSES. */
+function totalsExcludedStatuses() {
+  try { if (document.getElementById('f-status')?.value === 'audit_flagged') return VOID_STATUSES; } catch (_) {}
+  return DUE_EXCLUDED_STATUSES;
+}
+
 // ── AUTO-UPDATE STATE PRESERVATION (generic scroll-position fallback) ───────
 // pwa-register.js calls window.__saveStateBeforeReload() right before a
 // service-worker-triggered reload, so the page can come back where the user
