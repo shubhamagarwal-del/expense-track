@@ -1009,6 +1009,7 @@
       const sel = (document.getElementById('f-status')?.value || 'all');
       if (sel === 'all') return expenses;
       if (sel === 'rejected') return expenses.filter(e => e.status === 'rejected' || e.status === 'l1_rejected' || e.status === 'deleted' || e.status === 'superseded');
+      if (sel === 'audit_flagged') return expenses.filter(e => e.status === 'audit_review' || e.status === 'audit_query');
       return expenses.filter(e => e.status === sel);
     }
 
@@ -1181,6 +1182,8 @@
 
       if (effectiveStatus === 'rejected') {
         base = base.filter(e => e.status === 'rejected' || e.status === 'l1_rejected' || e.status === 'deleted' || e.status === 'audit_query' || e.status === 'superseded');
+      } else if (effectiveStatus === 'audit_flagged') {
+        base = base.filter(e => e.status === 'audit_review' || e.status === 'audit_query');
       } else if (effectiveStatus !== 'all') {
         base = base.filter(e => e.status === effectiveStatus);
       }
@@ -1686,6 +1689,7 @@
             <option value="hr_approved">HR Approved — Audit Review</option>
             <option value="audit_review">Rejected by Audit — to HR</option>
             <option value="audit_query">Rejected by Audit — to Employee</option>
+            <option value="audit_flagged">⚑ Audit Flagged (HR + Employee)</option>
             <option value="audit_cleared">Audit Cleared</option>
             <option value="approved">Approved (Legacy)</option>
             <option value="l1_rejected">Rejected by Manager</option>
