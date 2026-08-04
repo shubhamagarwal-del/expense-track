@@ -21,6 +21,17 @@ const slotOf = (iso) => {
   return h < 12 ? 'morning' : h < 16 ? 'afternoon' : 'evening';
 };
 const attConflict = (r) => (r.att_status && OFF_LABEL[r.att_status] ? OFF_LABEL[r.att_status] : null);
+
+// ── Anti-spoof flag display ──
+const FLAG_META = {
+  vpn: { label: '🛡️ VPN/Proxy', bg: '#fee2e2', col: '#991b1b' },
+  ip_far: { label: '📍 IP far', bg: '#fef3c7', col: '#b45309' },
+  impossible_travel: { label: '⚡ Impossible travel', bg: '#fee2e2', col: '#991b1b' },
+  poor_gps: { label: '📡 Weak GPS', bg: '#f3f4f6', col: '#6b7280' },
+};
+const rowFlags = (r) => (Array.isArray(r.spoof_flags) ? r.spoof_flags : []);
+// "Suspicious" = a real tamper signal (poor_gps alone is just an unreliable fix, not fraud).
+const isSuspect = (r) => !!r.blocked || rowFlags(r).some((f) => f !== 'poor_gps');
 const timeIN = (iso) => new Date(iso).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' });
 const todayStr = () => {
   const d = new Date();
@@ -210,6 +221,7 @@ export default function App() {
     else if (st === 'mismatch') l = l.filter((r) => r.site_mismatch === true);
     else if (st === 'conflict') l = l.filter((r) => attConflict(r));
     else if (st === 'locreq') l = l.filter((r) => r.source === 'notification');
+    else if (st === 'suspect') l = l.filter(isSuspect);
     return l;
   }, [rows, q, st]);
 
@@ -225,7 +237,8 @@ export default function App() {
       if (r.source === 'notification') return;
       const k = r.user_id || r.emp_no;
       if (!k) return;
-      if (!byUser[k]) byUser[k] = { name: r.name, emp_no: r.emp_no, department: r.department, att_status: r.att_status, att_source: r.att_source, slots: {} };
+      if (!byUser[k]) byUser[k] = { name: r.name, emp_no: r.emp_no, department: r.department, att_status: r.att_status, att_source: r.att_source, slots: {}, suspect: false };
+      byUser[k].suspect = byUser[k].suspect || isSuspect(r);
       const s = slotOf(r.checked_at);
       if (!byUser[k].slots[s] || (!byUser[k].slots[s].photo_url && r.photo_url)) {
         byUser[k].slots[s] = { time: timeIN(r.checked_at), photo_url: r.photo_url };
@@ -295,6 +308,13 @@ export default function App() {
       'Nearest Site': r.nearest_site_name || '',
       'Nearest (m)': r.nearest_distance_m != null ? r.nearest_distance_m : '',
       'Attendance Conflict': attConflict(r) || '',
+      'VPN/Proxy': r.ip_proxy ? 'YES' : '',
+      'IP Type': r.ip_type || '',
+      'IP City': r.ip_city || '',
+      'IP Country': r.ip_country || '',
+      'IP↔GPS (km)': r.ip_gps_km != null ? r.ip_gps_km : '',
+      'Spoof Flags': [...rowFlags(r), r.blocked ? 'blocked' : null].filter(Boolean).join(', '),
+      'IP': r.ip_address || '',
       'Place': r.location_name || '',
       'Latitude': r.latitude != null ? r.latitude : '', 'Longitude': r.longitude != null ? r.longitude : '',
       'Accuracy (m)': r.accuracy_m != null ? r.accuracy_m : '',
@@ -315,6 +335,7 @@ export default function App() {
   const mismatch = list.filter((r) => r.site_mismatch === true).length;
   const conflict = list.filter((r) => attConflict(r)).length;
   const locreq = list.filter((r) => r.source === 'notification').length;
+  const suspect = list.filter(isSuspect).length;
 
   const verifyCell = (empNo) => {
     const p = pcByEmp[String(empNo || '').trim()];
@@ -386,6 +407,7 @@ export default function App() {
                 <option value="mismatch">Site mismatch</option>
                 <option value="conflict">Attendance conflict</option>
                 <option value="locreq">🔔 Location requests</option>
+                <option value="suspect">🚩 Suspicious (VPN / spoof)</option>
               </select>
             </div>
             <div>
@@ -402,6 +424,7 @@ export default function App() {
             {card('📍 Site mismatch', mismatch, '#b45309')}
             {card('🔴 Att. conflict', conflict, '#991b1b')}
             {card('🔔 Location requests', locreq, '#4338ca')}
+            {card('🚩 Suspicious', suspect, '#dc2626')}
           </div>
 
           {/* Daily rollup */}
@@ -431,7 +454,7 @@ export default function App() {
                         return (
                           <tr key={e.emp_no || e.name} style={{ borderTop: '1px solid var(--border)' }}>
                             <td style={td}>
-                              <div style={{ fontWeight: 600 }}>{e.name || '—'}</div>
+                              <div style={{ fontWeight: 600 }}>{e.name || '—'}{e.suspect && <span title="Suspicious check-in (VPN / spoof) — see All check-ins below" style={{ marginLeft: 5, color: '#dc2626', fontWeight: 800 }}>🚩</span>}</div>
                               <div style={{ fontSize: '.72rem', color: 'var(--text-muted)' }}>{e.emp_no || ''}{e.department ? ' · ' + e.department : ''}</div>
                             </td>
                             {SLOTS.map((s) => {
@@ -515,6 +538,11 @@ export default function App() {
                               {isLocReq && <div style={{ marginTop: '.25rem' }}>{badge('🔔 Location Request', '#eef2ff', '#4338ca')}</div>}
                               {r.site_mismatch && <div style={{ marginTop: '.25rem' }}>{badge('📍 Mismatch', '#fef3c7', '#b45309')}</div>}
                               {conf && <div style={{ marginTop: '.25rem' }}>{badge(`🔴 Att: ${conf}`, '#fee2e2', '#991b1b')}</div>}
+                              {r.blocked && <div style={{ marginTop: '.25rem' }}>{badge('⛔ Blocked (VPN)', '#7f1d1d', '#fff')}</div>}
+                              {rowFlags(r).map((f) => FLAG_META[f]
+                                ? <div key={f} style={{ marginTop: '.25rem' }}>{badge(f === 'ip_far' && r.ip_gps_km != null ? `📍 IP ${r.ip_gps_km}km away` : FLAG_META[f].label, FLAG_META[f].bg, FLAG_META[f].col)}</div>
+                                : null)}
+                              {r.ip_proxy && r.ip_type && <div style={{ fontSize: '.66rem', color: '#991b1b', marginTop: '.2rem', fontWeight: 700 }}>IP: {r.ip_type}{r.ip_city ? ` · ${r.ip_city}` : ''}{r.ip_country ? `, ${r.ip_country}` : ''}</div>}
                             </td>
                             <td style={{ ...td, textAlign: 'right' }}>{r.distance_m != null ? `${r.distance_m} m` : r.nearest_distance_m != null ? `${r.nearest_distance_m} m` : '—'}</td>
                             <td style={{ ...td, textAlign: 'center' }}>

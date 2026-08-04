@@ -155,7 +155,7 @@ export default async function handler(req, res) {
       const date = req.query.date; // IST day; omit → all recent (capped)
       let q = supabaseAdmin
         .from('attendance_checkins')
-        .select('user_id, emp_no, site_code, site_name, latitude, longitude, distance_m, inside_fence, accuracy_m, location_name, photo_url, nearest_site_code, nearest_site_name, nearest_distance_m, site_mismatch, source, checked_at, check_date')
+        .select('user_id, emp_no, site_code, site_name, latitude, longitude, distance_m, inside_fence, accuracy_m, location_name, photo_url, nearest_site_code, nearest_site_name, nearest_distance_m, site_mismatch, source, checked_at, check_date, ip_address, ip_proxy, ip_type, ip_risk, ip_city, ip_country, ip_gps_km, spoof_flags, blocked')
         .order('checked_at', { ascending: false })
         .limit(2000);
       if (date) q = q.eq('check_date', date);
@@ -423,15 +423,65 @@ export default async function handler(req, res) {
       }
 
       const { data: prof } = await supabaseAdmin.from('users').select('emp_no').eq('id', user.id).single();
-      const location_name = await reverseGeocodePlace(latitude, longitude); // best-effort; null on failure
+
+      // ── Anti-spoof scoring (all best-effort; a failed lookup never blocks) ──
+      // Run the IP lookup, the place-name lookup, and the "previous check-in"
+      // fetch together so they don't add up serially.
+      const ip = clientIp(req);
+      const [location_name, intel, prevCkRes] = await Promise.all([
+        reverseGeocodePlace(latitude, longitude),
+        ipIntel(ip),
+        supabaseAdmin.from('attendance_checkins')
+          .select('latitude, longitude, checked_at')
+          .eq('user_id', user.id).order('checked_at', { ascending: false }).limit(1),
+      ]);
+
+      const spoof_flags = [];
+      // 1. VPN / proxy / Tor — proxycheck says the IP is an anonymiser.
+      if (intel?.proxy) spoof_flags.push('vpn');
+      // 2. GPS-vs-IP mismatch — ONLY trust this when the IP is CLEAN (a VPN's geo
+      //    is meaningless). A residential IP hundreds of km from the claimed GPS is
+      //    a strong fake-GPS tell. IP geo is city-level coarse, so use a wide margin.
+      let ip_gps_km = null;
+      if (intel && !intel.proxy && intel.latitude != null && intel.longitude != null) {
+        ip_gps_km = Math.round(haversineMetres(latitude, longitude, intel.latitude, intel.longitude) / 1000);
+        if (ip_gps_km > 200) spoof_flags.push('ip_far');
+      }
+      // 3. Impossible travel — vs this employee's most recent prior check-in.
+      const prev = prevCkRes?.data?.[0];
+      if (prev && prev.latitude != null && prev.longitude != null) {
+        const km = haversineMetres(latitude, longitude, prev.latitude, prev.longitude) / 1000;
+        const hrs = (Date.now() - new Date(prev.checked_at).getTime()) / 3600000;
+        if (hrs > 0 && km > 25 && km / hrs > 120) spoof_flags.push('impossible_travel');
+      }
+      // 4. Poor GPS accuracy — informational (unreliable fix, not proof of fraud).
+      if (accuracy != null && accuracy > 500) spoof_flags.push('poor_gps');
+
+      // Optional hard block: only when explicitly enabled AND it's a clear VPN on a
+      // real attendance check-in. Off by default so a false positive can never lock
+      // out a genuine employee on day one — the row is still recorded either way.
+      const blockVpn = process.env.CHECKIN_BLOCK_VPN === '1'
+        && source === 'regular' && intel?.proxy && ANONYMISER_TYPES.has(intel.type);
+
       const { data: inserted, error } = await supabaseAdmin.from('attendance_checkins').insert({
         user_id: user.id, emp_no: prof?.emp_no || null, site_code, site_name: site_name || null,
         latitude, longitude, distance_m, inside_fence,
         accuracy_m: accuracy != null ? Math.round(accuracy) : null,
         location_name, photo_url: photo_url || null,
         nearest_site_code, nearest_site_name, nearest_distance_m, site_mismatch, source,
+        ip_address: ip, ip_proxy: intel ? intel.proxy : null, ip_type: intel?.type || null,
+        ip_risk: intel?.risk ?? null, ip_city: intel?.city || null, ip_country: intel?.country || null,
+        ip_gps_km, spoof_flags: spoof_flags.length ? spoof_flags : null,
+        blocked: blockVpn || null,
       }).select('id').single();
       if (error) return res.status(500).json({ error: error.message });
+
+      // If blocking is on and this was a VPN check-in, tell the employee to turn it
+      // off. The row above is kept (with blocked=true + the vpn flag) as evidence for
+      // HR, but attendance is NOT credited — we return before the crediting steps.
+      if (blockVpn) {
+        return res.status(403).json({ error: 'VPN/Proxy detected — turn it off and check in again from your normal connection.', blocked: true });
+      }
 
       // Only a spot-check response (the explicit "Respond to HR request" action, source
       // 'notification') answers a pending request — a normal attendance check-in does NOT,
@@ -1352,6 +1402,47 @@ async function reverseGeocodePlace(lat, lon) {
     return name || j.display_name || null;
   } catch { return null; }
 }
+
+// ── Anti-spoof: client IP + VPN/proxy intelligence ────────────────────────
+/** The real client IP behind Vercel's proxy. x-forwarded-for is a comma list
+ *  "client, proxy1, proxy2" — the first entry is the origin client. */
+function clientIp(req) {
+  const xff = (req.headers['x-forwarded-for'] || '').split(',')[0].trim();
+  return xff || req.headers['x-real-ip'] || req.socket?.remoteAddress || null;
+}
+
+/** Look up an IP with proxycheck.io → VPN/proxy/Tor/datacenter + geo. Best-effort
+ *  and FAIL-OPEN: any error/timeout/missing-key returns null so a check-in is
+ *  never blocked because the lookup was unavailable. ~200ms; ~300 calls/day fits
+ *  the free 1000/day tier. Private/local IPs are skipped (no useful signal). */
+async function ipIntel(ip) {
+  const key = process.env.PROXYCHECK_API_KEY;
+  if (!key || !ip) return null;
+  if (/^(10\.|127\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.|::1|fc|fd|169\.254\.)/i.test(ip)) return null;
+  try {
+    const ctl = new AbortController();
+    const t = setTimeout(() => ctl.abort(), 4000);
+    const r = await fetch(`https://proxycheck.io/v2/${encodeURIComponent(ip)}?key=${key}&vpn=1&asn=1&risk=1`, { signal: ctl.signal });
+    clearTimeout(t);
+    if (!r.ok) return null;
+    const j = await r.json();
+    const d = j && j[ip];
+    if (!d) return null;
+    return {
+      proxy: d.proxy === 'yes',
+      type: d.type || null,               // VPN | TOR | Proxy | Business | Wireless | Residential | ...
+      risk: d.risk != null ? Number(d.risk) : null,
+      city: d.city || null,
+      country: d.isocode || null,
+      latitude: d.latitude != null ? Number(d.latitude) : null,
+      longitude: d.longitude != null ? Number(d.longitude) : null,
+    };
+  } catch { return null; }
+}
+
+// Anonymiser IP types we treat as a hard "VPN" flag (as opposed to plain
+// datacenter/business, which is softer and prone to corporate-network noise).
+const ANONYMISER_TYPES = new Set(['VPN', 'TOR', 'Proxy', 'Compromised Server']);
 
 // Which of the 3 daily slots a timestamp falls in (IST): morning <12, afternoon 12–4, evening ≥4.
 function slotOfIST(iso) {
