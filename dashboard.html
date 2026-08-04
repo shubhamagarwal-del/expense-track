@@ -5237,6 +5237,11 @@
       const l1Cnt = countsBase.filter(e => e.status === 'l1_approved').length;
       const approvedSum = countsBase.filter(e => e.status === 'approved')
         .reduce((s, e) => s + (e.approved_amount != null ? +e.approved_amount : +e.amount), 0);
+      // Grand total of everything currently shown (respects the Month/Cycle/Dept/Employee/
+      // Status filters) so selecting a month shows that month's total. Uses the same
+      // flagged-aware exclusion as the Overall figures.
+      const grandTotal = countsBase.reduce((s, e) =>
+        totalsExcludedStatuses().includes(e.status) ? s : s + (e.approved_amount != null ? +e.approved_amount : +e.amount), 0);
       // Audit's own queue — fully automatic, driven by the real status (not the
       // separate manual "Checked for payment" marker): still awaiting Audit's own
       // Clear/Flag action vs already actioned (cleared or flagged) by Audit.
@@ -5262,6 +5267,13 @@
               <div class="stat-icon ic-indigo">👥</div>
             </div>
             <div class="stat-value" style="font-size:1.5rem">${totalEmps}</div>
+          </div>
+          <div class="stat-card" style="border-left:3px solid #0ea5e9;padding:1rem 1.125rem;gap:.5rem;color:#0ea5e9" title="Total of all expenses shown (respects the selected Month / Cycle / Department / Status filters)">
+            <div class="stat-top">
+              <span class="stat-label">Total</span>
+              <div class="stat-icon" style="background:#e0f2fe;color:#0ea5e9">💰</div>
+            </div>
+            <div class="stat-value" style="font-size:1.5rem">${formatCurrency(grandTotal)}</div>
           </div>
           ${pendingCnt ? `<div class="stat-card" style="border-left:3px solid #f59e0b;cursor:pointer;padding:1rem 1.125rem;gap:.5rem;color:#f59e0b;${chipStyle('pending')}" onclick="setHierStatusFilter('pending')" title="Filter: Pending">
             <div class="stat-top">
