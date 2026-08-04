@@ -3726,7 +3726,7 @@
     }
 
     /** Internal helper to perform Excel generation from a list of expenses */
-    function performExcelExport(expenses, filename = 'Export.xlsx') {
+    function performExcelExport(expenses, filename = 'Export.xlsx', opts = {}) {
       if (typeof XLSX === 'undefined') {
         return showMessage('Excel library not loaded. Please refresh and try again.', 'error');
       }
@@ -3890,6 +3890,10 @@
       XLSX.utils.book_append_sheet(wb, ws, "Expenses");
       XLSX.utils.book_append_sheet(wb, wsSite, "Site Summary");
       XLSX.utils.book_append_sheet(wb, wsEmpSum, "Employee Summary");
+
+      // Used by Push to Accounts to get the EXACT same workbook as a base64
+      // string (no download) — same rows, same 3 sheets, no separate builder.
+      if (opts.returnBase64) return XLSX.write(wb, { bookType: 'xlsx', type: 'base64' });
 
       try {
         const wbout = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
@@ -4085,80 +4089,28 @@
       return claimLinesForCycle(safeKey).some(e => e.status === 'audit_cleared');
     }
 
-    /** Excel per the Accounts-portal column CONTRACT (Part 2). Returns base64. */
-    function buildClaimExcelBase64(lines) {
-      const headers = [
-        'Name', 'Emp No', 'Department', 'Cycle', 'Date', 'Category',
-        'From (Travel)', 'To (Travel)', 'Description',
-        'Submitted Amount', 'Approved Amount', 'Site', 'Status',
-        'Bank Holder', 'Bank Name', 'Bank IFSC', 'Bank Account',
-      ];
-      const sorted = [...lines].sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
-      const rows = sorted.map(e => {
-        const u = e.users || {};
-        const { from: f, to: t, desc: d } = parseExpenseDescription(e);
-        const date = new Date(e.created_at);
-        const cycle = date.getDate() <= 15 ? '1st-15th' : '16th-End';
-        const site = siteWithCode(extractSite(e) || u.site_name || '');
-        const approved = e.approved_amount != null ? +e.approved_amount : +e.amount;
-        return [
-          u.name || '', u.emp_no || '', u.department || '', cycle, formatDate(e.created_at),
-          e.category || '', f || '', t || '', d || '',
-          Number(e.amount) || 0, Number(approved) || 0, site, e.status,
-          u.bank_holder || '', u.bank_name || '', u.bank_ifsc || '', u.bank_account || '',
-        ];
-      });
-      const ws = XLSX.utils.aoa_to_sheet([headers, ...rows]);
-      const wb = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(wb, ws, 'Expenses');
-      return XLSX.write(wb, { bookType: 'xlsx', type: 'base64' });
-    }
-
-    /** Reconcile PDF per the CONTRACT (Part 3), from the SAME data as the Excel. Returns base64. */
-    function buildClaimPdfBase64(lines, headerText) {
-      const jspdfLib = window.jspdf || window.jsPDF;
-      const { jsPDF } = jspdfLib;
-      const doc = new jsPDF({ unit: 'pt', format: 'a4' });
-      const M = 40; let y = 50;
-      const pageH = doc.internal.pageSize.getHeight();
-      const pageW = doc.internal.pageSize.getWidth();
-      doc.setFontSize(13); doc.setFont(undefined, 'bold');
-      doc.text(headerText || 'Expense Report', M, y); y += 22;
-      doc.setFontSize(9); doc.setFont(undefined, 'normal');
-
-      const sorted = [...lines].sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
-      const money = n => 'Rs. ' + (Number(n) || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-      let total = 0;
-      sorted.forEach(e => {
-        const u = e.users || {};
-        const { from: f, to: t, desc: d } = parseExpenseDescription(e);
-        const site = siteWithCode(extractSite(e) || u.site_name || '');
-        const approved = e.approved_amount != null ? +e.approved_amount : +e.amount;
-        const tag = e.status === 'audit_cleared' ? '[AUDIT CLEARED]' : '[AUDIT QUERY]';
-        if (e.status === 'audit_cleared') total += approved;
-        const parts = [formatDate(e.created_at), e.category || '', site,
-          [f, t].filter(Boolean).join(' -> '), d || ''].filter(Boolean).join('  ');
-        const line = `${parts}  ${money(approved)}  ${tag}`;
-        const wrapped = doc.splitTextToSize(line, pageW - 2 * M);
-        if (y + wrapped.length * 12 > pageH - 40) { doc.addPage(); y = 50; }
-        doc.text(wrapped, M, y); y += wrapped.length * 12 + 3;
-      });
-      y += 8;
-      if (y > pageH - 40) { doc.addPage(); y = 50; }
-      doc.setFont(undefined, 'bold');
-      doc.text(`Total (Audit Cleared): ${money(total)}`, M, y);
-      return doc.output('datauristring').split(',')[1];
-    }
-
     async function pushCycleToAccounts(safeKey, btn) {
       const [userId, monthYear, cycleText] = safeKey.split('|');
-      const lines = claimLinesForCycle(safeKey);
+      const lines = claimLinesForCycle(safeKey); // audit_cleared + audit_query — for the claim amount below
       const cleared = lines.filter(e => e.status === 'audit_cleared');
       if (!cleared.length) return showMessage('No audit-cleared lines in this cycle to push.', 'error');
 
       const u = lines[0]?.users || {};
       const name = u.name || 'Employee';
       if (!u.emp_no) return showMessage(`${name}: Emp No missing — Accounts portal will reject. Fix the employee's Emp No first.`, 'error');
+
+      // The attached Excel/PDF are the SAME files the row's Excel/PDF buttons
+      // download — every line in this cycle regardless of status, with the
+      // real per-line status shown, not a separate cleared-only builder. The
+      // claim AMOUNT sent alongside (below) still comes only from audit_cleared
+      // lines — that's the actual payable figure — the files are just full
+      // context for Accounts.
+      const allCycleLines = allExpensesFetched.filter(e => {
+        const date = new Date(e.created_at);
+        const mY = date.toLocaleString('default', { month: 'long', year: 'numeric' });
+        const cT = (date.getDate() <= 15 ? 1 : 2) === 1 ? '1st - 15th' : '16th - End';
+        return e.user_id === userId && mY === monthYear && cT === cycleText;
+      });
 
       const cycleContract = cycleText.includes('1st') ? '1st-15th' : '16th-End';
       const already = portalClaimsByKey[safeKey];
@@ -4174,8 +4126,8 @@
         const submittedTotal = cleared.reduce((s, e) => s + (Number(e.amount) || 0), 0);
         const approvedTotal = cleared.reduce((s, e) => s + (e.approved_amount != null ? +e.approved_amount : +e.amount), 0);
         const fnameBase = `${(u.emp_no || 'EMP')}_${monthYear.replace(/\s+/g, '_')}_${cycleContract}`;
-        const excel_b64 = buildClaimExcelBase64(lines);
-        const pdf_b64 = buildClaimPdfBase64(lines, `${name} (${u.emp_no}) — ${monthYear} ${cycleText}`);
+        const excel_b64 = performExcelExport(allCycleLines, `${fnameBase}.xlsx`, { returnBase64: true });
+        const pdf_b64 = await downloadDeptPDF({ expenses: allCycleLines, monthLabel: monthYear, fileLabel: `${name} — ${cycleText}`, returnBase64: true });
 
         const token = (await db.auth.getSession()).data.session?.access_token;
         const res = await fetch('/api/receipt-url', {
@@ -4646,29 +4598,41 @@
       const jspdfLib = window.jspdf || window.jsPDF;
       if (!jspdfLib) return showMessage('PDF library not loaded. Please refresh and try again.', 'error');
 
+      // Silent mode (opts.returnBase64): used by Push to Accounts to get the
+      // EXACT same PDF (same receipt images, same layout) as a base64 string
+      // instead of downloading — no separate/lighter PDF builder to maintain.
+      // The caller (pushCycleToAccounts) manages its own button state, so this
+      // skips touching the toolbar button and the progress overlay entirely.
+      const silent = !!opts.returnBase64;
+
       const btn = document.getElementById('btn-export-pdf') || { disabled: false, innerHTML: '' };
       const origHTML = btn.innerHTML;
-      btn.disabled = true;
+      if (!silent) btn.disabled = true;
 
       // ── Persistent progress bar (visible even after tab switch) ──
-      let overlay = document.getElementById('pdf-progress-overlay');
-      if (!overlay) {
-        overlay = document.createElement('div');
-        overlay.id = 'pdf-progress-overlay';
-        overlay.style.cssText = 'position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:#1e293b;color:#fff;padding:14px 20px;border-radius:14px;box-shadow:0 8px 32px rgba(0,0,0,.4);z-index:99999;min-width:300px;max-width:90vw;font-family:system-ui,sans-serif;font-size:13px;display:flex;flex-direction:column;gap:8px;';
-        document.body.appendChild(overlay);
-      }
-      if (!document.getElementById('_pdf_spin')) {
-        const s = document.createElement('style');
-        s.id = '_pdf_spin';
-        s.textContent = '@keyframes _pdfSpin{to{transform:rotate(360deg)}}';
-        document.head.appendChild(s);
+      let overlay = null;
+      if (!silent) {
+        overlay = document.getElementById('pdf-progress-overlay');
+        if (!overlay) {
+          overlay = document.createElement('div');
+          overlay.id = 'pdf-progress-overlay';
+          overlay.style.cssText = 'position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:#1e293b;color:#fff;padding:14px 20px;border-radius:14px;box-shadow:0 8px 32px rgba(0,0,0,.4);z-index:99999;min-width:300px;max-width:90vw;font-family:system-ui,sans-serif;font-size:13px;display:flex;flex-direction:column;gap:8px;';
+          document.body.appendChild(overlay);
+        }
+        if (!document.getElementById('_pdf_spin')) {
+          const s = document.createElement('style');
+          s.id = '_pdf_spin';
+          s.textContent = '@keyframes _pdfSpin{to{transform:rotate(360deg)}}';
+          document.head.appendChild(s);
+        }
       }
       function setProg(msg, pct) {
+        if (silent) return;
         document.title = `(${Math.round(pct)}%) Generating PDF…`;
         overlay.innerHTML = `<div style="display:flex;align-items:center;gap:10px;"><svg style="width:16px;height:16px;flex-shrink:0;animation:_pdfSpin 1s linear infinite" viewBox="0 0 24 24" fill="none" stroke="#818cf8" stroke-width="2.5"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg><span style="flex:1">${msg}</span><span style="color:#94a3b8;font-size:11px">${Math.round(pct)}%</span></div><div style="height:3px;background:#334155;border-radius:2px;overflow:hidden"><div style="height:100%;width:${pct}%;background:linear-gradient(90deg,#6366f1,#a5b4fc);border-radius:2px;transition:width .25s ease"></div></div>`;
       }
       function doneProg(msg, isErr) {
+        if (silent) return;
         document.title = document.title.replace(/^\(\d+%\)\s*/, '');
         overlay.innerHTML = `<div style="display:flex;align-items:center;gap:10px;"><span style="font-size:16px">${isErr ? '❌' : '✅'}</span><span>${msg}</span></div>`;
         setTimeout(() => overlay.remove(), 3500);
@@ -4679,7 +4643,7 @@
         setProg('Loading expenses…', 2);
         // Sort oldest → newest, same as the Excel/CSV exports, so all three show expenses in the same order.
         const expenses = [...(opts.expenses || getExportData())].sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
-        if (!expenses.length) { doneProg('No data to export', true); return; }
+        if (!expenses.length) { if (silent) throw new Error('No data to export'); doneProg('No data to export', true); return; }
 
         const token = (await db.auth.getSession()).data.session?.access_token;
         const { jsPDF } = jspdfLib;
@@ -5103,11 +5067,13 @@
         }
 
         setProg('Saving PDF…', 96);
+        if (silent) return doc.output('datauristring').split(',')[1];
         doc.save(`ExpenseReport_${filterLabel.replace(/[^a-z0-9]/gi,'_')}_${monthLabel.replace(/\s/g,'_')}.pdf`);
         doneProg(`PDF saved — ${expenses.length} expenses, ${fetchedPaths.length} receipts`);
 
       } catch (err) {
         console.error('PDF error:', err);
+        if (silent) throw err;
         doneProg('PDF failed: ' + err.message, true);
       }
     }
