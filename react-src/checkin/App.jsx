@@ -46,6 +46,45 @@ async function notificationsOn() {
 
 const buzz = (ms = 120) => { try { navigator.vibrate?.(ms); } catch { } };
 
+const uuid = () => (crypto?.randomUUID ? crypto.randomUUID() : Date.now() + '-' + Math.random().toString(16).slice(2));
+
+// ── Offline check-in queue (IndexedDB) ─────────────────────────────────────
+// When there's no network at a site, GPS + photo are still captured on the phone
+// (GPS is satellite-based, camera is local) — only the upload/record needs the
+// network. So we stash {photo Blob, GPS, site, captured_at, client_id} here and
+// auto-sync when connectivity returns. The photo is kept as a raw Blob (uploaded
+// during sync, not before). Same store is reused by the location-request page.
+const OQ_DB = 'checkin_offline_v1';
+function oqOpen() {
+  return new Promise((res, rej) => {
+    const r = indexedDB.open(OQ_DB, 1);
+    r.onupgradeneeded = () => { if (!r.result.objectStoreNames.contains('pending')) r.result.createObjectStore('pending', { keyPath: 'client_id' }); };
+    r.onsuccess = () => res(r.result);
+    r.onerror = () => rej(r.error);
+  });
+}
+async function oqAdd(item) { const db = await oqOpen(); return new Promise((res, rej) => { const tx = db.transaction('pending', 'readwrite'); tx.objectStore('pending').put(item); tx.oncomplete = () => res(); tx.onerror = () => rej(tx.error); }); }
+async function oqAll() { try { const db = await oqOpen(); return await new Promise((res) => { const rq = db.transaction('pending', 'readonly').objectStore('pending').getAll(); rq.onsuccess = () => res(rq.result || []); rq.onerror = () => res([]); }); } catch { return []; } }
+async function oqDel(client_id) { try { const db = await oqOpen(); await new Promise((res) => { const tx = db.transaction('pending', 'readwrite'); tx.objectStore('pending').delete(client_id); tx.oncomplete = () => res(); tx.onerror = () => res(); }); } catch { } }
+
+// Sync one queued item → upload its photo, then record it. Returns 'done' (synced or
+// permanently-rejected → removed), or 'retry' (network still down → keep for later).
+async function oqSyncOne(getDb, it, userId) {
+  const token = (await getDb().auth.getSession()).data.session?.access_token;
+  if (!token) return 'retry';
+  const file = it.photo instanceof Blob ? new File([it.photo], `checkin_${it.client_id}.jpg`, { type: 'image/jpeg' }) : it.photo;
+  const photo_url = await window.uploadReceipt(file, userId);   // throws on network failure
+  if (!photo_url) throw new Error('photo upload failed');
+  const res = await fetch('/api/receipt-url', {
+    method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ checkin: { site_code: it.site_code, site_name: it.site_name, latitude: it.latitude, longitude: it.longitude, accuracy: it.accuracy, photo_url, source: it.source, client_id: it.client_id, captured_at: it.captured_at } }),
+  });
+  if (res.ok) { await oqDel(it.client_id); return 'done'; }
+  // 4xx (except 429) = not retryable (bad data / blocked) → drop so it doesn't loop forever.
+  if (res.status >= 400 && res.status < 500 && res.status !== 429) { await oqDel(it.client_id); return 'done'; }
+  throw new Error('server ' + res.status);
+}
+
 // getUserMedia failures are opaque by default ("camera didn't open") — surface the
 // actual reason so the employee (and we) know whether it's permission, another app
 // holding the camera, no camera at all, or an insecure origin.
@@ -121,6 +160,7 @@ export default function App() {
   const [notifBusy, setNotifBusy] = useState(false);
   const [busy, setBusy] = useState('');
   const [result, setResult] = useState(null);
+  const [pendingCount, setPendingCount] = useState(0);   // offline check-ins waiting to sync
   const [gpsPos, setGpsPos] = useState(null);        // { lat, lon, acc } live
   const [gpsErr, setGpsErr] = useState(false);
   const [now, setNow] = useState(new Date());
@@ -152,6 +192,32 @@ export default function App() {
   }, []);
 
   useEffect(() => { if (profile && window.populateSidebar) window.populateSidebar(profile); }, [profile]);
+
+  const refreshPending = async () => { setPendingCount((await oqAll()).length); };
+
+  // Drain the offline queue: upload + record each stashed check-in. Stops on the first
+  // network failure (keeps the rest for next time). Safe to call repeatedly.
+  const syncQueue = async () => {
+    if (!profile || !navigator.onLine) return;
+    const items = await oqAll();
+    for (const it of items) {
+      try { await oqSyncOne(getDb, it, profile.id); }
+      catch { break; } // network still down — try again later
+    }
+    await refreshPending();
+    loadToday();
+  };
+
+  // On load and whenever the network comes back, flush anything queued offline.
+  useEffect(() => {
+    if (!profile) return;
+    refreshPending();
+    syncQueue();
+    const onOnline = () => syncQueue();
+    window.addEventListener('online', onOnline);
+    const iv = setInterval(() => { if (navigator.onLine) syncQueue(); }, 30000);
+    return () => { window.removeEventListener('online', onOnline); clearInterval(iv); };
+  }, [profile]);
   useEffect(() => { if (sheetOpen) setTimeout(() => sheetInputRef.current?.focus(), 80); }, [sheetOpen]);
 
   // Track the visual viewport height so the site-picker sheet shrinks when the
@@ -250,7 +316,11 @@ export default function App() {
   useEffect(() => {
     if (!mapDivRef.current || mapRef.current || typeof window.L === 'undefined') return;
     const m = window.L.map(mapDivRef.current, { zoomControl: false, dragging: false, scrollWheelZoom: false, doubleClickZoom: false, boxZoom: false, keyboard: false, touchZoom: false });
-    window.L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '© OpenStreetMap' }).addTo(m);
+    // Satellite/aerial imagery (Esri World Imagery — free, no API key) + a transparent
+    // place-name/road label layer on top = a hybrid view that reads as almost-3D from
+    // above while staying light enough for low-end phones.
+    window.L.tileLayer('https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', { maxZoom: 19, attribution: 'Imagery © Esri' }).addTo(m);
+    window.L.tileLayer('https://services.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}', { maxZoom: 19, opacity: 0.9 }).addTo(m);
     m.setView([26.9124, 75.7873], 12);
     mapRef.current = m;
   });
@@ -261,7 +331,7 @@ export default function App() {
     if (siteLayerRef.current) { m.removeLayer(siteLayerRef.current); siteLayerRef.current = null; }
     const pts = [];
     if (siteGeo) {
-      siteLayerRef.current = window.L.circle([siteGeo.latitude, siteGeo.longitude], { radius: siteGeo.radius_m || 200, color: '#22c55e', weight: 2, fillColor: '#22c55e', fillOpacity: 0.15 }).addTo(m);
+      siteLayerRef.current = window.L.circle([siteGeo.latitude, siteGeo.longitude], { radius: siteGeo.radius_m || 200, color: '#22c55e', weight: 3, fillColor: '#22c55e', fillOpacity: 0.22 }).addTo(m);
       pts.push([siteGeo.latitude, siteGeo.longitude]);
     }
     if (gpsPos) {
@@ -375,9 +445,22 @@ export default function App() {
 
   async function submitCheckin(file) {
     if (!navigator.geolocation) return window.showMessage("GPS isn't supported on this device.", 'error');
-    setBusy('Getting GPS…'); setResult(null);
+    setBusy(navigator.onLine ? 'Getting GPS…' : 'Getting GPS… (offline)'); setResult(null);
     navigator.geolocation.getCurrentPosition(async (pos) => {
       const { latitude, longitude, accuracy } = pos.coords;
+      const captured_at = new Date().toISOString();
+      const client_id = uuid();
+      // Stash the check-in locally (raw photo Blob + GPS) to sync later.
+      const queueIt = async () => {
+        await oqAdd({ client_id, site_code: selected.code, site_name: selected.name, latitude, longitude, accuracy, captured_at, source: 'regular', photo: file });
+        setResult({ offline: true, siteName: selected.name });
+        buzz([80, 60, 80]);
+        if (photoPreview) URL.revokeObjectURL(photoPreview.url);
+        setPhotoPreview(null);
+        await refreshPending();
+      };
+      // Already offline → don't even try the network; queue straight away.
+      if (!navigator.onLine) { setBusy(''); return queueIt(); }
       try {
         const token = (await getDb().auth.getSession()).data.session?.access_token;
         setBusy('Uploading photo…');
@@ -386,7 +469,7 @@ export default function App() {
         setBusy('Checking in…');
         const res = await fetch('/api/receipt-url', {
           method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-          body: JSON.stringify({ checkin: { site_code: selected.code, site_name: selected.name, latitude, longitude, accuracy, photo_url, source: 'regular' } }),
+          body: JSON.stringify({ checkin: { site_code: selected.code, site_name: selected.name, latitude, longitude, accuracy, photo_url, source: 'regular', client_id, captured_at } }),
         });
         const body = await res.json();
         if (!res.ok) throw new Error(body.error || 'Check-in failed');
@@ -395,12 +478,17 @@ export default function App() {
         loadToday();
         if (photoPreview) URL.revokeObjectURL(photoPreview.url);
         setPhotoPreview(null); // success → clear preview, show the result card below
-      } catch (err) { setResult({ error: err.message }); } // keep the preview so Retake/Check in stay available to retry
+      } catch (err) {
+        // Network dropped mid-request (no signal) → save offline instead of failing.
+        // A real server error (device online, server said no) → show it so they can fix.
+        if (!navigator.onLine || err?.name === 'TypeError') { await queueIt(); }
+        else { setResult({ error: err.message }); } // keep the preview so Retake/Check in stay available to retry
+      }
       finally { setBusy(''); }
     }, (err) => {
       setBusy('');
       setResult({ error: err.code === 1 ? 'GPS permission needed (allow location in the browser).' : "Couldn't get GPS location — try in the open." });
-    }, { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 });
+    }, { enableHighAccuracy: true, timeout: navigator.onLine ? 15000 : 30000, maximumAge: 0 });
   }
 
   // ── derived ──
@@ -469,6 +557,17 @@ export default function App() {
         </div>
 
         <main className="page-content" style={{ maxWidth: 520, margin: '0 auto', paddingTop: '.9rem' }}>
+          {/* Offline queue banner — check-ins saved on the phone, waiting for network */}
+          {pendingCount > 0 && (
+            <div style={{ background: '#fffbeb', border: '1.5px solid #fde68a', borderRadius: 14, padding: '.7rem 1rem', marginBottom: '.8rem', display: 'flex', alignItems: 'center', gap: '.6rem' }}>
+              <span style={{ fontSize: '1.1rem' }}>⏳</span>
+              <div style={{ flex: 1, fontSize: '.78rem', color: '#92400e' }}>
+                <b>{pendingCount} check-in offline saved.</b> {navigator.onLine ? 'Syncing…' : 'Network aate hi apne aap chala jayega.'}
+              </div>
+              {navigator.onLine && <button onClick={syncQueue} style={{ background: '#92400e', color: '#fff', border: 'none', borderRadius: 10, padding: '.5rem .9rem', fontWeight: 800, fontSize: '.78rem', cursor: 'pointer' }}>Sync now</button>}
+            </div>
+          )}
+
           {/* Notifications banner */}
           {!notifOn && notifState !== 'unsupported' && (
             <div style={{ background: notifState === 'blocked' ? '#fef2f2' : '#fff', border: `1.5px solid ${notifState === 'blocked' ? '#fecaca' : '#e2e8f0'}`, borderRadius: 14, padding: '.8rem 1rem', marginBottom: '.8rem', display: 'flex', alignItems: 'center', gap: '.7rem', boxShadow: '0 4px 14px rgba(15,23,42,.06)' }}>
@@ -579,7 +678,12 @@ export default function App() {
           {/* Result */}
           {result && (
             <div style={{ marginBottom: '.9rem' }}>
-              {result.error ? (
+              {result.offline ? (
+                <div style={{ background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 14, padding: '1rem', color: '#92400e' }}>
+                  <div style={{ fontSize: '1rem', fontWeight: 800 }}>✅ Offline save ho gaya</div>
+                  <div style={{ fontSize: '.83rem', marginTop: '.2rem' }}><b>{result.siteName}</b> — photo aur location phone me save h. Network aate hi apne aap check-in ho jayega.</div>
+                </div>
+              ) : result.error ? (
                 <div style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 14, padding: '.9rem 1rem', color: '#991b1b', fontSize: '.85rem', fontWeight: 600 }}>{result.error}</div>
               ) : !result.has_fence ? (
                 <div style={{ background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: 14, padding: '1rem', color: '#1e40af' }}>

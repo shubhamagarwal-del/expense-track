@@ -2757,97 +2757,47 @@
     function parseDescForDisplay(raw) {
       if (!raw) return '—';
       const p = raw.split('|');
-      const type = p[0];
+      // Per-type field map. Each entry pulls the raw pipe-encoded parts into named
+      // fields so the renderer below can lay them out on their OWN lines — the trip
+      // (mode · km · From → To), the 📍 Site, and the 📝 free-text Note — instead of
+      // one run-on dotted string where you can't tell the route from the note.
+      const T = {
+        TRAVEL_BUS:    { label: '🚌 Bus',    color: '#0369a1', from: p[1], to: p[2], site: p[3], note: p[4] },
+        TRAVEL_TAXI:   { label: '🚕 Taxi',   color: '#b45309', from: p[1], to: p[2], site: p[3], note: p[4] },
+        TRAVEL_TRAIN:  { label: '🚆 Train',  color: '#6d28d9', from: p[1], to: p[2], site: p[3], note: p[4] },
+        TRAVEL_FLIGHT: { label: '✈️ Flight', color: '#92400e', from: p[1], to: p[2], site: p[3], note: p[4] },
+        TRAVEL_BIKE:   { label: '🏍️ Bike',   color: '#059669', km: p[1], from: p[2], to: p[3], site: p[4], note: p[5] },
+        TRAVEL:        { label: '🚌 Bus',    color: 'var(--primary)', from: p[1], to: p[2], site: p[3], note: p[4] },
+        BUS:           { label: '🚌 Bus',    color: '#0369a1', from: p[1], to: p[2], site: p[3], note: p[4] },
+        TAXI:          { label: '🚕 Taxi',   color: '#b45309', from: p[1], to: p[2], site: p[3], note: p[4] },
+        BIKE:          { label: '🏍️ Bike',   color: '#059669', km: p[1], site: p[2], note: p[3] },
+        FOOD:          { label: '🍽️ Food',   color: '#15803d', site: p[1], note: p[2] },
+        ROOM_RENT:     { label: '🏠 Hotel Room Rent',         color: '#7c3aed', site: p[1], note: p[2] },
+        PRINTING_STATIONERY: { label: '🖨️ Printing & Stationery', color: '#0891b2', site: p[1], note: p[2] },
+        PETROL_DIESEL: { label: '⛽ Petrol / Diesel',         color: '#ca8a04', site: p[1], note: p[2] },
+        REGULAR:       { site: p[1], note: p[2] },
+        OTHER:         { name: p[1], site: p[2], note: p[3] },
+      };
+      const d = T[p[0]];
+      if (!d) return escHtml(raw); // unknown/legacy — show as-is rather than hiding it
 
-      const TRAVEL_ICONS = { TRAVEL_BUS: '🚌 Bus', TRAVEL_TAXI: '🚕 Taxi', TRAVEL_TRAIN: '🚆 Train', TRAVEL_FLIGHT: '✈️ Flight' };
-      const TRAVEL_COLORS = { TRAVEL_BUS: '#0369a1', TRAVEL_TAXI: '#b45309', TRAVEL_TRAIN: '#6d28d9', TRAVEL_FLIGHT: '#92400e' };
-      if (TRAVEL_ICONS[type]) {
-        const from = escHtml(p[1]||''), to = escHtml(p[2]||''), site = escHtml(p[3]||''), desc = escHtml(p[4]||'');
-        return [
-          `<span style="font-size:.7rem;font-weight:700;color:${TRAVEL_COLORS[type]};text-transform:uppercase">${TRAVEL_ICONS[type]}</span>`,
-          from && to ? `${from} → ${to}` : '',
-          site ? `📍 ${site}` : '', desc,
-        ].filter(Boolean).join(' &nbsp;·&nbsp; ');
-      }
-      if (type === 'TRAVEL_BIKE') {
-        const km = escHtml(p[1]||''), from = escHtml(p[2]||''), to = escHtml(p[3]||''), site = escHtml(p[4]||''), desc = escHtml(p[5]||'');
-        return [
-          `<span style="font-size:.7rem;font-weight:700;color:#059669;text-transform:uppercase">🏍️ Bike</span>`,
-          km ? `${km} km` : '',
-          from && to ? `${from} → ${to}` : '',
-          site ? `📍 ${site}` : '', desc,
-        ].filter(Boolean).join(' &nbsp;·&nbsp; ');
-      }
-      if (type === 'FOOD') {
-        const site = escHtml(p[1]||''), desc = escHtml(p[2]||'');
-        return [
-          `<span style="font-size:.7rem;font-weight:700;color:#15803d;text-transform:uppercase">🍽️ Food</span>`,
-          site ? `📍 ${site}` : '', desc,
-        ].filter(Boolean).join(' &nbsp;·&nbsp; ');
-      }
-      // Legacy formats
-      if (type === 'TRAVEL') {
-        const from = escHtml(p[1]||''), to = escHtml(p[2]||''), site = escHtml(p[3]||''), desc = escHtml(p[4]||'');
-        return [
-          `<span style="font-size:.7rem;font-weight:700;color:var(--primary);text-transform:uppercase">🚌 Bus</span>`,
-          from && to ? `${from} → ${to}` : '',
-          site ? `📍 ${site}` : '', desc,
-        ].filter(Boolean).join(' &nbsp;·&nbsp; ');
-      }
-      if (type === 'BUS') {
-        const from = escHtml(p[1]||''), to = escHtml(p[2]||''), site = escHtml(p[3]||''), desc = escHtml(p[4]||'');
-        return [
-          `<span style="font-size:.7rem;font-weight:700;color:#0369a1;text-transform:uppercase">🚌 Bus</span>`,
-          from && to ? `${from} → ${to}` : '',
-          site ? `📍 ${site}` : '', desc,
-        ].filter(Boolean).join(' &nbsp;·&nbsp; ');
-      }
-      if (type === 'TAXI') {
-        const from = escHtml(p[1]||''), to = escHtml(p[2]||''), site = escHtml(p[3]||''), desc = escHtml(p[4]||'');
-        return [
-          `<span style="font-size:.7rem;font-weight:700;color:#b45309;text-transform:uppercase">🚕 Taxi</span>`,
-          from && to ? `${from} → ${to}` : '',
-          site ? `📍 ${site}` : '', desc,
-        ].filter(Boolean).join(' &nbsp;·&nbsp; ');
-      }
-      if (type === 'BIKE') {
-        const km = escHtml(p[1]||''), site = escHtml(p[2]||''), desc = escHtml(p[3]||'');
-        return [
-          `<span style="font-size:.7rem;font-weight:700;color:#059669;text-transform:uppercase">🏍️ Bike</span>`,
-          km ? `${km} km` : '',
-          site ? `📍 ${site}` : '', desc,
-        ].filter(Boolean).join(' &nbsp;·&nbsp; ');
-      }
-      if (type === 'OTHER') {
-        const name = escHtml(p[1]||''), site = escHtml(p[2]||''), desc = escHtml(p[3]||'');
-        return [name ? `<strong>${name}</strong>` : '', site ? `📍 ${site}` : '', desc].filter(Boolean).join(' ');
-      }
-      if (type === 'ROOM_RENT') {
-        const site = escHtml(p[1]||''), desc = escHtml(p[2]||'');
-        return [
-          `<span style="font-size:.7rem;font-weight:700;color:#7c3aed;text-transform:uppercase">🏠 Hotel Room Rent</span>`,
-          site ? `📍 ${site}` : '', desc,
-        ].filter(Boolean).join(' &nbsp;·&nbsp; ');
-      }
-      if (type === 'PRINTING_STATIONERY') {
-        const site = escHtml(p[1]||''), desc = escHtml(p[2]||'');
-        return [
-          `<span style="font-size:.7rem;font-weight:700;color:#0891b2;text-transform:uppercase">🖨️ Printing & Stationery</span>`,
-          site ? `📍 ${site}` : '', desc,
-        ].filter(Boolean).join(' &nbsp;·&nbsp; ');
-      }
-      if (type === 'PETROL_DIESEL') {
-        const site = escHtml(p[1]||''), desc = escHtml(p[2]||'');
-        return [
-          `<span style="font-size:.7rem;font-weight:700;color:#ca8a04;text-transform:uppercase">⛽ Petrol / Diesel</span>`,
-          site ? `📍 ${site}` : '', desc,
-        ].filter(Boolean).join(' &nbsp;·&nbsp; ');
-      }
-      if (type === 'REGULAR') {
-        const site = escHtml(p[1]||''), desc = escHtml(p[2]||'');
-        return [site ? `📍 ${site}` : '', desc].filter(Boolean).join(' · ') || '—';
-      }
-      return escHtml(raw);
+      const esc = v => escHtml(v || '');
+      const infoBox = (label, content, accent) => `<div style="background:var(--bg-2,#f1f5f9);border-radius:5px;border-left:3px solid ${accent};padding:.3rem .55rem;margin-top:.3rem;font-size:.88em;line-height:1.45"><span style="font-size:.56rem;font-weight:800;letter-spacing:.05em;color:${accent};text-transform:uppercase;margin-right:6px">${label}</span>${content}</div>`;
+
+      // Line 1 — just the type: mode label · km  (or OTHER's custom name).
+      const head = [];
+      if (d.name) head.push(`<strong>${esc(d.name)}</strong>`);
+      if (d.label) head.push(`<span style="font-size:.7rem;font-weight:700;color:${d.color};text-transform:uppercase">${d.label}</span>`);
+      if (d.km) head.push(`${esc(d.km)} km`);
+      let html = head.length ? `<div>${head.join(' &nbsp;·&nbsp; ')}</div>` : '';
+
+      // Every detail gets its OWN labelled box — Site, From → To, Description — so none of
+      // them mix into each other or into the line above.
+      if (d.site) html += infoBox('Site', esc(d.site), '#7c3aed');
+      if (d.from && d.to) html += infoBox('From → To', `${esc(d.from)} → ${esc(d.to)}`, '#2563eb');
+      if (d.note) html += infoBox('Description', esc(d.note), 'var(--primary)');
+
+      return html || '—';
     }
 
     /**

@@ -382,12 +382,40 @@ export default async function handler(req, res) {
     // Any signed-in employee checks in for themselves. Server is authoritative: it looks up the
     // site's fence and computes distance/inside — the client's own claim is never trusted.
     if (req.body?.checkin) {
-      const { site_code, site_name, latitude, longitude, accuracy, photo_url } = req.body.checkin;
+      const { site_code, site_name, latitude, longitude, accuracy, photo_url, client_id } = req.body.checkin;
       // 'notification' = spot-check via a push prompt → location record only (NOT counted in
       // the 3 daily slots or attendance). 'regular' = normal check-in (counts).
       const source = req.body.checkin.source === 'notification' ? 'notification' : 'regular';
       if (!site_code || latitude == null || longitude == null) {
         return res.status(400).json({ error: 'site_code, latitude, longitude are required' });
+      }
+
+      // captured_at = when the check-in actually happened on the phone. Matters for
+      // OFFLINE check-ins synced later — the slot, day, and attendance must reflect the
+      // REAL time, not the sync time. Accept only a sane value (not in the future, not
+      // older than 7 days); otherwise fall back to now().
+      let checked_at = null;
+      if (req.body.checkin.captured_at) {
+        const t = new Date(req.body.checkin.captured_at).getTime(), now = Date.now();
+        if (!isNaN(t) && t <= now + 120000 && t >= now - 7 * 86400000) checked_at = new Date(t).toISOString();
+      }
+      const effTime = checked_at || new Date().toISOString();
+      // IST calendar day of the (real) check-in — drives the attendance date & slot.
+      const effIstDate = new Date(new Date(effTime).getTime() + 5.5 * 3600 * 1000).toISOString().slice(0, 10);
+
+      // Idempotency: an offline check-in carries a client-minted client_id; if this one
+      // was already recorded (a retried sync), return it instead of creating a duplicate.
+      if (client_id) {
+        const { data: dup } = await supabaseAdmin.from('attendance_checkins')
+          .select('id, distance_m, inside_fence, site_name, site_mismatch, nearest_site_name, nearest_distance_m')
+          .eq('client_id', client_id).maybeSingle();
+        if (dup) {
+          return res.status(200).json({
+            ok: true, duplicate: true, has_fence: dup.distance_m != null, distance_m: dup.distance_m,
+            inside_fence: dup.inside_fence, site_mismatch: dup.site_mismatch,
+            nearest_site_name: dup.nearest_site_name, nearest_distance_m: dup.nearest_distance_m,
+          });
+        }
       }
       // Fence is optional — a site may not have coordinates yet. Look it up; if none,
       // still record the check-in (GPS only, no pass/fail) so nothing is lost.
@@ -451,7 +479,7 @@ export default async function handler(req, res) {
       const prev = prevCkRes?.data?.[0];
       if (prev && prev.latitude != null && prev.longitude != null) {
         const km = haversineMetres(latitude, longitude, prev.latitude, prev.longitude) / 1000;
-        const hrs = (Date.now() - new Date(prev.checked_at).getTime()) / 3600000;
+        const hrs = (new Date(effTime).getTime() - new Date(prev.checked_at).getTime()) / 3600000;
         if (hrs > 0 && km > 25 && km / hrs > 120) spoof_flags.push('impossible_travel');
       }
       // 4. Poor GPS accuracy — informational (unreliable fix, not proof of fraud).
@@ -473,6 +501,7 @@ export default async function handler(req, res) {
         ip_risk: intel?.risk ?? null, ip_city: intel?.city || null, ip_country: intel?.country || null,
         ip_gps_km, spoof_flags: spoof_flags.length ? spoof_flags : null,
         blocked: blockVpn || null,
+        client_id: client_id || null, checked_at: effTime,
       }).select('id').single();
       if (error) return res.status(500).json({ error: error.message });
 
@@ -489,8 +518,8 @@ export default async function handler(req, res) {
       // already passed and it's 'missed' → 'late' (still counted, flagged).
       if (prof?.emp_no && source === 'notification') {
         const empN = String(prof.emp_no).trim();
-        const istDate = new Date(Date.now() + 5.5 * 3600 * 1000).toISOString().slice(0, 10);
-        const nowIso = new Date().toISOString();
+        const istDate = effIstDate;                 // the request's own day (real response time)
+        const nowIso = effTime;                     // record when they actually responded
         const { data: resp } = await supabaseAdmin.from('push_checks')
           .update({ status: 'responded', responded_at: nowIso, checkin_id: inserted?.id || null })
           .eq('emp_no', empN).eq('check_date', istDate).eq('status', 'pending').select('id');
@@ -512,8 +541,7 @@ export default async function handler(req, res) {
       // A 'notification' spot-check is location-only → it does NOT drive attendance/slots.
       let attendance_status = null;
       if (prof?.emp_no && source !== 'notification') {
-        const istDate = new Date(Date.now() + 5.5 * 3600 * 1000).toISOString().slice(0, 10);
-        try { attendance_status = (await autoMarkAttendance(supabaseAdmin, String(prof.emp_no).trim(), istDate)).status; } catch { /* non-fatal */ }
+        try { attendance_status = (await autoMarkAttendance(supabaseAdmin, String(prof.emp_no).trim(), effIstDate)).status; } catch { /* non-fatal */ }
       }
 
       return res.status(200).json({

@@ -16,6 +16,37 @@ const hav = (a, b, c, d) => {
 
 const buzz = (ms = 120) => { try { navigator.vibrate?.(ms); } catch { } };
 
+const uuid = () => (crypto?.randomUUID ? crypto.randomUUID() : Date.now() + '-' + Math.random().toString(16).slice(2));
+
+// ── Offline queue (IndexedDB) — SAME store the check-in page uses, so whichever page
+// is open when the network returns drains everything. See check-in App.jsx for notes.
+const OQ_DB = 'checkin_offline_v1';
+function oqOpen() {
+  return new Promise((res, rej) => {
+    const r = indexedDB.open(OQ_DB, 1);
+    r.onupgradeneeded = () => { if (!r.result.objectStoreNames.contains('pending')) r.result.createObjectStore('pending', { keyPath: 'client_id' }); };
+    r.onsuccess = () => res(r.result);
+    r.onerror = () => rej(r.error);
+  });
+}
+async function oqAdd(item) { const db = await oqOpen(); return new Promise((res, rej) => { const tx = db.transaction('pending', 'readwrite'); tx.objectStore('pending').put(item); tx.oncomplete = () => res(); tx.onerror = () => rej(tx.error); }); }
+async function oqAll() { try { const db = await oqOpen(); return await new Promise((res) => { const rq = db.transaction('pending', 'readonly').objectStore('pending').getAll(); rq.onsuccess = () => res(rq.result || []); rq.onerror = () => res([]); }); } catch { return []; } }
+async function oqDel(client_id) { try { const db = await oqOpen(); await new Promise((res) => { const tx = db.transaction('pending', 'readwrite'); tx.objectStore('pending').delete(client_id); tx.oncomplete = () => res(); tx.onerror = () => res(); }); } catch { } }
+async function oqSyncOne(getDb, it, userId) {
+  const token = (await getDb().auth.getSession()).data.session?.access_token;
+  if (!token) return 'retry';
+  const file = it.photo instanceof Blob ? new File([it.photo], `checkin_${it.client_id}.jpg`, { type: 'image/jpeg' }) : it.photo;
+  const photo_url = await window.uploadReceipt(file, userId);
+  if (!photo_url) throw new Error('photo upload failed');
+  const res = await fetch('/api/receipt-url', {
+    method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ checkin: { site_code: it.site_code, site_name: it.site_name, latitude: it.latitude, longitude: it.longitude, accuracy: it.accuracy, photo_url, source: it.source, client_id: it.client_id, captured_at: it.captured_at } }),
+  });
+  if (res.ok) { await oqDel(it.client_id); return 'done'; }
+  if (res.status >= 400 && res.status < 500 && res.status !== 429) { await oqDel(it.client_id); return 'done'; }
+  throw new Error('server ' + res.status);
+}
+
 // getUserMedia failures are opaque by default ("camera didn't open") — surface the
 // actual reason so the employee (and we) know whether it's permission, another app
 // holding the camera, no camera at all, or an insecure origin.
@@ -81,6 +112,7 @@ export default function App() {
   const [photoPreview, setPhotoPreview] = useState(null); // { file, url } | null — awaiting Retake/confirm
   const [busy, setBusy] = useState('');
   const [result, setResult] = useState(null);
+  const [pendingCount, setPendingCount] = useState(0);
   const [now, setNow] = useState(new Date());
   const [gpsPos, setGpsPos] = useState(null);        // { lat, lon, acc } live
   const [gpsErr, setGpsErr] = useState(false);
@@ -107,6 +139,24 @@ export default function App() {
   }, []);
 
   useEffect(() => { if (profile && window.populateSidebar) window.populateSidebar(profile); }, [profile]);
+
+  const refreshPending = async () => { setPendingCount((await oqAll()).length); };
+  const syncQueue = async () => {
+    if (!profile || !navigator.onLine) return;
+    const items = await oqAll();
+    for (const it of items) { try { await oqSyncOne(getDb, it, profile.id); } catch { break; } }
+    await refreshPending();
+    loadRequests(true);
+  };
+  useEffect(() => {
+    if (!profile) return;
+    refreshPending();
+    syncQueue();
+    const onOnline = () => syncQueue();
+    window.addEventListener('online', onOnline);
+    const iv = setInterval(() => { if (navigator.onLine) syncQueue(); }, 30000);
+    return () => { window.removeEventListener('online', onOnline); clearInterval(iv); };
+  }, [profile]);
   useEffect(() => { const iv = setInterval(() => setNow(new Date()), 30000); return () => clearInterval(iv); }, []);
 
   // Fallback readiness check: onLoadedMetadata doesn't fire reliably on every
@@ -200,7 +250,11 @@ export default function App() {
   useEffect(() => {
     if (!mapDivRef.current || mapRef.current || typeof window.L === 'undefined') return;
     const m = window.L.map(mapDivRef.current, { zoomControl: false, dragging: false, scrollWheelZoom: false, doubleClickZoom: false, boxZoom: false, keyboard: false, touchZoom: false });
-    window.L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '© OpenStreetMap' }).addTo(m);
+    // Satellite/aerial imagery (Esri World Imagery — free, no API key) + a transparent
+    // place-name/road label layer on top = a hybrid view that reads as almost-3D from
+    // above while staying light enough for low-end phones.
+    window.L.tileLayer('https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', { maxZoom: 19, attribution: 'Imagery © Esri' }).addTo(m);
+    window.L.tileLayer('https://services.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}', { maxZoom: 19, opacity: 0.9 }).addTo(m);
     m.setView([26.9124, 75.7873], 12);
     mapRef.current = m;
   });
@@ -211,7 +265,7 @@ export default function App() {
     if (siteLayerRef.current) { m.removeLayer(siteLayerRef.current); siteLayerRef.current = null; }
     const pts = [];
     if (siteGeo) {
-      siteLayerRef.current = window.L.circle([siteGeo.latitude, siteGeo.longitude], { radius: siteGeo.radius_m || 200, color: '#22c55e', weight: 2, fillColor: '#22c55e', fillOpacity: 0.15 }).addTo(m);
+      siteLayerRef.current = window.L.circle([siteGeo.latitude, siteGeo.longitude], { radius: siteGeo.radius_m || 200, color: '#22c55e', weight: 3, fillColor: '#22c55e', fillOpacity: 0.22 }).addTo(m);
       pts.push([siteGeo.latitude, siteGeo.longitude]);
     }
     if (gpsPos) {
@@ -303,19 +357,30 @@ export default function App() {
 
   async function submitLocation(file) {
     if (!navigator.geolocation) return window.showMessage("GPS isn't supported on this device.", 'error');
-    setBusy('Getting GPS…'); setResult(null);
+    setBusy(navigator.onLine ? 'Getting GPS…' : 'Getting GPS… (offline)'); setResult(null);
     navigator.geolocation.getCurrentPosition(async (pos) => {
       const { latitude, longitude, accuracy } = pos.coords;
+      const captured_at = new Date().toISOString();
+      const client_id = uuid();
+      const site = displaySite || { code: 'VERIFY', name: 'Location Verify' };
+      const queueIt = async () => {
+        await oqAdd({ client_id, site_code: site.code, site_name: site.name, latitude, longitude, accuracy, captured_at, source: 'notification', photo: file });
+        setResult({ ok: true, offline: true, text: 'Offline save ho gaya — network aate hi apne aap HR ko chala jayega.' });
+        buzz([80, 60, 80]);
+        if (photoPreview) URL.revokeObjectURL(photoPreview.url);
+        setPhotoPreview(null);
+        await refreshPending();
+      };
+      if (!navigator.onLine) { setBusy(''); return queueIt(); }
       try {
         const token = (await getDb().auth.getSession()).data.session?.access_token;
         setBusy('Uploading photo…');
         const photo_url = await window.uploadReceipt(file, profile.id);
         if (!photo_url) throw new Error('Photo upload failed — check your network and try again.');
         setBusy('Sending…');
-        const site = displaySite || { code: 'VERIFY', name: 'Location Verify' };
         const res = await fetch('/api/receipt-url', {
           method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-          body: JSON.stringify({ checkin: { site_code: site.code, site_name: site.name, latitude, longitude, accuracy, photo_url, source: 'notification' } }),
+          body: JSON.stringify({ checkin: { site_code: site.code, site_name: site.name, latitude, longitude, accuracy, photo_url, source: 'notification', client_id, captured_at } }),
         });
         const body = await res.json();
         if (!res.ok) throw new Error(body.error || 'Failed');
@@ -324,12 +389,15 @@ export default function App() {
         setTimeout(() => loadRequests(true), 1200);
         if (photoPreview) URL.revokeObjectURL(photoPreview.url);
         setPhotoPreview(null); // success → clear preview, show the result card below
-      } catch (err) { setResult({ ok: false, text: err.message }); } // keep the preview so Retake/confirm stay available to retry
+      } catch (err) {
+        if (!navigator.onLine || err?.name === 'TypeError') { await queueIt(); }
+        else { setResult({ ok: false, text: err.message }); } // keep the preview so Retake/confirm stay available to retry
+      }
       finally { setBusy(''); }
     }, (err) => {
       setBusy('');
       setResult({ ok: false, text: err.code === 1 ? 'GPS permission needed (allow location in the browser).' : "Couldn't get GPS location — try in the open." });
-    }, { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 });
+    }, { enableHighAccuracy: true, timeout: navigator.onLine ? 15000 : 30000, maximumAge: 0 });
   }
 
   const r = reqs[0];
@@ -376,6 +444,13 @@ export default function App() {
         </div>
 
         <main className="page-content" style={{ maxWidth: 520, margin: '0 auto', paddingTop: '.9rem' }}>
+          {pendingCount > 0 && (
+            <div style={{ background: '#fffbeb', border: '1.5px solid #fde68a', borderRadius: 14, padding: '.7rem 1rem', marginBottom: '.8rem', display: 'flex', alignItems: 'center', gap: '.6rem' }}>
+              <span style={{ fontSize: '1.1rem' }}>⏳</span>
+              <div style={{ flex: 1, fontSize: '.78rem', color: '#92400e' }}><b>{pendingCount} offline saved.</b> {navigator.onLine ? 'Syncing…' : 'Network aate hi chala jayega.'}</div>
+              {navigator.onLine && <button onClick={syncQueue} style={{ background: '#92400e', color: '#fff', border: 'none', borderRadius: 10, padding: '.5rem .9rem', fontWeight: 800, fontSize: '.78rem', cursor: 'pointer' }}>Sync now</button>}
+            </div>
+          )}
           {/* Map + site card — informational; resolved from the employee's profile,
               falling back to the nearest known site from live GPS (same as check-in).
               Rendered unconditionally (not gated behind `loading`) so mapDivRef is
@@ -482,7 +557,12 @@ export default function App() {
               {/* Result */}
               {result && (
                 <div style={{ marginBottom: '.9rem' }}>
-                  {result.ok ? (
+                  {result.offline ? (
+                    <div style={{ background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 14, padding: '1rem', color: '#92400e' }}>
+                      <div style={{ fontSize: '1rem', fontWeight: 800 }}>✅ Offline save ho gaya</div>
+                      <div style={{ fontSize: '.83rem', marginTop: '.2rem' }}>{result.text}</div>
+                    </div>
+                  ) : result.ok ? (
                     <div style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: 14, padding: '1rem', color: '#166534', boxShadow: '0 8px 24px rgba(15,23,42,.06)' }}>
                       <div style={{ fontSize: '1rem', fontWeight: 800 }}>✅ Location sent to HR</div>
                       <div style={{ fontSize: '.83rem', marginTop: '.2rem' }}>{result.text}</div>
