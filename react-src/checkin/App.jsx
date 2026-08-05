@@ -48,6 +48,19 @@ const buzz = (ms = 120) => { try { navigator.vibrate?.(ms); } catch { } };
 
 const uuid = () => (crypto?.randomUUID ? crypto.randomUUID() : Date.now() + '-' + Math.random().toString(16).slice(2));
 
+// Open-Meteo weather_code → a little icon + label (free API, no key).
+const wxFromCode = (c) => {
+  if (c == null) return { icon: '🌡️', label: 'Weather' };
+  if (c === 0) return { icon: '☀️', label: 'Clear' };
+  if (c <= 2) return { icon: '⛅', label: 'Partly cloudy' };
+  if (c === 3) return { icon: '☁️', label: 'Cloudy' };
+  if (c <= 48) return { icon: '🌫️', label: 'Fog' };
+  if (c <= 67) return { icon: '🌧️', label: 'Rain' };
+  if (c <= 77) return { icon: '🌨️', label: 'Snow' };
+  if (c <= 82) return { icon: '🌦️', label: 'Showers' };
+  return { icon: '⛈️', label: 'Storm' };
+};
+
 // ── Offline check-in queue (IndexedDB) ─────────────────────────────────────
 // When there's no network at a site, GPS + photo are still captured on the phone
 // (GPS is satellite-based, camera is local) — only the upload/record needs the
@@ -164,6 +177,9 @@ export default function App() {
   const [gpsPos, setGpsPos] = useState(null);        // { lat, lon, acc } live
   const [gpsErr, setGpsErr] = useState(false);
   const [now, setNow] = useState(new Date());
+  const [weather, setWeather] = useState(null);      // { temp, icon, label } | null
+  const [battery, setBattery] = useState(null);      // { level, charging } | null
+  const [recent, setRecent] = useState(null);        // last check-in row | null
   const videoRef = useRef(null);
   const streamRef = useRef(null);
   const sheetInputRef = useRef(null);
@@ -187,8 +203,40 @@ export default function App() {
       if (hit) setSiteVal(`${hit.name} — ${hit.code}`);
       refreshNotif();
       loadToday(prof);
+      loadRecent(prof);
       try { const reg = await navigator.serviceWorker?.ready; (await reg?.getNotifications())?.forEach((n) => n.close()); } catch { }
     })();
+  }, []);
+
+  // Last check-in (any day) — powers the "Recent Activity" card.
+  async function loadRecent(prof = profile) {
+    try {
+      const { data } = await getDb().from('attendance_checkins')
+        .select('site_name, site_code, inside_fence, checked_at, photo_url, source')
+        .eq('user_id', prof.id).order('checked_at', { ascending: false }).limit(1);
+      setRecent(data?.[0] || null);
+    } catch { }
+  }
+
+  // Weather from live GPS (Open-Meteo — free, no key). Fetched once GPS is known.
+  useEffect(() => {
+    if (!gpsPos || weather) return;
+    (async () => {
+      try {
+        const r = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${gpsPos.lat}&longitude=${gpsPos.lon}&current=temperature_2m,weather_code`);
+        const j = await r.json();
+        const t = j?.current?.temperature_2m;
+        if (t != null) setWeather({ temp: Math.round(t), ...wxFromCode(j.current.weather_code) });
+      } catch { }
+    })();
+  }, [gpsPos, weather]);
+
+  // Battery (where the browser supports it — Chrome/Android; not iOS Safari).
+  useEffect(() => {
+    let b;
+    const upd = () => setBattery({ level: Math.round(b.level * 100), charging: b.charging });
+    if (navigator.getBattery) navigator.getBattery().then((bat) => { b = bat; upd(); b.addEventListener('levelchange', upd); b.addEventListener('chargingchange', upd); }).catch(() => { });
+    return () => { if (b) { b.removeEventListener('levelchange', upd); b.removeEventListener('chargingchange', upd); } };
   }, []);
 
   useEffect(() => { if (profile && window.populateSidebar) window.populateSidebar(profile); }, [profile]);
@@ -522,42 +570,69 @@ export default function App() {
   const punchReady = notifOn && !!selected && !busy && !camOn && !photoPreview;
   const punchLabel = busy ? busy : !notifOn ? 'NOTIFS OFF' : !selected ? 'SELECT SITE' : 'CHECK IN';
 
-  const slotChip = (key, label) => {
-    const done = doneAt[key];
-    if (done) return <span key={key} style={{ fontSize: '.68rem', color: '#4ade80', fontWeight: 700 }}>✓ {label} {done}</span>;
-    if (key === nowKey) return <span key={key} style={{ fontSize: '.68rem', color: '#fbbf24', fontWeight: 700 }}>● {label} — do now</span>;
-    return <span key={key} style={{ fontSize: '.68rem', color: '#64748b', fontWeight: 600 }}>○ {label}</span>;
-  };
+  const greeting = now.getHours() < 12 ? 'Good Morning' : now.getHours() < 17 ? 'Good Afternoon' : 'Good Evening';
+  const fullDate = now.toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'short', year: 'numeric' });
+  const SLOT_ORDER = ['morning', 'afternoon', 'evening'];
+  const curIdx = SLOT_ORDER.indexOf(nowKey);
+  const slotStatus = (key) => doneAt[key] ? 'done' : (SLOT_ORDER.indexOf(key) <= curIdx ? 'pending' : 'locked');
+  const doneCount = SLOT_ORDER.filter((k) => doneAt[k]).length;
+  const pct = Math.round((doneCount / 3) * 100);
+  const recentDay = (() => {
+    if (!recent) return null;
+    const d = new Date(recent.checked_at), t = new Date(), y = new Date(); y.setDate(t.getDate() - 1);
+    const same = (a, b) => a.toDateString() === b.toDateString();
+    return same(d, t) ? 'Today' : same(d, y) ? 'Yesterday' : d.toLocaleDateString('en-IN', { day: '2-digit', month: 'short' });
+  })();
+  const navItem = (href, icon, label) => (
+    <a href={href} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3, fontSize: 11, color: '#94a3b8', fontWeight: 700, textDecoration: 'none' }}><span style={{ fontSize: 20 }}>{icon}</span>{label}</a>
+  );
 
   return (
     <div className="app-layout">
       <Sidebar />
-      <div className="app-main" style={{ background: '#f1f5f9' }}>
-        {/* Dark clock header */}
-        <div style={{ background: '#0f172a', padding: '0 0 1.15rem' }}>
-          <header className="topbar" style={{ background: 'transparent', borderBottom: 'none' }}>
-            <button className="topbar-menu" onClick={() => window.toggleSidebar()} aria-label="Open menu" style={{ color: '#94a3b8' }}>
-              <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 12h16M4 18h16" /></svg>
-            </button>
-            <span className="topbar-title" style={{ color: '#e2e8f0' }}>Hi{firstName ? `, ${firstName}` : ''}</span>
-            <div className="topbar-right">
-              {gpsPos && <span style={{ fontSize: '.68rem', fontWeight: 800, color: gpsPos.acc <= 100 ? '#4ade80' : '#fbbf24', background: 'rgba(255,255,255,.08)', border: '1px solid rgba(255,255,255,.15)', borderRadius: 999, padding: '3px 9px' }}>📡 ±{gpsPos.acc}m</span>}
-              {gpsErr && !gpsPos && <span style={{ fontSize: '.68rem', fontWeight: 800, color: '#f87171', background: 'rgba(255,255,255,.08)', borderRadius: 999, padding: '3px 9px' }}>📡 GPS off</span>}
-            </div>
-          </header>
-          <div style={{ textAlign: 'center' }}>
-            <div style={{ color: '#fff', fontSize: '2.1rem', fontWeight: 700, letterSpacing: '.02em', fontVariantNumeric: 'tabular-nums', lineHeight: 1 }}>
-              {clockMain}<span style={{ fontSize: '1rem', color: '#64748b' }}>:{clockSec} {clockAmPm}</span>
-            </div>
-            <div style={{ fontSize: '.74rem', color: '#94a3b8', marginTop: 5 }}>{dateLabel} · <span style={{ color: '#fbbf24', fontWeight: 700 }}>{SLOTS.find((s) => s.key === nowKey).label} slot</span></div>
-          </div>
-          <div style={{ display: 'flex', justifyContent: 'center', gap: 14, marginTop: 10, flexWrap: 'wrap', padding: '0 .75rem' }}>
-            {SLOTS.map((s) => slotChip(s.key, s.label))}
-          </div>
-        </div>
+      <style>{`@media(max-width:640px){.ci-main{padding-bottom:86px}}@media(min-width:641px){.ci-bnav{display:none}}`}</style>
+      <div className="app-main ci-main" style={{ background: '#eef2f7' }}>
+        <main className="page-content" style={{ maxWidth: 480, margin: '0 auto', padding: '14px 16px 0' }}>
 
-        <main className="page-content" style={{ maxWidth: 520, margin: '0 auto', paddingTop: '.9rem' }}>
+          {/* Header — greeting + date + bell */}
+          <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
+            <div style={{ display: 'flex', gap: 10 }}>
+              <button onClick={() => window.toggleSidebar()} aria-label="Menu" style={{ background: 'none', border: 'none', marginTop: 5, cursor: 'pointer', display: 'flex', flexDirection: 'column', gap: 5, padding: 0 }}>
+                <span style={{ width: 22, height: 2.5, background: '#0f172a', borderRadius: 2 }} />
+                <span style={{ width: 16, height: 2.5, background: '#0f172a', borderRadius: 2 }} />
+                <span style={{ width: 20, height: 2.5, background: '#0f172a', borderRadius: 2 }} />
+              </button>
+              <div>
+                <div style={{ fontSize: 20, fontWeight: 800, letterSpacing: '-.3px', color: '#0f172a' }}>{greeting}{firstName ? `, ${firstName}` : ''} 👋</div>
+                <div style={{ fontSize: 13, color: '#64748b', marginTop: 2 }}>{fullDate}</div>
+              </div>
+            </div>
+            <div style={{ width: 44, height: 44, borderRadius: 14, background: '#fff', boxShadow: '0 4px 14px rgba(15,23,42,.08)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20, position: 'relative', flexShrink: 0 }}>🔔
+              {(pendingCount > 0 || (!notifOn && notifState !== 'unsupported')) && <span style={{ position: 'absolute', top: 11, right: 12, width: 8, height: 8, background: '#ef4444', borderRadius: '50%', border: '2px solid #fff' }} />}
+            </div>
+          </div>
+
+          {/* Clock + weather */}
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 16 }}>
+            <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
+              <span style={{ fontSize: 42, fontWeight: 800, letterSpacing: '-1px', lineHeight: 1, fontVariantNumeric: 'tabular-nums', color: '#0f172a' }}>{clockMain}</span>
+              <span style={{ fontSize: 17, fontWeight: 700, color: '#64748b' }}>{clockAmPm}</span>
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, background: '#eff6ff', color: '#2563eb', fontSize: 12, fontWeight: 800, padding: '5px 11px', borderRadius: 999, marginLeft: 4 }}><span className="punch-ring" style={{ width: 7, height: 7, background: '#2563eb', borderRadius: '50%' }} />LIVE</span>
+            </div>
+            {weather && <div style={{ background: '#fff', borderRadius: 16, boxShadow: '0 4px 14px rgba(15,23,42,.07)', display: 'flex', alignItems: 'center', gap: 9, padding: '9px 13px' }}><span style={{ fontSize: 24 }}>{weather.icon}</span><div><div style={{ fontSize: 18, fontWeight: 800 }}>{weather.temp}°C</div><div style={{ fontSize: 11, color: '#64748b' }}>{weather.label}</div></div></div>}
+          </div>
+
+          {/* GPS status */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 14, marginBottom: 4, fontSize: 13, fontWeight: 600, flexWrap: 'wrap' }}>
+            {gpsPos ? (<>
+              <span style={{ display: 'flex', alignItems: 'center', gap: 6, color: gpsPos.acc <= 20 ? '#16a34a' : gpsPos.acc <= 100 ? '#b45309' : '#dc2626', fontWeight: 700 }}><span style={{ width: 9, height: 9, borderRadius: '50%', background: 'currentColor', boxShadow: '0 0 0 4px rgba(34,197,94,.18)' }} />{gpsPos.acc <= 20 ? 'GPS Excellent' : gpsPos.acc <= 100 ? 'GPS Good' : 'GPS Weak'}</span>
+              <span style={{ width: 1, height: 14, background: '#cbd5e1' }} />
+              <span style={{ color: '#334155' }}>🎯 Accuracy {gpsPos.acc} m</span>
+            </>) : gpsErr ? <span style={{ color: '#dc2626', fontWeight: 700 }}>📡 GPS off — allow location</span> : <span style={{ color: '#64748b' }}>📡 Getting GPS…</span>}
+          </div>
+
           {/* Offline queue banner — check-ins saved on the phone, waiting for network */}
+          <div style={{ marginTop: 8 }} />
           {pendingCount > 0 && (
             <div style={{ background: '#fffbeb', border: '1.5px solid #fde68a', borderRadius: 14, padding: '.7rem 1rem', marginBottom: '.8rem', display: 'flex', alignItems: 'center', gap: '.6rem' }}>
               <span style={{ fontSize: '1.1rem' }}>⏳</span>
@@ -583,41 +658,36 @@ export default function App() {
             </div>
           )}
 
-          {/* Map + site card */}
-          <div style={{ background: '#fff', borderRadius: 16, overflow: 'hidden', marginBottom: '.9rem', boxShadow: '0 4px 16px rgba(15,23,42,.08)' }}>
-            <div ref={mapDivRef} style={{ height: 150, background: '#dbeafe' }} />
-            <div style={{ display: 'flex', alignItems: 'center', gap: '.6rem', padding: '.65rem .85rem' }}>
+          {/* Current site card */}
+          <div style={{ background: '#fff', borderRadius: 20, boxShadow: '0 6px 22px rgba(15,23,42,.06)', padding: 16, marginTop: 8 }}>
+            <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
+              <div style={{ width: 46, height: 46, borderRadius: 14, background: '#f0fdf4', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 22, flexShrink: 0 }}>🏢</div>
               <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 12, color: '#64748b', fontWeight: 600 }}>Current Site</div>
                 {selected ? (
                   <>
-                    <div style={{ fontWeight: 800, fontSize: '.88rem', color: '#0f172a', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                      {selected.name} <span style={{ color: '#64748b', fontWeight: 600, fontSize: '.72rem' }}>{selected.code}</span>
-                      {autoPicked && !userPicked && (
-                        <span style={{ marginLeft: 6, background: '#eff6ff', color: '#2563eb', borderRadius: 5, padding: '1px 6px', fontSize: '.62rem', fontWeight: 800, whiteSpace: 'nowrap' }}>📍 auto-detected</span>
-                      )}
-                    </div>
-                    <div style={{ fontSize: '.74rem', fontWeight: 700, marginTop: 1, color: liveInside === true ? '#16a34a' : liveInside === false ? '#b45309' : '#64748b' }}>
-                      {!siteGeo ? 'Fence not set — GPS will still be recorded'
-                        : liveDist == null ? 'Waiting for GPS…'
-                        : liveInside ? `You are ${liveDist} m from site — inside fence`
-                        : `You are ${liveDist} m from site — outside fence`}
-                    </div>
+                    <div style={{ fontSize: 18, fontWeight: 800, marginTop: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{selected.name} <span style={{ color: '#64748b', fontWeight: 600, fontSize: 13 }}>{selected.code}</span></div>
+                    {siteGeo && liveInside != null
+                      ? <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, background: liveInside ? '#f0fdf4' : '#fffbeb', color: liveInside ? '#16a34a' : '#b45309', fontSize: 12, fontWeight: 700, padding: '4px 10px', borderRadius: 999, marginTop: 6 }}>{liveInside ? '✓ Inside Geofence' : '⚠️ Outside Geofence'}</span>
+                      : !siteGeo ? <div style={{ fontSize: 12, color: '#64748b', fontWeight: 600, marginTop: 5 }}>Fence not set — GPS still recorded</div> : null}
+                    {autoPicked && !userPicked && <span style={{ marginLeft: 6, background: '#eff6ff', color: '#2563eb', borderRadius: 5, padding: '1px 6px', fontSize: 11, fontWeight: 800 }}>📍 auto</span>}
                   </>
-                ) : (
-                  <div style={{ fontSize: '.85rem', color: '#64748b', fontWeight: 600 }}>Select your site to see the fence</div>
-                )}
+                ) : <div style={{ fontSize: 16, fontWeight: 800, marginTop: 1, color: '#64748b' }}>Select your site</div>}
               </div>
-              <button onClick={() => { setSheetOpen(true); setSheetQ(''); }} style={{ background: '#f1f5f9', border: 'none', borderRadius: 10, padding: '.5rem .8rem', fontWeight: 800, fontSize: '.78rem', color: '#2563eb', cursor: 'pointer', flexShrink: 0 }}>
-              {selected ? 'Change ▾' : 'Select ▾'}
-              </button>
+              <button onClick={() => { setSheetOpen(true); setSheetQ(''); }} style={{ background: 'none', border: 'none', color: '#2563eb', fontSize: 13, fontWeight: 700, cursor: 'pointer', flexShrink: 0, padding: 0 }}>{selected ? 'Change ›' : 'Select ›'}</button>
             </div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginTop: 14 }}>
+              <div style={{ background: '#f8fafc', borderRadius: 14, padding: '11px 13px', display: 'flex', alignItems: 'center', gap: 10 }}><div style={{ width: 34, height: 34, borderRadius: 10, background: '#eff6ff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16, flexShrink: 0 }}>📍</div><div style={{ minWidth: 0 }}><div style={{ fontSize: 11, color: '#64748b', fontWeight: 600 }}>Distance from site</div><div style={{ fontSize: 15, fontWeight: 800 }}>{liveDist != null ? `${liveDist} m` : '—'}</div></div></div>
+              <div style={{ background: '#f8fafc', borderRadius: 14, padding: '11px 13px', display: 'flex', alignItems: 'center', gap: 10 }}><div style={{ width: 34, height: 34, borderRadius: 10, background: '#f0fdf4', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16, flexShrink: 0 }}>🛡️</div><div style={{ minWidth: 0 }}><div style={{ fontSize: 11, color: '#64748b', fontWeight: 600 }}>Status</div><div style={{ fontSize: 15, fontWeight: 800, color: liveInside === true ? '#16a34a' : liveInside === false ? '#b45309' : '#64748b' }}>{liveInside === true ? 'Inside Fence' : liveInside === false ? 'Outside' : siteGeo ? '—' : 'No fence'}</div></div></div>
+            </div>
+            <div ref={mapDivRef} style={{ height: 170, borderRadius: 16, marginTop: 14, overflow: 'hidden', background: '#dbeafe' }} />
           </div>
 
           {/* Camera (one-tap flow). The <video> stays mounted at all times (like the
               working vanilla page did) — only hidden via display:none — so when
               openCamera() runs, the element already exists and srcObject can be
               assigned immediately with no mount-timing race. */}
-          <div style={{ position: 'relative', marginBottom: camOn ? '.9rem' : 0, display: camOn ? 'block' : 'none' }}>
+          <div style={{ position: 'relative', marginTop: camOn ? 16 : 0, marginBottom: camOn ? '.9rem' : 0, display: camOn ? 'block' : 'none' }}>
             <video ref={videoRef} playsInline autoPlay muted onLoadedMetadata={() => setCamReady(true)}
               style={{ width: '100%', height: 320, objectFit: 'cover', borderRadius: 16, background: '#000', display: 'block', transform: 'scaleX(-1)' }} />
             {camOn && !camReady && (
@@ -638,7 +708,7 @@ export default function App() {
 
           {/* Photo preview — review before submitting (Retake or confirm) */}
           {!camOn && photoPreview && (
-            <div style={{ marginBottom: '.9rem' }}>
+            <div style={{ marginTop: 16, marginBottom: '.9rem' }}>
               <div style={{ position: 'relative', borderRadius: 16, overflow: 'hidden' }}>
                 <img src={photoPreview.url} alt="Captured" style={{ width: '100%', height: 320, objectFit: 'cover', display: 'block' }} />
                 <span style={{ position: 'absolute', top: 10, left: 10, background: 'rgba(15,23,42,.7)', color: '#fff', borderRadius: 8, padding: '3px 10px', fontSize: '.7rem', fontWeight: 700 }}>Review your photo</span>
@@ -654,30 +724,22 @@ export default function App() {
             </div>
           )}
 
-          {/* Round punch button */}
+          {/* CHECK IN gradient button */}
           {!camOn && !photoPreview && (
-            <>
-              <div style={{ display: 'flex', justifyContent: 'center', padding: '.4rem 0 .5rem' }}>
-                <div style={{ position: 'relative', width: 150, height: 150 }}>
-                  {punchReady && <div className="punch-ring" style={{ position: 'absolute', inset: 0, borderRadius: '50%', background: 'rgba(34,197,94,.25)' }} />}
-                  {punchReady && <div className="punch-ring r2" style={{ position: 'absolute', inset: 0, borderRadius: '50%', background: 'rgba(34,197,94,.18)' }} />}
-                  <button onClick={startCheckin} disabled={!!busy}
-                    style={{ position: 'absolute', inset: 12, borderRadius: '50%', border: 'none', cursor: busy ? 'wait' : 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 3, color: '#fff', background: punchReady ? 'linear-gradient(135deg,#22c55e,#15803d)' : busy ? 'linear-gradient(135deg,#0ea5e9,#0369a1)' : 'linear-gradient(135deg,#94a3b8,#64748b)', boxShadow: punchReady ? '0 12px 28px rgba(21,128,61,.4)' : '0 10px 22px rgba(15,23,42,.2)' }}>
-                    <span style={{ fontSize: '1.5rem', lineHeight: 1 }}>{busy ? '⏳' : '👆'}</span>
-                    <span style={{ fontWeight: 800, fontSize: busy ? '.72rem' : '.95rem', letterSpacing: '.04em', padding: '0 .5rem', textAlign: 'center' }}>{punchLabel}</span>
-                    {!busy && <span style={{ fontSize: '.62rem', color: 'rgba(255,255,255,.75)', fontWeight: 600 }}>photo + GPS</span>}
-                  </button>
-                </div>
-              </div>
-              <div style={{ textAlign: 'center', fontSize: '.72rem', color: '#94a3b8', marginBottom: '.9rem' }}>
-                {punchReady ? 'Tap → camera → photo → review → check in' : !notifOn ? 'Enable notifications above to continue' : !selected ? 'Tap to choose your site' : ''}
-              </div>
-            </>
+            <button onClick={startCheckin} disabled={!!busy}
+              style={{ width: '100%', marginTop: 16, border: 'none', borderRadius: 20, padding: 20, display: 'flex', alignItems: 'center', gap: 16, color: '#fff', cursor: busy ? 'wait' : 'pointer', textAlign: 'left', background: busy ? 'linear-gradient(100deg,#0ea5e9,#0369a1)' : 'linear-gradient(100deg,#16a34a 0%,#22c55e 42%,#2563eb 100%)', boxShadow: '0 12px 26px rgba(37,99,235,.28)' }}>
+              <span style={{ width: 60, height: 60, borderRadius: '50%', background: 'rgba(255,255,255,.95)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 26, flexShrink: 0 }}>{busy ? '⏳' : '📷'}</span>
+              <span style={{ minWidth: 0 }}>
+                <span style={{ display: 'block', fontSize: 22, fontWeight: 800, letterSpacing: '.3px' }}>{busy ? busy : !notifOn ? 'ENABLE NOTIFS' : !selected ? 'SELECT SITE' : 'CHECK IN'}</span>
+                <span style={{ display: 'block', fontSize: 13, opacity: .9, marginTop: 2 }}>Photo + GPS Verification</span>
+              </span>
+              <span style={{ marginLeft: 'auto', fontSize: 22, opacity: .9 }}>›</span>
+            </button>
           )}
 
           {/* Result */}
           {result && (
-            <div style={{ marginBottom: '.9rem' }}>
+            <div style={{ marginTop: 16, marginBottom: '.9rem' }}>
               {result.offline ? (
                 <div style={{ background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 14, padding: '1rem', color: '#92400e' }}>
                   <div style={{ fontSize: '1rem', fontWeight: 800 }}>✅ Offline save ho gaya</div>
@@ -709,35 +771,107 @@ export default function App() {
             </div>
           )}
 
-          {/* Today timeline */}
-          <div style={{ background: '#fff', borderRadius: 16, padding: '1rem', marginBottom: '1.2rem', boxShadow: '0 4px 14px rgba(15,23,42,.06)' }}>
-            <div style={{ fontSize: '.72rem', fontWeight: 800, color: '#64748b', textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: '.6rem' }}>Today</div>
-            {today.length === 0 && !doneAt[nowKey] && (
-              <div style={{ fontSize: '.82rem', color: '#94a3b8' }}>No check-ins yet — {SLOTS.find((s) => s.key === nowKey).label} slot is open.</div>
-            )}
-            {today.map((c, i) => (
-              <div key={i} style={{ display: 'flex', gap: '.6rem', alignItems: 'flex-start', paddingBottom: '.55rem' }}>
-                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', alignSelf: 'stretch' }}>
-                  <span style={{ width: 9, height: 9, borderRadius: '50%', background: c.inside_fence ? '#22c55e' : '#f59e0b', marginTop: 4, flexShrink: 0 }}></span>
-                  {i < today.length - 1 && <span style={{ width: 1.5, flex: 1, background: '#e2e8f0', marginTop: 2 }}></span>}
-                </div>
-                <div style={{ flex: 1, minWidth: 0, fontSize: '.83rem' }}>
-                  <span style={{ fontWeight: 700, color: '#0f172a' }}>{c.site_name}</span>
-                  {c.source === 'notification' && <span style={{ marginLeft: 6, background: '#f1f5f9', color: '#475569', borderRadius: 5, padding: '1px 6px', fontSize: '.62rem', fontWeight: 800 }}>🔔 verify</span>}
-                  <div style={{ color: '#94a3b8', fontSize: '.72rem', marginTop: 1 }}>
-                    {timeIN(c.checked_at)} · {c.inside_fence ? 'inside fence' : c.inside_fence === false ? 'outside fence' : 'no fence'}{c.distance_m != null ? ` · ${c.distance_m}m` : ''} {c.photo_url ? '· 📷' : ''}
+          {/* Today's Slots */}
+          <div style={{ background: '#fff', borderRadius: 20, boxShadow: '0 6px 22px rgba(15,23,42,.06)', padding: 16, marginTop: 16 }}>
+            <div style={{ fontSize: 16, fontWeight: 800, marginBottom: 14 }}>📅 Today's Slots</div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 10 }}>
+              {SLOTS.map((s) => {
+                const st = slotStatus(s.key);
+                const bg = st === 'done' ? '#f0fdf4' : st === 'pending' ? '#fffbeb' : '#f1f5f9';
+                const bBg = st === 'done' ? '#dcfce7' : st === 'pending' ? '#fef3c7' : '#e2e8f0';
+                const bCol = st === 'done' ? '#16a34a' : st === 'pending' ? '#b45309' : '#64748b';
+                const badge = st === 'done' ? '✓ Completed' : st === 'pending' ? '⏳ Pending' : '🔒 Locked';
+                const icon = { morning: '☀️', afternoon: '⛅', evening: '🌙' }[s.key];
+                return (
+                  <div key={s.key} style={{ background: bg, borderRadius: 15, padding: 12 }}>
+                    <div style={{ fontSize: 20 }}>{icon}</div>
+                    <div style={{ fontSize: 14, fontWeight: 800, marginTop: 6 }}>{s.label}</div>
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3, background: bBg, color: bCol, fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 999, marginTop: 6 }}>{badge}</span>
+                    <div style={{ fontSize: 10, color: '#94a3b8', marginTop: 9, textTransform: 'uppercase', letterSpacing: '.03em' }}>Check-in</div>
+                    <div style={{ fontSize: 13, fontWeight: 800, marginTop: 2, color: st === 'done' ? '#0f172a' : '#94a3b8' }}>{doneAt[s.key] || '---'}</div>
                   </div>
-                </div>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Today's Progress */}
+          <div style={{ background: '#fff', borderRadius: 20, boxShadow: '0 6px 22px rgba(15,23,42,.06)', padding: 16, marginTop: 16, display: 'flex', alignItems: 'center', gap: 18 }}>
+            <div style={{ width: 100, height: 100, borderRadius: '50%', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: `conic-gradient(#22c55e ${pct / 100}turn, #e5edf5 ${pct / 100}turn)` }}>
+              <div style={{ width: 78, height: 78, borderRadius: '50%', background: '#fff', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
+                <div style={{ fontSize: 21, fontWeight: 800 }}>{pct}%</div><div style={{ fontSize: 10, color: '#64748b' }}>Complete</div>
               </div>
-            ))}
-            {!doneAt[nowKey] && (
-              <div style={{ display: 'flex', gap: '.6rem', alignItems: 'center' }}>
-                <span style={{ width: 9, height: 9, borderRadius: '50%', border: '2px solid #f59e0b', flexShrink: 0 }}></span>
-                <span style={{ fontSize: '.8rem', fontWeight: 700, color: '#b45309' }}>{SLOTS.find((s) => s.key === nowKey).label} — pending</span>
+            </div>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: 16, fontWeight: 800 }}>Today's Progress</div>
+              <div style={{ fontSize: 12, color: '#64748b', margin: '2px 0 12px' }}>{doneCount === 3 ? 'All done — great job!' : doneCount > 0 ? "Keep it up! You're doing great." : 'Start your first check-in.'}</div>
+              <div style={{ display: 'flex', alignItems: 'center' }}>
+                {SLOTS.map((s, i) => {
+                  const st = slotStatus(s.key);
+                  const cBg = st === 'done' ? '#22c55e' : st === 'pending' ? '#fff' : '#e2e8f0';
+                  const cCol = st === 'done' ? '#fff' : st === 'pending' ? '#f59e0b' : '#94a3b8';
+                  const sCol = st === 'done' ? '#16a34a' : st === 'pending' ? '#b45309' : '#94a3b8';
+                  const sTxt = st === 'done' ? 'Completed' : st === 'pending' ? 'Pending' : 'Locked';
+                  return (
+                    <React.Fragment key={s.key}>
+                      {i > 0 && <div style={{ height: 2, flex: 1, background: slotStatus(SLOT_ORDER[i - 1]) === 'done' ? '#22c55e' : '#e5edf5', marginBottom: 22 }} />}
+                      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', width: 62 }}>
+                        <div style={{ width: 26, height: 26, borderRadius: '50%', background: cBg, border: st === 'pending' ? '2px solid #f59e0b' : 'none', color: cCol, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13 }}>{st === 'done' ? '✓' : st === 'locked' ? '🔒' : '○'}</div>
+                        <div style={{ fontSize: 10, fontWeight: 700, marginTop: 5 }}>{s.label}</div>
+                        <div style={{ fontSize: 9, marginTop: 1, color: sCol }}>{sTxt}</div>
+                      </div>
+                    </React.Fragment>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+
+          {/* Recent activity */}
+          {recent && (
+            <div style={{ background: '#fff', borderRadius: 20, boxShadow: '0 6px 22px rgba(15,23,42,.06)', padding: 16, marginTop: 16 }}>
+              <div style={{ fontSize: 16, fontWeight: 800, marginBottom: 14 }}>🕘 Recent Activity</div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                <div style={{ width: 52, height: 52, borderRadius: 14, background: '#eff6ff', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                  <div style={{ fontSize: 18, fontWeight: 800, color: '#2563eb', lineHeight: 1 }}>{String(new Date(recent.checked_at).getDate()).padStart(2, '0')}</div>
+                  <div style={{ fontSize: 10, fontWeight: 700, color: '#2563eb' }}>{new Date(recent.checked_at).toLocaleDateString('en-IN', { month: 'short' }).toUpperCase()}</div>
+                </div>
+                <div style={{ minWidth: 0, flex: 1 }}>
+                  <div style={{ color: '#2563eb', fontSize: 14, fontWeight: 800 }}>{recentDay}</div>
+                  <div style={{ fontSize: 12, color: '#64748b' }}>Check-in · <b style={{ color: '#0f172a' }}>{timeIN(recent.checked_at)}</b></div>
+                  <div style={{ fontSize: 12, fontWeight: 700, marginTop: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{recent.site_name}</div>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: recent.inside_fence === false ? '#b45309' : '#16a34a' }}>{recent.inside_fence === false ? 'Outside fence' : recent.inside_fence ? 'Inside Fence ✓' : 'Recorded'}</div>
+                </div>
+                <button onClick={() => recent.photo_url && window.viewReceipt && window.viewReceipt(recent.photo_url)} style={{ width: 52, height: 44, borderRadius: 10, border: 'none', background: 'linear-gradient(135deg,#93c5fd,#c7d2fe)', cursor: recent.photo_url ? 'pointer' : 'default', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16 }}>{recent.photo_url ? '📷' : ''}</button>
+              </div>
+            </div>
+          )}
+
+          {/* Battery + Connection */}
+          <div style={{ display: 'grid', gridTemplateColumns: battery ? '1fr 1fr' : '1fr', gap: 12, marginTop: 16, marginBottom: 16 }}>
+            {battery && (
+              <div style={{ background: '#fff', borderRadius: 16, padding: '13px 14px', boxShadow: '0 6px 22px rgba(15,23,42,.05)', display: 'flex', alignItems: 'center', gap: 10 }}>
+                <span style={{ fontSize: 20 }}>{battery.charging ? '🔌' : battery.level <= 20 ? '🪫' : '🔋'}</span>
+                <div style={{ minWidth: 0 }}><div style={{ fontSize: 12, fontWeight: 800 }}>Battery</div><div style={{ fontSize: 10, color: '#64748b' }}>{battery.level <= 20 ? 'Low — may affect GPS' : 'Healthy'}</div></div>
+                <div style={{ marginLeft: 'auto', fontSize: 13, fontWeight: 800, color: battery.level <= 20 ? '#f59e0b' : '#16a34a' }}>{battery.level}%</div>
               </div>
             )}
+            <div style={{ background: '#fff', borderRadius: 16, padding: '13px 14px', boxShadow: '0 6px 22px rgba(15,23,42,.05)', display: 'flex', alignItems: 'center', gap: 10 }}>
+              <span style={{ fontSize: 20, color: navigator.onLine ? '#16a34a' : '#94a3b8' }}>📶</span>
+              <div style={{ minWidth: 0 }}><div style={{ fontSize: 12, fontWeight: 800 }}>Connection</div><div style={{ fontSize: 10, color: '#64748b' }}>{navigator.onLine ? 'All systems operational' : 'Offline — check-ins queue'}</div></div>
+              <div style={{ marginLeft: 'auto', fontSize: 13, fontWeight: 800, color: navigator.onLine ? '#16a34a' : '#94a3b8' }}>{navigator.onLine ? 'Online' : 'Offline'}</div>
+            </div>
           </div>
         </main>
+      </div>
+
+      {/* Bottom nav (mobile only — CSS hides ≥641px) */}
+      <div className="ci-bnav" style={{ position: 'fixed', bottom: 0, left: '50%', transform: 'translateX(-50%)', width: '100%', maxWidth: 480, background: '#fff', boxShadow: '0 -6px 24px rgba(15,23,42,.08)', display: 'flex', alignItems: 'center', justifyContent: 'space-around', padding: '10px 14px calc(10px + env(safe-area-inset-bottom))', borderRadius: '22px 22px 0 0', zIndex: 900 }}>
+        {navItem('dashboard.html', '🏠', 'Home')}
+        {navItem('add-expense.html', '🧾', 'Expense')}
+        <a href="checkin-react.html" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1, width: 56, height: 56, borderRadius: '50%', background: '#2563eb', color: '#fff', textDecoration: 'none', justifyContent: 'center', marginTop: -30, boxShadow: '0 10px 22px rgba(37,99,235,.4)', fontSize: 11, fontWeight: 700, flexShrink: 0 }}><span style={{ fontSize: 20 }}>📷</span>Check In</a>
+        {navItem('location-request-react.html', '📍', 'Location')}
+        {navItem('profile.html', '👤', 'Profile')}
       </div>
 
       {/* Bottom-sheet site picker */}
