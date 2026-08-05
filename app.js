@@ -265,6 +265,9 @@ async function logout() {
       await sub.unsubscribe().catch(() => {});
     }
   } catch { }
+  // Clear the check-in "notifications on" hint so the next person on this browser
+  // is asked to enable afresh (see notificationsOn() in the check-in page).
+  try { localStorage.removeItem('checkin_notif_on'); } catch { }
   await db.auth.signOut();
   window.location.href = 'index.html';
 }

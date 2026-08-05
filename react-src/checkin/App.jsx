@@ -36,8 +36,12 @@ const urlB64ToUint8 = (base64) => {
 };
 
 async function notificationsOn() {
-  if (!('Notification' in window) || Notification.permission !== 'granted') return false;
-  try { const reg = await navigator.serviceWorker.ready; return !!(await reg.pushManager.getSubscription()); } catch { return false; }
+  // Some Android browsers (notably Samsung Internet) return getSubscription() as null
+  // even right after a successful subscribe — which left this banner stuck on "Turn ON"
+  // and blocked check-in entirely. So: if the browser reports a live subscription, trust
+  // it; otherwise fall back to a flag we persist only after a confirmed server-side save.
+  try { const reg = await navigator.serviceWorker?.ready; if (reg && (await reg.pushManager.getSubscription())) return true; } catch { }
+  try { return localStorage.getItem('checkin_notif_on') === '1'; } catch { return false; }
 }
 
 const buzz = (ms = 120) => { try { navigator.vibrate?.(ms); } catch { } };
@@ -298,6 +302,7 @@ export default function App() {
       const token = (await getDb().auth.getSession()).data.session?.access_token;
       const res = await fetch('/api/receipt-url', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: JSON.stringify({ subscribe_push: sub.toJSON() }) });
       if (!res.ok) throw new Error((await res.json()).error || 'Save failed');
+      try { localStorage.setItem('checkin_notif_on', '1'); } catch { }
       window.showMessage('Check-in verification is ON ✓', 'success');
       refreshNotif();
     } catch (err) { window.showMessage("Couldn't turn on notifications: " + err.message, 'error'); }
