@@ -1136,3 +1136,27 @@ function escHtml(str) {
     document.head.appendChild(s);
   } catch (_) { /* non-fatal — falls back to normal navigation */ }
 })();
+
+// ── Build/version badge ───────────────────────────────────────────────────
+// Shows the currently-deployed version (sw.js CACHE_VERSION) in a tiny, unobtrusive
+// bottom-left label on every page — so anyone can confirm at a glance which build is
+// live after a deploy. Reads the live sw.js (no-cache) so it always reflects prod.
+(function showVersionBadge() {
+  const paint = async () => {
+    try {
+      const res = await fetch('/sw.js', { cache: 'no-store' });
+      const m = (await res.text()).match(/CACHE_VERSION\s*=\s*['"]([^'"]+)['"]/);
+      if (!m) return;
+      let el = document.getElementById('app-version-badge');
+      if (!el) {
+        el = document.createElement('div');
+        el.id = 'app-version-badge';
+        el.style.cssText = 'position:fixed;bottom:3px;left:5px;font:600 10px/1 ui-monospace,monospace;color:#94a3b8;opacity:.55;z-index:2147483000;pointer-events:none;user-select:none';
+        document.body && document.body.appendChild(el);
+      }
+      el.textContent = 'v' + m[1];
+    } catch (_) { /* non-fatal */ }
+  };
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', paint);
+  else paint();
+})();
