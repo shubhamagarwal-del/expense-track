@@ -590,8 +590,7 @@ export default function App() {
   return (
     <div className="app-layout">
       <Sidebar />
-      <style>{`@media(max-width:640px){.ci-main{padding-bottom:86px}}@media(min-width:641px){.ci-bnav{display:none}}`}</style>
-      <div className="app-main ci-main" style={{ background: '#eef2f7' }}>
+      <div className="app-main" style={{ background: '#eef2f7' }}>
         <main className="page-content" style={{ maxWidth: 480, margin: '0 auto', padding: '14px 16px 0' }}>
 
           {/* Header — greeting + date + bell */}
@@ -865,14 +864,6 @@ export default function App() {
         </main>
       </div>
 
-      {/* Bottom nav (mobile only — CSS hides ≥641px) */}
-      <div className="ci-bnav" style={{ position: 'fixed', bottom: 0, left: '50%', transform: 'translateX(-50%)', width: '100%', maxWidth: 480, background: '#fff', boxShadow: '0 -6px 24px rgba(15,23,42,.08)', display: 'flex', alignItems: 'center', justifyContent: 'space-around', padding: '10px 14px calc(10px + env(safe-area-inset-bottom))', borderRadius: '22px 22px 0 0', zIndex: 900 }}>
-        {navItem('dashboard.html', '🏠', 'Home')}
-        {navItem('add-expense.html', '🧾', 'Expense')}
-        <a href="checkin-react.html" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1, width: 56, height: 56, borderRadius: '50%', background: '#2563eb', color: '#fff', textDecoration: 'none', justifyContent: 'center', marginTop: -30, boxShadow: '0 10px 22px rgba(37,99,235,.4)', fontSize: 11, fontWeight: 700, flexShrink: 0 }}><span style={{ fontSize: 20 }}>📷</span>Check In</a>
-        {navItem('location-request-react.html', '📍', 'Location')}
-        {navItem('profile.html', '👤', 'Profile')}
-      </div>
 
       {/* Bottom-sheet site picker */}
       {sheetOpen && (

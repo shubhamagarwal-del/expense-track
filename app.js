@@ -1186,3 +1186,38 @@ function escHtml(str) {
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', paint);
   else paint();
 })();
+
+// ── Mobile bottom navigation (every app page) ─────────────────────────────
+// A single injected bottom nav bar so navigation is consistent app-wide on
+// phones. Shown only ≤640px (desktop keeps the sidebar). Skips the login/help
+// pages. The check-in page renders NO nav of its own — this is the one source.
+(function mobileBottomNav() {
+  try {
+    const path = (location.pathname.split('/').pop() || 'index.html').toLowerCase();
+    if (['index.html', '', 'help.html'].includes(path)) return;
+    const items = [
+      { href: 'dashboard.html', icon: '🏠', label: 'Home' },
+      { href: 'add-expense.html', icon: '🧾', label: 'Expense' },
+      { href: 'checkin-react.html', icon: '📷', label: 'Check In', fab: true },
+      { href: 'location-request-react.html', icon: '📍', label: 'Location' },
+      { href: 'profile.html', icon: '👤', label: 'Profile' },
+    ];
+    const build = () => {
+      if (!document.body || document.getElementById('app-bottom-nav')) return;
+      const style = document.createElement('style');
+      style.textContent = '@media(min-width:641px){#app-bottom-nav{display:none!important}}@media(max-width:640px){.app-main{padding-bottom:86px!important}#app-version-badge{bottom:72px!important}}';
+      document.head.appendChild(style);
+      const nav = document.createElement('nav');
+      nav.id = 'app-bottom-nav';
+      nav.style.cssText = 'position:fixed;bottom:0;left:50%;transform:translateX(-50%);width:100%;max-width:480px;background:#fff;box-shadow:0 -6px 24px rgba(15,23,42,.08);display:flex;align-items:center;justify-content:space-around;padding:10px 14px calc(10px + env(safe-area-inset-bottom));border-radius:22px 22px 0 0;z-index:900;font-family:inherit';
+      nav.innerHTML = items.map((it) => {
+        const active = path === it.href.toLowerCase();
+        if (it.fab) return `<a href="${it.href}" style="display:flex;flex-direction:column;align-items:center;gap:1px;width:56px;height:56px;border-radius:50%;background:#2563eb;color:#fff;text-decoration:none;justify-content:center;margin-top:-30px;box-shadow:0 10px 22px rgba(37,99,235,.4);font-size:11px;font-weight:700;flex-shrink:0"><span style="font-size:20px">${it.icon}</span>${it.label}</a>`;
+        return `<a href="${it.href}" style="display:flex;flex-direction:column;align-items:center;gap:3px;font-size:11px;color:${active ? '#2563eb' : '#94a3b8'};font-weight:700;text-decoration:none"><span style="font-size:20px">${it.icon}</span>${it.label}</a>`;
+      }).join('');
+      document.body.appendChild(nav);
+    };
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', build);
+    else build();
+  } catch (_) { /* non-fatal */ }
+})();
