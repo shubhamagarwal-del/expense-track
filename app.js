@@ -139,7 +139,10 @@ let _cfgCache = null;
 async function initSupabase() {
   if (db) return db;
   if (!_cfgCache) {
-    const stored = sessionStorage.getItem('_sbcfg');
+    // Persist in localStorage (not sessionStorage) so the config survives the app
+    // being closed and is available OFFLINE — otherwise reopening at a no-signal
+    // site would fail the /api/config fetch and bounce the user to login.
+    const stored = localStorage.getItem('_sbcfg') || sessionStorage.getItem('_sbcfg');
     if (stored) {
       try { _cfgCache = JSON.parse(stored); } catch { _cfgCache = null; }
     }
@@ -151,9 +154,12 @@ async function initSupabase() {
       try { _cfgCache = JSON.parse(cfgText); } catch {
         throw new Error('Invalid config response from server. Please refresh and try again.');
       }
-      try { sessionStorage.setItem('_sbcfg', JSON.stringify(_cfgCache)); } catch { }
+      try { localStorage.setItem('_sbcfg', JSON.stringify(_cfgCache)); } catch { }
     }
   }
+  // Always mirror into localStorage (even if it came from the old sessionStorage
+  // cache) so it's there OFFLINE on the next app open.
+  try { localStorage.setItem('_sbcfg', JSON.stringify(_cfgCache)); } catch { }
   const { url, key } = _cfgCache;
   db = window.supabase.createClient(url, key, {
     realtime: { params: { eventsPerSecond: 5 } }
@@ -167,24 +173,44 @@ async function initSupabase() {
 async function requireAuth() {
   await initSupabase();
   const { data: { session } } = await db.auth.getSession();
-  if (!session) { window.location.href = 'index.html'; return null; }
-  return session.user;
+  if (session) return session.user;
+  // No session from storage. If we're OFFLINE, don't bounce to a login page that
+  // needs the network anyway — a transient offline token-refresh failure must not
+  // log a field employee out mid-shift. Fall back to the last-known cached identity.
+  if (!navigator.onLine) {
+    try { const c = JSON.parse(localStorage.getItem('_profile_v1') || 'null'); if (c?.id) return { id: c.id }; } catch { }
+  }
+  window.location.href = 'index.html';
+  return null;
 }
 
 // In-memory profile cache — cleared when the page unloads (tab closes / navigates)
 let _profileCache = null;
 
-/** Fetch the logged-in user's row from the `users` table. Cached per page load. */
+/** Fetch the logged-in user's row from the `users` table. Cached per page load,
+ *  and persisted so it's available OFFLINE (getUser() makes a network call and
+ *  would fail with no signal — we use the local session id + a cached profile). */
 async function getUserProfile() {
   if (_profileCache) return _profileCache;
   await initSupabase();
-  const { data: { user } } = await db.auth.getUser();
-  if (!user) return null;
-  const { data, error } = await db
-    .from('users').select('*').eq('id', user.id).single();
-  if (error) { console.error('getUserProfile:', error.message); return null; }
-  _profileCache = data;
-  return data;
+  const cached = () => { try { return JSON.parse(localStorage.getItem('_profile_v1') || 'null'); } catch { return null; } };
+  // Local session (no network) instead of getUser() (network) — works offline.
+  const { data: { session } } = await db.auth.getSession();
+  const user = session?.user;
+  if (!user) { const c = cached(); return c ? (_profileCache = c) : null; }
+  try {
+    const { data, error } = await db.from('users').select('*').eq('id', user.id).single();
+    if (error) throw error;
+    _profileCache = data;
+    try { localStorage.setItem('_profile_v1', JSON.stringify(data)); } catch { }
+    return data;
+  } catch (e) {
+    // Network fetch failed (offline) → fall back to the last-known profile.
+    const c = cached();
+    if (c && c.id === user.id) return (_profileCache = c);
+    console.error('getUserProfile:', e?.message || e);
+    return null;
+  }
 }
 
 /**
@@ -265,9 +291,9 @@ async function logout() {
       await sub.unsubscribe().catch(() => {});
     }
   } catch { }
-  // Clear the check-in "notifications on" hint so the next person on this browser
-  // is asked to enable afresh (see notificationsOn() in the check-in page).
-  try { localStorage.removeItem('checkin_notif_on'); } catch { }
+  // Clear the check-in "notifications on" hint + the cached offline profile so the
+  // next person on this browser starts clean (asked to enable afresh, no stale identity).
+  try { localStorage.removeItem('checkin_notif_on'); localStorage.removeItem('_profile_v1'); } catch { }
   await db.auth.signOut();
   window.location.href = 'index.html';
 }
