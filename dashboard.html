@@ -1162,7 +1162,7 @@
       let d = e.description || '', f = '', t = '';
       if (type === 'TRAVEL') { f = parts[1] || ''; t = parts[2] || ''; d = parts[4] || ''; }
       else if (['TRAVEL_BUS', 'TRAVEL_TAXI', 'TRAVEL_TRAIN', 'TRAVEL_FLIGHT'].includes(type)) { f = parts[1] || ''; t = parts[2] || ''; d = parts[4] || ''; }
-      else if (type === 'TRAVEL_BIKE') { d = parts[5] || ''; }
+      else if (type === 'TRAVEL_BIKE') { f = parts[2] || ''; t = parts[3] || ''; d = parts[5] || ''; }
       else if (type === 'OTHER') { d = `(${parts[1] || ''}) ${parts[3] || ''}`; }
       else if (type === 'REGULAR') { d = parts[2] || ''; }
       else if (type === 'FOOD') { d = parts[2] || ''; }
