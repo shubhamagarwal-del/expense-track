@@ -4,9 +4,10 @@
 
 // ── DEPARTMENTS ───────────────────────────────────────
 const DEPARTMENTS = [
-  'Account', 'Compliance', 'Export Improvements', 'Finance', 'HR',
-  'Lease', 'Legal', 'Liaison', 'Logistics', 'O&M',
-  'Procurement', 'Project', 'Purchase', 'Sales', 'Tender', 'TL',
+  'Account', 'Admin', 'Compliance', 'Design', 'Export Improvements',
+  'Finance', 'HR', 'IT', 'Lease', 'Legal',
+  'Liaison', 'Logistics', 'O&M', 'Procurement', 'Project',
+  'Purchase', 'Roof top', 'Sales', 'Tender', 'TL',
 ];
 
 // ── DUE / PAYMENT STATUS EXCLUSIONS ─────────────────────────
