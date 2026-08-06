@@ -954,7 +954,10 @@ function viewExpenseReceipts(urlOrJson, expenseId) {
     </div>`;
   picker.addEventListener('click', (ev) => {
     const btn = ev.target.closest('[data-url]');
-    if (btn) { viewReceipt(btn.dataset.url, expenseId); picker.remove(); return; }
+    // Open the receipt on top of this list (viewer z-index 10000 > picker 9999)
+    // but DON'T close the list — so after closing the image the user lands back
+    // here and can open the next receipt without reopening the whole picker.
+    if (btn) { viewReceipt(btn.dataset.url, expenseId); return; }
     if (ev.target === picker) picker.remove();
   });
   document.body.appendChild(picker);
