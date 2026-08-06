@@ -1691,8 +1691,11 @@
       Object.keys(_rowNewFiles).forEach(k => delete _rowNewFiles[k]);
     }
 
+    let _savingDay = false;
     async function saveDailyEntries(e) {
       e.preventDefault();
+      if (_savingDay) return;            // guard: block double-submit (a duplicate-row cause)
+      _savingDay = true;
       const btn = document.getElementById('save-btn');
       setLoading(btn, true);
       const dateIso = document.getElementById('entry-date').value;
@@ -1717,7 +1720,7 @@
         const siteInput = row.querySelector('.row-site');
         const site = siteInput.value.trim();
         if (!isValidSiteValue(site)) {
-          setLoading(btn, false);
+          setLoading(btn, false); _savingDay = false;
           siteInput.focus();
           markSiteValidity(siteInput);
           showSiteError(siteInput, 'Please select a valid site from the list before saving.');
@@ -1743,7 +1746,7 @@
         if (category === 'Hotel Room Rent') {
           const roomLimit = CATEGORY_LIMITS['Hotel Room Rent'];
           if (amount > roomLimit && newFiles.length === 0 && existingUrlsForRow.length === 0) {
-            setLoading(btn, false);
+            setLoading(btn, false); _savingDay = false;
             showMessage('Hotel Room Rent above ₹700 requires proof. Please upload a document before saving.', 'error');
             return;
           }
@@ -1794,11 +1797,17 @@
 
         // Delete via server-side API (service role key bypasses RLS — direct client delete silently fails)
         const { data: { session } } = await db.auth.getSession();
-        await fetch('/api/delete-expenses', {
+        const delRes = await fetch('/api/delete-expenses', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.access_token}` },
           body: JSON.stringify({ ids: currentDayPendingIds, date_start: startOfDay, date_end: endOfDay })
         });
+        // When we're REPLACING existing entries, the delete MUST succeed before we
+        // insert — otherwise the old rows stay and the new ones duplicate them.
+        // (A silent failure here is exactly what built up the duplicate rows earlier.)
+        if (!delRes.ok && currentDayPendingIds.length > 0) {
+          throw new Error('Could not remove the previous entries (server error). Nothing was saved — please try again.');
+        }
 
         if (newEntries.length > 0) await db.from('expenses').insert(newEntries);
         invalidateExpensesCache(); // new/edited rows — clear cached lists
@@ -1806,7 +1815,7 @@
         closeEntryPanel();
         await renderSheet();
       } catch (err) { showMessage(err.message, 'error'); }
-      finally { setLoading(btn, false); }
+      finally { setLoading(btn, false); _savingDay = false; }
     }
 
     // ── Site autocomplete ─────────────────────────────────
