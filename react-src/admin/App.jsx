@@ -3,6 +3,7 @@
 // (requireAuth, getUserProfile, db, populateSidebar, viewReceipt, showMessage)
 // and the same API endpoints — functionality and data are identical.
 import React, { useEffect, useMemo, useRef, useState } from 'react';
+import Sidebar from '../Sidebar.jsx';
 
 /* global db, XLSX */
 const getDb = () => (typeof db !== 'undefined' ? db : window.db);
@@ -47,36 +48,7 @@ const card = (label, val, col) => (
   </div>
 );
 
-const Sidebar = () => (
-  <>
-    <div className="sidebar-overlay" id="sidebar-overlay" onClick={() => window.closeSidebar()}></div>
-    <nav className="sidebar" id="sidebar">
-      <div className="sidebar-logo">
-        <div className="logo-icon"><img src="/icon-192.png" alt="ExpenseTrack" /></div>
-        <span className="logo-text">ExpenseTrack</span>
-      </div>
-      <div className="sidebar-nav">
-        <p className="sidebar-nav-label">Menu</p>
-        <a href="dashboard.html" className="sidebar-link">
-          <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" /></svg>
-          Dashboard
-        </a>
-        <a href="checkins-react.html" className="sidebar-link active">
-          <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M17.657 16.657L13.414 20.9a2 2 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" /><path strokeLinecap="round" strokeLinejoin="round" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
-          Site Check-ins
-        </a>
-        <a href="profile.html" className="sidebar-link">
-          <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" /></svg>
-          My Profile
-        </a>
-        <a href="#" onClick={(e) => { e.preventDefault(); window.logout(); }} className="sidebar-link">
-          <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" /></svg>
-          Sign Out
-        </a>
-      </div>
-    </nav>
-  </>
-);
+// Sidebar is the shared component imported from ../Sidebar.jsx.
 
 export default function App() {
   const [profile, setProfile] = useState(null);
@@ -355,7 +327,7 @@ export default function App() {
 
   return (
     <div className="app-layout">
-      <Sidebar />
+      <Sidebar active="checkins-react.html" />
       <div className="app-main">
         <header className="topbar">
           <button className="topbar-menu" onClick={() => window.toggleSidebar()} aria-label="Open menu">
