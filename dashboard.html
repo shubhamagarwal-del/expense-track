@@ -4146,8 +4146,16 @@
             lines: cleared.length, submitted_total: submittedTotal, approved_total: approvedTotal,
           } })
         });
+        // A 413 (or any non-JSON error) must be handled BEFORE res.json(), else
+        // parsing the plain-text "Request Entity Too Large" body throws a cryptic
+        // "Unexpected token 'R'" instead of a clear message.
+        if (!res.ok) {
+          if (res.status === 413) throw new Error('Report too large to push — this cycle has too many/large receipts. Receipts are auto-compressed now, so try again; if it still fails, the cycle simply has too many receipts for a single push.');
+          let em = `Push failed (HTTP ${res.status})`;
+          try { const b = await res.json(); em = b.error || em; } catch {}
+          throw new Error(em);
+        }
         const body = await res.json();
-        if (!res.ok) throw new Error(body.error || 'Push failed');
         if (body.already_exists) {
           showMessage(`ℹ️ Already pushed — claim already exists for ${monthYear} ${cycleText}.`, 'success');
         } else {
@@ -4612,6 +4620,14 @@
       // skips touching the toolbar button and the progress overlay entirely.
       const silent = !!opts.returnBase64;
 
+      // For pushes (silent = Push to Accounts), compress the embedded receipt
+      // images so the base64 payload stays under the serverless request-body
+      // limit — a cycle with many/large receipts otherwise pushes a JSON body
+      // over ~4.5MB and Vercel rejects it with 413 ("Request Entity Too Large").
+      // Downloads (!silent) keep full resolution/quality.
+      const RCPT_MAX = silent ? 1400 : Infinity;   // max long-side px for embedded receipts
+      const RCPT_Q   = silent ? 0.68 : 0.88;        // JPEG quality
+
       const btn = document.getElementById('btn-export-pdf') || { disabled: false, innerHTML: '' };
       const origHTML = btn.innerHTML;
       if (!silent) btn.disabled = true;
@@ -4704,10 +4720,12 @@
             img.onload = () => {
               const nw = img.naturalWidth, nh = img.naturalHeight;
               const swap = [5,6,7,8].includes(orient);
+              const sc = Math.min(1, RCPT_MAX / Math.max(nw, nh)); // downscale big receipts for pushes
               const canvas = document.createElement('canvas');
-              canvas.width  = swap ? nh : nw;
-              canvas.height = swap ? nw : nh;
+              canvas.width  = Math.round((swap ? nh : nw) * sc);
+              canvas.height = Math.round((swap ? nw : nh) * sc);
               const ctx = canvas.getContext('2d');
+              ctx.scale(sc, sc);
               switch (orient) {
                 case 2: ctx.transform(-1,0,0,1,nw,0); break;
                 case 3: ctx.transform(-1,0,0,-1,nw,nh); break;
@@ -4719,7 +4737,7 @@
               }
               ctx.drawImage(img, 0, 0);
               URL.revokeObjectURL(objUrl);
-              resolve({ b64: canvas.toDataURL('image/jpeg', 0.88), w: canvas.width, h: canvas.height });
+              resolve({ b64: canvas.toDataURL('image/jpeg', RCPT_Q), w: canvas.width, h: canvas.height });
             };
             img.onerror = () => { URL.revokeObjectURL(objUrl); resolve(null); };
             img.src = objUrl;
@@ -4738,12 +4756,14 @@
             const pages = [];
             for (let i = 1; i <= pdfDoc.numPages; i++) {
               const page = await pdfDoc.getPage(i);
-              const viewport = page.getViewport({ scale: 2 });
+              const vp1 = page.getViewport({ scale: 1 });
+              const scl = Math.min(2, RCPT_MAX / Math.max(vp1.width, vp1.height)); // cap size for pushes
+              const viewport = page.getViewport({ scale: scl });
               const canvas = document.createElement('canvas');
               canvas.width = viewport.width;
               canvas.height = viewport.height;
               await page.render({ canvasContext: canvas.getContext('2d'), viewport }).promise;
-              pages.push({ b64: canvas.toDataURL('image/jpeg', 0.88), w: canvas.width, h: canvas.height });
+              pages.push({ b64: canvas.toDataURL('image/jpeg', RCPT_Q), w: canvas.width, h: canvas.height });
             }
             return pages;
           } catch { return []; }
