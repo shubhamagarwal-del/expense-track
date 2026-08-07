@@ -2222,6 +2222,7 @@
                                   ${l1Done ? `<div style="font-size:.68rem;color:var(--text-muted);margin-top:.25rem">L1: ${escHtml(e.l1_by_name||'—')}${e.l1_remark?` — ${escHtml(e.l1_remark)}`:''}</div>` : ''}
                                   ${l2Done ? `<div style="font-size:.68rem;color:var(--text-muted)">L2: ${escHtml(e.l2_by_name||'—')}${e.l2_remark?` — ${escHtml(e.l2_remark)}`:''}</div>` : ''}
                                   ${auditDone ? `<div style="font-size:.68rem;color:var(--text-muted)">Audit: ${escHtml(e.audit_by_name||'—')}${e.audit_note?` — ${escHtml(e.audit_note)}`:''}</div>` : ''}
+                                  ${e.reopened_by_name ? `<div style="font-size:.68rem;color:#b45309;font-weight:600;margin-top:.15rem">🔄 Re-reviewed by ${escHtml(e.reopened_by_name)}${e.reopened_at?` · ${new Date(e.reopened_at).toLocaleDateString('en-IN',{day:'2-digit',month:'short'})}`:''}</div>` : ''}
                                 </td>
                                 <td style="padding:.75rem;text-align:right">
                                   <div style="display:flex;gap:.4rem;justify-content:flex-end;align-items:center;flex-wrap:wrap">
@@ -2923,7 +2924,7 @@
         ${formatCurrency(approvedAmt)}
         ${amtChanged ? `<div style="font-size:.68rem;color:#059669;font-weight:600">Adjusted</div>` : ''}
       </td>
-      <td>${statusBadge(e.status)}<div style="margin-top:4px">${approvalStepper(e)}</div>${e.status === 'audit_cleared' ? `<div style="font-size:.62rem;color:var(--text-muted);margin-top:.2rem">Audit: ${escHtml(e.audit_by_name||'—')}</div>` : ''}</td>
+      <td>${statusBadge(e.status)}<div style="margin-top:4px">${approvalStepper(e)}</div>${e.status === 'audit_cleared' ? `<div style="font-size:.62rem;color:var(--text-muted);margin-top:.2rem">Audit: ${escHtml(e.audit_by_name||'—')}</div>` : ''}${e.reopened_by_name?`<div style="font-size:.62rem;color:#b45309;font-weight:600;margin-top:.2rem">🔄 Re-reviewed by ${escHtml(e.reopened_by_name)}</div>`:''}</td>
       <td>${receiptCell(e)}</td>
     </tr>`;
     }
@@ -2997,6 +2998,7 @@
       ${e.status === 'deleted' ? `<div class="expense-card-desc" style="color: #991b1b; background: #fee2e2; padding: 0.5rem; border-radius: 4px; margin-top: 0.5rem;">${t('deleted_by', e.deleted_by_name ? escHtml(e.deleted_by_name) : '', escHtml(e.deleted_reason || 'No reason given'))}</div>` : ''}
       ${e.status === 'audit_query' ? `<div class="expense-card-desc" style="color: #991b1b; background: #fee2e2; padding: 0.5rem; border-radius: 4px; margin-top: 0.5rem;">${t('rejected_by_audit', e.audit_by_name ? escHtml(e.audit_by_name) : '', escHtml(e.audit_note || 'Needs correction'))}</div>` : ''}
       ${e.status === 'audit_cleared' ? `<div style="font-size:.68rem;color:var(--text-muted);margin-top:.35rem">Audit: ${escHtml(e.audit_by_name||'—')}</div>` : ''}
+      ${e.reopened_by_name?`<div style="font-size:.68rem;color:#b45309;font-weight:600;margin-top:.25rem">🔄 Re-reviewed by ${escHtml(e.reopened_by_name)}${e.reopened_at?` · ${new Date(e.reopened_at).toLocaleDateString('en-IN',{day:'2-digit',month:'short'})}`:''}</div>`:''}
       ${e.status === 'superseded' ? (() => {
         const newEntry = findResubmissionOf(e);
         const inner = newEntry
@@ -3081,6 +3083,7 @@
       ${e.l1_remark ? `<div class="expense-card-desc" style="background:#eff6ff;padding:.4rem;border-radius:4px;margin-top:.25rem;font-size:.78rem;border-left:3px solid #3b82f6"><strong>L1 Remark:</strong> ${escHtml(e.l1_remark)}</div>` : ''}
       ${e.l2_remark ? `<div class="expense-card-desc" style="background:#f0fdf4;padding:.4rem;border-radius:4px;margin-top:.25rem;font-size:.78rem;border-left:3px solid #22c55e"><strong>L2 Remark:</strong> ${escHtml(e.l2_remark)}</div>` : ''}
       ${e.status === 'audit_cleared' ? `<div style="font-size:.7rem;color:var(--text-muted);margin-top:.25rem">Audit: ${escHtml(e.audit_by_name||'—')}</div>` : ''}
+      ${e.reopened_by_name?`<div style="font-size:.7rem;color:#b45309;font-weight:600;margin-top:.25rem">🔄 Re-reviewed by ${escHtml(e.reopened_by_name)}${e.reopened_at?` · ${new Date(e.reopened_at).toLocaleDateString('en-IN',{day:'2-digit',month:'short'})}`:''}</div>`:''}
       ${receiptCardFooter(e)}
       <div class="expense-card-footer" style="display:grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; margin-top: 0.5rem; border-top: 1px solid var(--border); padding-top: 0.5rem;">
         ${showL1Btn ? `<button onclick="openApprovalModal('${e.id}')" class="btn btn-primary btn-sm" style="grid-column:1/-1;background:#2563eb;border-color:#2563eb;font-size:.82rem;padding:.35rem" title="Approve this expense as Manager">✅ Manager — Approve</button>` : ''}
@@ -3566,7 +3569,7 @@
         const json = await res.json();
         if (!res.ok) throw new Error(json.error || 'Failed');
         showMessage('↩ Wapas audit review me bhej diya (Needs Audit)', 'success');
-        applyAuditChangeLocal(expenseId, { status: 'hr_approved', audit_by_name: null, audit_at: null, audit_note: null });
+        applyAuditChangeLocal(expenseId, { status: 'hr_approved', audit_by_name: null, audit_at: null, audit_note: null, reopened_by_name: currentProfile.name, reopened_at: new Date().toISOString() });
       } catch (err) { showMessage('Re-review failed: ' + err.message, 'error'); }
     }
 
@@ -5708,6 +5711,7 @@
                         ${e.l1_by_name?`<div style="font-size:.62rem;color:var(--text-muted);margin-top:.2rem">L1: ${escHtml(e.l1_by_name)}</div>`:''}
                         ${e.l2_by_name?`<div style="font-size:.62rem;color:var(--text-muted)">L2: ${escHtml(e.l2_by_name)}</div>`:''}
                         ${(e.status === 'audit_cleared' || e.status === 'audit_query') && e.audit_by_name?`<div style="font-size:.62rem;color:var(--text-muted)">Audit: ${escHtml(e.audit_by_name)}</div>`:''}
+                        ${e.reopened_by_name?`<div style="font-size:.62rem;color:#b45309;font-weight:600">🔄 Re-reviewed by ${escHtml(e.reopened_by_name)}</div>`:''}
                         ${parseReceiptUrls(e.receipt_url).length?`<a href="javascript:void(0)" data-rcpt-eid="${e.id}" onclick="viewExpenseReceipts('${escHtml(e.receipt_url)}','${e.id}')" style="font-size:.68rem;color:var(--primary);font-weight:600">📎 ${parseReceiptUrls(e.receipt_url).length>1?parseReceiptUrls(e.receipt_url).length+' Receipts':'Receipt'}</a>${receiptSeenBadge(e.id)}`:''}
                         ${['super_admin','hr'].includes(currentProfile.role)?`<button data-sa-edit="${e.id}" onclick="saEditReceipt('${e.id}')" style="display:block;margin-top:.2rem;background:none;border:1px solid var(--border);border-radius:5px;padding:1px 7px;font-size:.65rem;cursor:pointer;color:var(--text-muted)">📎 ${parseReceiptUrls(e.receipt_url).length?'Edit':'Add'} Receipt</button>`:''}
                       </td>

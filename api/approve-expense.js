@@ -194,6 +194,7 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: 'Only an audit-cleared expense can be re-opened for review' });
     const { error: rErr } = await supabaseAdmin.from('expenses').update({
       status: 'hr_approved', audit_by: null, audit_by_name: null, audit_at: null, audit_note: null,
+      reopened_by: user.id, reopened_by_name: profile.name, reopened_at: new Date().toISOString(),
     }).eq('id', expense_id).eq('status', 'audit_cleared');
     if (rErr) return res.status(500).json({ error: rErr.message });
     return res.status(200).json({ message: 'Re-opened for audit review', status: 'hr_approved' });
