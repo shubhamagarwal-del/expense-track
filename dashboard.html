@@ -2241,6 +2241,9 @@
                                     ${(currentProfile.role==='audit' && e.status==='hr_approved') ? `
                                       <button onclick="auditClearExpense('${e.id}')" title="Audit Clear" style="background:#14532d;color:#fff;border:none;border-radius:10px;padding:.45rem 1rem;cursor:pointer;font-size:.82rem;font-weight:700;white-space:nowrap;box-shadow:0 2px 8px rgba(20,83,45,0.3);transition:all .15s" onmouseover="this.style.background='#0f4423';this.style.transform='translateY(-1px)'" onmouseout="this.style.background='#14532d';this.style.transform=''">🔍 Clear</button>
                                     ` : ''}
+                                    ${(['audit','super_admin'].includes(currentProfile.role) && e.status==='audit_cleared') ? `
+                                      <button onclick="reopenAuditExpense('${e.id}')" title="Send this cleared entry back into audit review" style="background:#b45309;color:#fff;border:none;border-radius:10px;padding:.45rem 1rem;cursor:pointer;font-size:.82rem;font-weight:700;white-space:nowrap;box-shadow:0 2px 8px rgba(180,83,9,0.3);transition:all .15s" onmouseover="this.style.background='#92400e';this.style.transform='translateY(-1px)'" onmouseout="this.style.background='#b45309';this.style.transform=''">🔄 Re-review</button>
+                                    ` : ''}
                                     ${!['deleted','superseded'].includes(e.status) ? `<button onclick="deleteExpense('${e.id}')" title="Delete" style="background:none;border:1px solid #fecaca;border-radius:8px;padding:.4rem .6rem;cursor:pointer;font-size:.85rem;color:#dc2626;transition:background .15s" onmouseover="this.style.background='#fef2f2'" onmouseout="this.style.background='none'">🗑️</button>` : ''}
                                   </div>
                                 </td>
@@ -3537,6 +3540,33 @@
         showMessage('Expense audit cleared ✓', 'success');
         applyAuditChangeLocal(expenseId, { status: 'audit_cleared', audit_by_name: currentProfile.name, audit_at: new Date().toISOString() });
       } catch (err) { showMessage(err.message, 'error'); }
+    }
+
+    /** Re-open a wrongly audit-cleared entry back into review (audit-cleared → hr_approved,
+     *  i.e. the audit "Needs Audit" queue). Warns first if the cycle was already pushed to Accounts. */
+    async function reopenAuditExpense(expenseId) {
+      const e = allExpensesFetched.find(x => x.id === expenseId);
+      if (!e) return;
+      const date = new Date(e.created_at);
+      const mY = date.toLocaleString('default', { month: 'long', year: 'numeric' });
+      const cT = date.getDate() <= 15 ? '1st - 15th' : '16th - End';
+      const pushed = portalClaimsByKey[`${e.user_id}|${mY}|${cT}`];
+      const msg = pushed
+        ? '⚠️ Is cycle ka claim Accounts Portal me PUSH ho chuka hai — wapas review me bhejne se accounting mismatch ho sakta hai.\n\nPhir bhi audit-cleared ko wapas review me bhejein?'
+        : 'Is entry ko wapas Audit review me bhejein?\n(Audit Cleared → Needs Audit — audit dobara decide karega)';
+      if (!confirm(msg)) return;
+      try {
+        const { data: { session } } = await db.auth.getSession();
+        const res = await fetch('/api/approve-expense', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session?.access_token}` },
+          body: JSON.stringify({ expense_id: expenseId, action: 'reopen_audit' })
+        });
+        const json = await res.json();
+        if (!res.ok) throw new Error(json.error || 'Failed');
+        showMessage('↩ Wapas audit review me bhej diya (Needs Audit)', 'success');
+        applyAuditChangeLocal(expenseId, { status: 'hr_approved', audit_by_name: null, audit_at: null, audit_note: null });
+      } catch (err) { showMessage('Re-review failed: ' + err.message, 'error'); }
     }
 
     function openAuditFlagModal(expenseId) {

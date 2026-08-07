@@ -146,7 +146,7 @@ export default async function handler(req, res) {
 
   // ── SINGLE mode: { expense_id, action, remark, audit_note } ──
   const { expense_id, action, approved_amount, remark, audit_note, category } = req.body;
-  const validActions = ['approved', 'rejected', 'hr_approved', 'audit_cleared', 'audit_review', 'audit_query', 'update_category'];
+  const validActions = ['approved', 'rejected', 'hr_approved', 'audit_cleared', 'audit_review', 'audit_query', 'update_category', 'reopen_audit'];
   if (!expense_id || !validActions.includes(action))
     return res.status(400).json({ error: 'Invalid request body' });
 
@@ -181,6 +181,22 @@ export default async function handler(req, res) {
         error: `You can only approve expenses from the ${profile.department} department`
       });
     }
+  }
+
+  // ── Re-open a cleared expense back into review (Audit / Super Admin only) ──
+  // An audit-cleared line that was cleared by mistake goes back to hr_approved,
+  // so it re-enters the audit "Needs Audit" queue and can be re-decided. Audit
+  // fields are wiped so the re-review starts fresh.
+  if (action === 'reopen_audit') {
+    if (!['audit', 'super_admin'].includes(profile.role))
+      return res.status(403).json({ error: 'Only Audit or Super Admin can re-open a cleared expense' });
+    if (expense.status !== 'audit_cleared')
+      return res.status(400).json({ error: 'Only an audit-cleared expense can be re-opened for review' });
+    const { error: rErr } = await supabaseAdmin.from('expenses').update({
+      status: 'hr_approved', audit_by: null, audit_by_name: null, audit_at: null, audit_note: null,
+    }).eq('id', expense_id).eq('status', 'audit_cleared');
+    if (rErr) return res.status(500).json({ error: rErr.message });
+    return res.status(200).json({ message: 'Re-opened for audit review', status: 'hr_approved' });
   }
 
   const now = new Date().toISOString();
