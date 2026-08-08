@@ -1364,11 +1364,19 @@ async function pushClaimToPortal(req, res, db, actingUser, actingProfile) {
 
   const httpStatus = portalRes.status;
 
+  // The push sends `cycle` in the portal's compact form ("1st-15th"/"16th-End"),
+  // but every LOCAL lookup (dashboard "✓ Pushed" badge, payment-sheet status,
+  // re-open guard) keys on the spaced form ("1st - 15th"/"16th - End"). Store the
+  // spaced form here or the recorded claim can never be matched back to its cycle.
+  const cycleTextLocal = cycle
+    ? (cycle.includes('1st') ? '1st - 15th' : '16th - End')
+    : (portalJson?.cycle || null);
+
   // ── 200: claim created → record locally, return summary ──
   if (httpStatus === 200 && portalJson?.ok) {
     await recordClaim(db, {
       user_id, employee_number, employee_name,
-      month_year: month || portalJson.month, cycle_text: cycle || portalJson.cycle,
+      month_year: month || portalJson.month, cycle_text: cycleTextLocal || portalJson.cycle,
       claim_id: portalJson.claim_id, status: 'pushed',
       lines: portalJson.lines ?? cLines, submitted_total, approved_total: portalJson.approved_total ?? approved_total,
       pushed_by: actingUser.id, pushed_by_name: actingProfile.name, response: portalJson,
@@ -1380,7 +1388,7 @@ async function pushClaimToPortal(req, res, db, actingUser, actingProfile) {
   if (httpStatus === 409) {
     await recordClaim(db, {
       user_id, employee_number, employee_name,
-      month_year: month, cycle_text: cycle,
+      month_year: month, cycle_text: cycleTextLocal,
       claim_id: portalJson?.claim_id || null, status: 'already_exists',
       lines: cLines, submitted_total, approved_total,
       pushed_by: actingUser.id, pushed_by_name: actingProfile.name, response: portalJson,

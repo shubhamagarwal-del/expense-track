@@ -4287,6 +4287,12 @@
           : `16th_-_${ordinal(new Date(g.yr, g.mo + 1, 0).getDate())}`;
         // e.g. "Sanwarmal_Expenses_April_2026_16th_-_30th"
         const desc = `${(u.name || 'Employee').replace(/\s+/g, ' ').trim()}_Expenses_${g.monthYear.replace(/\s+/g, '_')}_${cyclePart}`;
+        // Trailing reference column (J) — has this cycle been pushed to the Accounts
+        // Portal? Cols A–I are the exact bank-upload fields and stay untouched.
+        const claim = portalClaimsByKey[`${g.userId}|${g.monthYear}|${g.cycleText}`];
+        const pushCol = claim
+          ? `PUSHED ✓ ${claim.pushed_at ? new Date(claim.pushed_at).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : ''}`.trim()
+          : 'NOT PUSHED';
         rows.push([
           '305957',
           'STOCKWELL SOLAR SERVICES PVT LTD',
@@ -4297,6 +4303,7 @@
           ifsc,
           Math.round(g.total * 100) / 100,
           desc,
+          pushCol,
         ]);
       }
       return { rows, advanceDeductions };
@@ -4329,7 +4336,7 @@
       const ws = XLSX.utils.aoa_to_sheet(rows);
       ws['!cols'] = [
         { wch: 8 }, { wch: 38 }, { wch: 14 }, { wch: 6 }, { wch: 22 },
-        { wch: 22 }, { wch: 14 }, { wch: 10 }, { wch: 42 }
+        { wch: 22 }, { wch: 14 }, { wch: 10 }, { wch: 42 }, { wch: 20 }
       ];
       const wb = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(wb, ws, 'Payment Sheet');
