@@ -1445,14 +1445,18 @@ async function portalEntrySummary(res, db) {
   // Page through — the expenses table can exceed the 1000-row default cap.
   let rows = [], from = 0;
   for (;;) {
-    const { data, error } = await db.from('expenses').select('created_at, status').range(from, from + 999);
+    const { data, error } = await db.from('expenses').select('user_id, created_at, status').range(from, from + 999);
     if (error) return res.status(500).json({ error: error.message });
     rows = rows.concat(data || []);
     if (!data || data.length < 1000) break;
     from += 1000;
   }
 
-  const VOID = new Set(['deleted', 'superseded']); // voided rows aren't real entries
+  // Count employee-cycles, NOT individual expense rows: one employee's whole cycle = 1,
+  // no matter how many expenses they filed in it. total_employees = distinct employees
+  // with any non-void entry; cleared_employees = distinct employees with a cleared
+  // (payment-eligible) cycle — i.e. the number of claims for that cycle.
+  const VOID = new Set(['deleted', 'superseded']);
   const groups = new Map();
   for (const e of rows) {
     if (VOID.has(e.status)) continue;
@@ -1463,14 +1467,14 @@ async function portalEntrySummary(res, db) {
     const month = ist.toLocaleString('en-US', { month: 'long', year: 'numeric', timeZone: 'UTC' });
     const key = `${month}|${cycle}`;
     let g = groups.get(key);
-    if (!g) { g = { month, cycle, yr: ist.getUTCFullYear(), mo: ist.getUTCMonth(), cNum, total_entries: 0, cleared_entries: 0 }; groups.set(key, g); }
-    g.total_entries++;
-    if (e.status === 'audit_cleared') g.cleared_entries++;
+    if (!g) { g = { month, cycle, yr: ist.getUTCFullYear(), mo: ist.getUTCMonth(), cNum, users: new Set(), clearedUsers: new Set() }; groups.set(key, g); }
+    g.users.add(e.user_id);
+    if (e.status === 'audit_cleared') g.clearedUsers.add(e.user_id);
   }
 
   const summary = [...groups.values()]
     .sort((a, b) => b.yr - a.yr || b.mo - a.mo || a.cNum - b.cNum)
-    .map(({ month, cycle, total_entries, cleared_entries }) => ({ month, cycle, total_entries, cleared_entries }));
+    .map(g => ({ month: g.month, cycle: g.cycle, total_employees: g.users.size, cleared_employees: g.clearedUsers.size }));
   return res.status(200).json({ summary });
 }
 

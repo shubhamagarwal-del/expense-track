@@ -882,6 +882,7 @@
           map[k] = (map[k] || 0) + Number(p.amount_paid || 0);
         });
         cyclePaidMap = map;
+        if (summaryMode) renderSummaryView();
       } catch {}
     }
 
@@ -1706,6 +1707,7 @@
             </button>
             <button id="btn-view-day" onclick="setViewMode('day')" style="display:inline-flex;align-items:center;gap:.35rem;height:32px;padding:0 .8rem;border-radius:7px;border:none;background:transparent;color:var(--text-2,#71717a);font-size:.8rem;font-weight:600;cursor:pointer">📅 Day wise</button>
             ${['audit','super_admin'].includes(currentProfile.role) ? `<button id="btn-view-notpushed" onclick="setViewMode('notpushed')" title="Cycles jinme cleared lines hain par abhi Accounts pe push nahi hui" style="display:inline-flex;align-items:center;gap:.35rem;height:32px;padding:0 .8rem;border-radius:7px;border:none;background:transparent;color:var(--primary,#4f46e5);font-size:.8rem;font-weight:700;cursor:pointer">📤 Not Pushed <span id="notpushed-count" style="background:#4f46e5;color:#fff;border-radius:10px;padding:0 6px;font-size:.72rem">0</span></button>` : ''}
+            <button id="btn-view-summary" onclick="setViewMode('summary')" title="Month + cycle: total entries aur kitne paid hue" style="display:inline-flex;align-items:center;gap:.35rem;height:32px;padding:0 .8rem;border-radius:7px;border:none;background:transparent;color:var(--text-2,#71717a);font-size:.8rem;font-weight:600;cursor:pointer">📊 Summary</button>
           </div>
 
           <div style="display:flex;gap:.5rem;position:relative">
@@ -1756,6 +1758,9 @@
 
       <!-- ── Not-Pushed View — cycles with cleared lines not yet pushed to Accounts ── -->
       <div id="notpushed-view" style="display:none"></div>
+
+      <!-- ── Summary View — per month+cycle: total entries and how many paid ── -->
+      <div id="summary-view" style="display:none"></div>
 
       <!-- ── Day-wise View — audit-clear-date-based Payment sheet ── -->
       <div id="day-view" style="display:none">
@@ -2507,6 +2512,7 @@
     let actionQueueMode = false;
     let dayViewMode = false;
     let notPushedMode = false;
+    let summaryMode = false;
     // "Not Pushed" cutoff — only cycles cleared on/after this date show up. Defaults
     // to when push-tracking (the J column / migration 18) went live, so the list
     // reflects reality going forward instead of old cycles pushed before tracking.
@@ -2688,30 +2694,35 @@
       hierarchyMode = mode === 'hierarchy';
       dayViewMode = mode === 'day';
       notPushedMode = mode === 'notpushed';
+      summaryMode = mode === 'summary';
       const hierView   = document.getElementById('hier-view');
       const listWrap   = document.getElementById('list-view-wrap');
       const actionView = document.getElementById('action-queue-view');
       const dayView    = document.getElementById('day-view');
       const npView     = document.getElementById('notpushed-view');
+      const smView     = document.getElementById('summary-view');
       const hierBtn    = document.getElementById('btn-view-hier');
       const listBtn    = document.getElementById('btn-view-list');
       const actionBtn  = document.getElementById('btn-view-action');
       const dayBtn     = document.getElementById('btn-view-day');
       const npBtn      = document.getElementById('btn-view-notpushed');
+      const smBtn      = document.getElementById('btn-view-summary');
 
-      const hierActive = !actionQueueMode && !dayViewMode && !notPushedMode && hierarchyMode;
-      const listActive = !actionQueueMode && !dayViewMode && !notPushedMode && !hierarchyMode;
+      const hierActive = !actionQueueMode && !dayViewMode && !notPushedMode && !summaryMode && hierarchyMode;
+      const listActive = !actionQueueMode && !dayViewMode && !notPushedMode && !summaryMode && !hierarchyMode;
       if (hierView)   hierView.style.display   = hierActive ? 'block' : 'none';
       if (listWrap)   listWrap.style.display   = listActive ? 'block' : 'none';
       if (actionView) actionView.style.display = actionQueueMode ? 'block' : 'none';
       if (dayView)    dayView.style.display    = dayViewMode ? 'block' : 'none';
       if (npView)     npView.style.display     = notPushedMode ? 'block' : 'none';
+      if (smView)     smView.style.display     = summaryMode ? 'block' : 'none';
       // Segmented-tab look: active tab gets a light tinted background + bold accent text.
       if (hierBtn) { hierBtn.style.background = hierActive ? 'var(--bg-2,#eef2ff)' : 'transparent'; hierBtn.style.color = hierActive ? 'var(--primary,#6366f1)' : 'var(--text-2,#71717a)'; }
       if (listBtn) { listBtn.style.background = listActive ? 'var(--bg-2,#eef2ff)' : 'transparent'; listBtn.style.color = listActive ? 'var(--primary,#6366f1)' : 'var(--text-2,#71717a)'; }
       if (actionBtn) { actionBtn.style.background = actionQueueMode ? '#fef3c7' : 'transparent'; actionBtn.style.color = '#92400e'; }
       if (dayBtn) { dayBtn.style.background = dayViewMode ? 'var(--bg-2,#eef2ff)' : 'transparent'; dayBtn.style.color = dayViewMode ? 'var(--primary,#6366f1)' : 'var(--text-2,#71717a)'; dayBtn.style.fontWeight = dayViewMode ? '700' : '600'; }
       if (npBtn) { npBtn.style.background = notPushedMode ? '#eef2ff' : 'transparent'; }
+      if (smBtn) { smBtn.style.background = summaryMode ? 'var(--bg-2,#eef2ff)' : 'transparent'; smBtn.style.color = summaryMode ? 'var(--primary,#6366f1)' : 'var(--text-2,#71717a)'; smBtn.style.fontWeight = summaryMode ? '700' : '600'; }
 
       if (actionQueueMode) {
         renderActionQueue();
@@ -2719,6 +2730,8 @@
         // static view — date inputs + export buttons only, nothing to render
       } else if (notPushedMode) {
         renderNotPushedView();
+      } else if (summaryMode) {
+        renderSummaryView();
       } else if (hierarchyMode) {
         renderHierarchyView(activeFilteredExpenses !== null ? activeFilteredExpenses : allExpensesFetched);
       } else {
@@ -4405,6 +4418,86 @@
       const summary = `✅ ${okc} pushed${failc ? ` · ❌ ${failc} failed` : ''}`;
       showMessage(summary, failc ? 'error' : 'success');
       if (fails.length) alert(`${summary}\n\n${fails.slice(0, 10).join('\n')}`);
+    }
+
+    // ─── SUMMARY VIEW — per month+cycle: total entries + how many paid ───
+    // Paid comes from ExpenseTrack's OWN cycle_payments (synced from the Accounts
+    // Portal's reimbursements): a cleared entry counts as paid once its cycle has a
+    // recorded payment. Month/cycle bucketed the same way as everywhere else on the
+    // dashboard (local time, cyclePaidMap key = user|"Month YYYY"|cycleNum).
+    function computeCycleSummary() {
+      // Count employee-cycles (claims), NOT individual expense rows: one employee's
+      // whole cycle = 1, no matter how many expenses they filed in it. Total = distinct
+      // employees with any non-void entry; Paid = those whose cycle has a payment.
+      const VOID = new Set(['deleted', 'superseded']);
+      const groups = new Map();
+      for (const e of allExpensesFetched) {
+        if (VOID.has(e.status)) continue;
+        const d = new Date(e.created_at);
+        const cNum = d.getDate() <= 15 ? 1 : 2;
+        const cycle = cNum === 1 ? '1st - 15th' : '16th - End';
+        const month = d.toLocaleString('en-US', { month: 'long', year: 'numeric' });
+        const key = `${month}|${cycle}`;
+        let g = groups.get(key);
+        if (!g) { g = { month, cycle, yr: d.getFullYear(), mo: d.getMonth(), cNum, users: new Set() }; groups.set(key, g); }
+        g.users.add(e.user_id);
+      }
+      const out = [];
+      for (const g of groups.values()) {
+        let paid = 0;
+        for (const uid of g.users) if ((cyclePaidMap[`${uid}|${g.month}|${g.cNum}`] || 0) > 0) paid++;
+        out.push({ month: g.month, cycle: g.cycle, yr: g.yr, mo: g.mo, cNum: g.cNum, total: g.users.size, paid });
+      }
+      return out.sort((a, b) => b.yr - a.yr || b.mo - a.mo || a.cNum - b.cNum);
+    }
+
+    function renderSummaryView() {
+      const host = document.getElementById('summary-view');
+      if (!host) return;
+      const rows = computeCycleSummary();
+      const nf = n => Number(n || 0).toLocaleString('en-IN');
+
+      let lastMonth = null, body = '';
+      for (const r of rows) {
+        if (r.month !== lastMonth) {
+          lastMonth = r.month;
+          body += `<tr><td colspan="4" style="padding:.5rem .9rem;font-weight:800;color:var(--text-1,#18181b);background:var(--bg-2,#f1f5f9);border-top:1px solid var(--border)">${escHtml(r.month)}</td></tr>`;
+        }
+        const pct = r.total ? Math.round((r.paid / r.total) * 100) : 0;
+        body += `<tr>
+          <td style="padding:.55rem .9rem;border-top:1px solid var(--border);color:var(--text-2,#52525b)">${escHtml(r.cycle)}</td>
+          <td style="padding:.55rem .7rem;border-top:1px solid var(--border);text-align:right;font-variant-numeric:tabular-nums">${nf(r.total)}</td>
+          <td style="padding:.55rem .7rem;border-top:1px solid var(--border);text-align:right;font-variant-numeric:tabular-nums;font-weight:700;color:${r.paid ? '#059669' : 'var(--text-muted)'}">${nf(r.paid)}</td>
+          <td style="padding:.55rem .9rem;border-top:1px solid var(--border);width:160px">
+            <div style="display:flex;align-items:center;gap:8px">
+              <div style="flex:1;height:6px;background:var(--bg-2,#f1f5f9);border-radius:99px;overflow:hidden"><div style="height:100%;width:${pct}%;background:${pct ? '#059669' : 'transparent'};border-radius:99px"></div></div>
+              <span style="font-size:.7rem;color:var(--text-muted);min-width:30px;text-align:right">${pct}%</span>
+            </div>
+          </td>
+        </tr>`;
+      }
+
+      host.innerHTML = `
+        <div style="background:var(--card-bg,#fff);border:1px solid var(--border);border-radius:16px;overflow:hidden;margin-bottom:1rem;box-shadow:0 1px 2px rgba(16,24,40,.04)">
+          <div style="padding:1rem 1.1rem;border-bottom:1px solid var(--border)">
+            <div style="font-size:.95rem;font-weight:800;color:var(--text-1,#18181b)">📊 Cycle summary — employees &amp; payments</div>
+            <div style="font-size:.75rem;color:var(--text-muted);margin-top:.15rem">Har month+cycle: kitne employees (cycles) aur unme se kitne paid hue (paid = reimbursement sync se)</div>
+          </div>
+          ${rows.length ? `
+          <div style="overflow-x:auto">
+            <table style="width:100%;border-collapse:collapse;font-size:.85rem;min-width:520px">
+              <thead><tr style="text-align:left;color:var(--text-muted);font-size:.7rem;text-transform:uppercase;letter-spacing:.03em">
+                <th style="padding:.6rem .9rem">Cycle</th>
+                <th style="padding:.6rem .7rem;text-align:right">Employees</th>
+                <th style="padding:.6rem .7rem;text-align:right">Paid</th>
+                <th style="padding:.6rem .9rem">Paid share</th>
+              </tr></thead>
+              <tbody>${body}</tbody>
+            </table>
+          </div>
+          <div style="padding:.6rem .9rem;font-size:.7rem;color:var(--text-muted);border-top:1px solid var(--border)">Employees = is cycle me jitne employees ne expense daale (per employee 1 cycle — individual expenses count nahi). Paid = jinke cycle ka payment aa chuka.</div>
+          ` : `<div style="padding:1.5rem;text-align:center;color:var(--text-muted);font-size:.85rem">Koi data nahi.</div>`}
+        </div>`;
     }
 
     // ─── PAYMENT SHEET EXPORT ────────────────────────────────────
