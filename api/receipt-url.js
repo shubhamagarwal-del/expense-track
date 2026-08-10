@@ -118,6 +118,19 @@ export default async function handler(req, res) {
     return await runPushTick(res, supabaseAdmin, req.query.send_random === '1');
   }
 
+  // ── Accounts Portal entry-count summary (read-only; auth via x-api-key) ──
+  // GET /api/receipt-url?portal_summary=1   Header: x-api-key: <EXPENSETRACK_API_KEY>
+  // Per month+cycle: total_entries + cleared_entries. Paid/reimbursed is the portal's
+  // OWN data (an expense is "paid" here only once the portal reimburses it), so the
+  // portal joins that on its side — the entry counts live only in ExpenseTrack.
+  if (req.method === 'GET' && req.query?.portal_summary) {
+    if (!process.env.EXPENSETRACK_API_KEY || req.headers['x-api-key'] !== process.env.EXPENSETRACK_API_KEY) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+    const supabaseAdmin = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
+    return await portalEntrySummary(res, supabaseAdmin);
+  }
+
   const authHeader = req.headers.authorization;
   if (!authHeader?.startsWith('Bearer ')) return res.status(401).json({ error: 'Unauthorized' });
   const token = authHeader.split(' ')[1];
@@ -1421,6 +1434,44 @@ async function pushClaimToPortal(req, res, db, actingUser, actingProfile) {
   // ── 401/400/422/500: surface the portal's message verbatim ──
   const msg = portalJson?.error || portalJson?.message || portalJson?.raw || `Accounts portal returned HTTP ${httpStatus}`;
   return res.status(httpStatus === 401 ? 502 : httpStatus).json({ error: msg, portal_status: httpStatus, portal: portalJson });
+}
+
+/**
+ * Read-only entry-count summary for the Accounts Portal, grouped by month + cycle.
+ * Month/cycle are computed in IST (UTC+5:30) so they match how the dashboard buckets
+ * cycles for the same rows. Returns counts only — no amounts, no paid (portal's own).
+ */
+async function portalEntrySummary(res, db) {
+  // Page through — the expenses table can exceed the 1000-row default cap.
+  let rows = [], from = 0;
+  for (;;) {
+    const { data, error } = await db.from('expenses').select('created_at, status').range(from, from + 999);
+    if (error) return res.status(500).json({ error: error.message });
+    rows = rows.concat(data || []);
+    if (!data || data.length < 1000) break;
+    from += 1000;
+  }
+
+  const VOID = new Set(['deleted', 'superseded']); // voided rows aren't real entries
+  const groups = new Map();
+  for (const e of rows) {
+    if (VOID.has(e.status)) continue;
+    const ist = new Date(new Date(e.created_at).getTime() + 5.5 * 3600 * 1000); // shift to IST, read as UTC
+    const day = ist.getUTCDate();
+    const cNum = day <= 15 ? 1 : 2;
+    const cycle = cNum === 1 ? '1st - 15th' : '16th - End';
+    const month = ist.toLocaleString('en-US', { month: 'long', year: 'numeric', timeZone: 'UTC' });
+    const key = `${month}|${cycle}`;
+    let g = groups.get(key);
+    if (!g) { g = { month, cycle, yr: ist.getUTCFullYear(), mo: ist.getUTCMonth(), cNum, total_entries: 0, cleared_entries: 0 }; groups.set(key, g); }
+    g.total_entries++;
+    if (e.status === 'audit_cleared') g.cleared_entries++;
+  }
+
+  const summary = [...groups.values()]
+    .sort((a, b) => b.yr - a.yr || b.mo - a.mo || a.cNum - b.cNum)
+    .map(({ month, cycle, total_entries, cleared_entries }) => ({ month, cycle, total_entries, cleared_entries }));
+  return res.status(200).json({ summary });
 }
 
 async function recordClaim(db, row) {
