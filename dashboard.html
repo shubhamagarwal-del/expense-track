@@ -1705,6 +1705,7 @@
               ⚡ Pending Approvals <span id="action-queue-count" style="background:#f59e0b;color:#fff;border-radius:10px;padding:0 6px;font-size:.72rem">0</span>
             </button>
             <button id="btn-view-day" onclick="setViewMode('day')" style="display:inline-flex;align-items:center;gap:.35rem;height:32px;padding:0 .8rem;border-radius:7px;border:none;background:transparent;color:var(--text-2,#71717a);font-size:.8rem;font-weight:600;cursor:pointer">📅 Day wise</button>
+            ${['audit','super_admin'].includes(currentProfile.role) ? `<button id="btn-view-notpushed" onclick="setViewMode('notpushed')" title="Cycles jinme cleared lines hain par abhi Accounts pe push nahi hui" style="display:inline-flex;align-items:center;gap:.35rem;height:32px;padding:0 .8rem;border-radius:7px;border:none;background:transparent;color:var(--primary,#4f46e5);font-size:.8rem;font-weight:700;cursor:pointer">📤 Not Pushed <span id="notpushed-count" style="background:#4f46e5;color:#fff;border-radius:10px;padding:0 6px;font-size:.72rem">0</span></button>` : ''}
           </div>
 
           <div style="display:flex;gap:.5rem;position:relative">
@@ -1752,6 +1753,9 @@
         </div>
         <div id="action-queue-list"></div>
       </div>
+
+      <!-- ── Not-Pushed View — cycles with cleared lines not yet pushed to Accounts ── -->
+      <div id="notpushed-view" style="display:none"></div>
 
       <!-- ── Day-wise View — audit-clear-date-based Payment sheet ── -->
       <div id="day-view" style="display:none">
@@ -2502,6 +2506,11 @@
 
     let actionQueueMode = false;
     let dayViewMode = false;
+    let notPushedMode = false;
+    // "Not Pushed" cutoff — only cycles cleared on/after this date show up. Defaults
+    // to when push-tracking (the J column / migration 18) went live, so the list
+    // reflects reality going forward instead of old cycles pushed before tracking.
+    let notPushedCutoff = '2026-08-10';
 
     /** True if this expense is sitting at the stage where currentProfile's role must act on it. */
     function isActionableForRole(e) {
@@ -2678,31 +2687,38 @@
       actionQueueMode = mode === 'action';
       hierarchyMode = mode === 'hierarchy';
       dayViewMode = mode === 'day';
+      notPushedMode = mode === 'notpushed';
       const hierView   = document.getElementById('hier-view');
       const listWrap   = document.getElementById('list-view-wrap');
       const actionView = document.getElementById('action-queue-view');
       const dayView    = document.getElementById('day-view');
+      const npView     = document.getElementById('notpushed-view');
       const hierBtn    = document.getElementById('btn-view-hier');
       const listBtn    = document.getElementById('btn-view-list');
       const actionBtn  = document.getElementById('btn-view-action');
       const dayBtn     = document.getElementById('btn-view-day');
+      const npBtn      = document.getElementById('btn-view-notpushed');
 
-      if (hierView)   hierView.style.display   = (!actionQueueMode && !dayViewMode && hierarchyMode) ? 'block' : 'none';
-      if (listWrap)   listWrap.style.display   = (!actionQueueMode && !dayViewMode && !hierarchyMode) ? 'block' : 'none';
+      const hierActive = !actionQueueMode && !dayViewMode && !notPushedMode && hierarchyMode;
+      const listActive = !actionQueueMode && !dayViewMode && !notPushedMode && !hierarchyMode;
+      if (hierView)   hierView.style.display   = hierActive ? 'block' : 'none';
+      if (listWrap)   listWrap.style.display   = listActive ? 'block' : 'none';
       if (actionView) actionView.style.display = actionQueueMode ? 'block' : 'none';
       if (dayView)    dayView.style.display    = dayViewMode ? 'block' : 'none';
+      if (npView)     npView.style.display     = notPushedMode ? 'block' : 'none';
       // Segmented-tab look: active tab gets a light tinted background + bold accent text.
-      const hierActive = !actionQueueMode && !dayViewMode && hierarchyMode;
-      const listActive = !actionQueueMode && !dayViewMode && !hierarchyMode;
       if (hierBtn) { hierBtn.style.background = hierActive ? 'var(--bg-2,#eef2ff)' : 'transparent'; hierBtn.style.color = hierActive ? 'var(--primary,#6366f1)' : 'var(--text-2,#71717a)'; }
       if (listBtn) { listBtn.style.background = listActive ? 'var(--bg-2,#eef2ff)' : 'transparent'; listBtn.style.color = listActive ? 'var(--primary,#6366f1)' : 'var(--text-2,#71717a)'; }
       if (actionBtn) { actionBtn.style.background = actionQueueMode ? '#fef3c7' : 'transparent'; actionBtn.style.color = '#92400e'; }
       if (dayBtn) { dayBtn.style.background = dayViewMode ? 'var(--bg-2,#eef2ff)' : 'transparent'; dayBtn.style.color = dayViewMode ? 'var(--primary,#6366f1)' : 'var(--text-2,#71717a)'; dayBtn.style.fontWeight = dayViewMode ? '700' : '600'; }
+      if (npBtn) { npBtn.style.background = notPushedMode ? '#eef2ff' : 'transparent'; }
 
       if (actionQueueMode) {
         renderActionQueue();
       } else if (dayViewMode) {
         // static view — date inputs + export buttons only, nothing to render
+      } else if (notPushedMode) {
+        renderNotPushedView();
       } else if (hierarchyMode) {
         renderHierarchyView(activeFilteredExpenses !== null ? activeFilteredExpenses : allExpensesFetched);
       } else {
@@ -3526,7 +3542,9 @@
       recomputeActiveFilteredExpenses();
       updateAdminStats(allExpensesFetched);
       renderActionQueue();
-      if (hierarchyMode) renderHierarchyView(activeFilteredExpenses !== null ? activeFilteredExpenses : allExpensesFetched);
+      updateNotPushedCount();
+      if (notPushedMode) renderNotPushedView();
+      else if (hierarchyMode) renderHierarchyView(activeFilteredExpenses !== null ? activeFilteredExpenses : allExpensesFetched);
       else refreshListView(true);
     }
 
@@ -3986,6 +4004,7 @@
         (body.portal_claims || []).forEach(c => {
           portalClaimsByKey[`${c.user_id}|${c.month_year}|${c.cycle_text}`] = c;
         });
+        updateNotPushedCount();
       } catch (_) { /* non-fatal */ }
     }
 
@@ -4130,45 +4149,72 @@
       return claimLinesForCycle(safeKey).some(e => e.status === 'audit_cleared');
     }
 
-    async function pushCycleToAccounts(safeKey, btn) {
+    // Statuses that mean a line is still "open" — no final decision yet. A cycle
+    // with any open line is only PARTIALLY ready: a push sends just the cleared
+    // lines, and the portal won't accept a later top-up for the same cycle (409),
+    // so those open lines would never reach Accounts if pushed prematurely.
+    const OPEN_STATUSES = ['pending', 'l1_approved', 'hr_approved', 'approved', 'audit_review', 'audit_query'];
+
+    /** Every line in a cycle, regardless of status. */
+    function cycleAllLines(safeKey) {
       const [userId, monthYear, cycleText] = safeKey.split('|');
-      const lines = claimLinesForCycle(safeKey); // audit_cleared + audit_query — for the claim amount below
-      const cleared = lines.filter(e => e.status === 'audit_cleared');
-      if (!cleared.length) return showMessage('No audit-cleared lines in this cycle to push.', 'error');
-
-      const u = lines[0]?.users || {};
-      const name = u.name || 'Employee';
-      if (!u.emp_no) return showMessage(`${name}: Emp No missing — Accounts portal will reject. Fix the employee's Emp No first.`, 'error');
-
-      // The attached Excel/PDF are the SAME files the row's Excel/PDF buttons
-      // download — every line in this cycle regardless of status, with the
-      // real per-line status shown, not a separate cleared-only builder. The
-      // claim AMOUNT sent alongside (below) still comes only from audit_cleared
-      // lines — that's the actual payable figure — the files are just full
-      // context for Accounts.
-      const allCycleLines = allExpensesFetched.filter(e => {
+      return allExpensesFetched.filter(e => {
         const date = new Date(e.created_at);
         const mY = date.toLocaleString('default', { month: 'long', year: 'numeric' });
         const cT = (date.getDate() <= 15 ? 1 : 2) === 1 ? '1st - 15th' : '16th - End';
         return e.user_id === userId && mY === monthYear && cT === cycleText;
       });
+    }
 
+    /** Open (still-to-decide) lines in a cycle — used for the pre-push warning
+     *  and the Ready/Partial split in the "Not pushed" view. */
+    function cycleOpenLines(safeKey) {
+      return cycleAllLines(safeKey).filter(e => OPEN_STATUSES.includes(e.status));
+    }
+
+    // opts.silent → bulk mode: no confirm dialog, no per-cycle toast; returns a
+    // { ok, name, reason, … } result and leaves loadPortalClaims() to the caller.
+    async function pushCycleToAccounts(safeKey, btn, opts = {}) {
+      const silent = !!opts.silent;
+      const [userId, monthYear, cycleText] = safeKey.split('|');
+      const lines = claimLinesForCycle(safeKey); // audit_cleared + audit_query
+      const cleared = lines.filter(e => e.status === 'audit_cleared');
+      const u = (cleared[0] || lines[0] || cycleAllLines(safeKey)[0])?.users || {};
+      const name = u.name || 'Employee';
+
+      const fail = (msg) => { if (!silent) showMessage(msg, 'error'); return { ok: false, safeKey, name, reason: msg }; };
+      if (!cleared.length) return fail('No audit-cleared lines in this cycle to push.');
+      if (!u.emp_no) return fail(`${name}: Emp No missing — Accounts portal will reject. Fix the employee's Emp No first.`);
+
+      const openLines = cycleOpenLines(safeKey);
       const cycleContract = cycleText.includes('1st') ? '1st-15th' : '16th-End';
       const already = portalClaimsByKey[safeKey];
-      const queryCount = lines.length - cleared.length;
-      const confirmMsg = already
-        ? `This cycle was already pushed (${already.status}). Push again?`
-        : `Push ${name} — ${monthYear} ${cycleText} to Accounts Portal?\n\n${cleared.length} audit-cleared line(s)${queryCount ? ` (+${queryCount} query line(s), portal will skip)` : ''}.`;
-      if (!confirm(confirmMsg)) return;
+      const approvedTotal = cleared.reduce((s, e) => s + (e.approved_amount != null ? +e.approved_amount : +e.amount), 0);
+
+      if (!silent) {
+        // Warn if the cycle still has open (pending/flagged) lines — they won't be
+        // pushed, and can't be added to this cycle's claim later (portal 409).
+        const openWarn = openLines.length
+          ? `\n\n⚠️ ${openLines.length} line abhi cleared nahi hui (pending/flagged). Ye push me NAHI jaayengi, aur baad me clear hone par is cycle me dobara add nahi hongi (portal duplicate maanta hai). Behtar: pehle inhe clear/reject karein.`
+          : '';
+        const confirmMsg = already
+          ? `This cycle was already pushed (${already.status}). Push again?${openWarn}`
+          : `Push ${name} — ${monthYear} ${cycleText} to Accounts Portal?\n\n${cleared.length} audit-cleared line(s) — ₹${approvedTotal.toLocaleString('en-IN')}.${openWarn}`;
+        if (!confirm(confirmMsg)) return { ok: false, safeKey, name, reason: 'cancelled', cancelled: true };
+      }
 
       const orig = btn ? btn.innerHTML : '';
       if (btn) { btn.disabled = true; btn.innerHTML = 'Pushing…'; }
       try {
         const submittedTotal = cleared.reduce((s, e) => s + (Number(e.amount) || 0), 0);
-        const approvedTotal = cleared.reduce((s, e) => s + (e.approved_amount != null ? +e.approved_amount : +e.amount), 0);
         const fnameBase = `${(u.emp_no || 'EMP')}_${monthYear.replace(/\s+/g, '_')}_${cycleContract}`;
-        const excel_b64 = performExcelExport(allCycleLines, `${fnameBase}.xlsx`, { returnBase64: true });
-        const pdf_b64 = await downloadDeptPDF({ expenses: allCycleLines, monthLabel: monthYear, fileLabel: `${name} — ${cycleText}`, returnBase64: true });
+        // Attach ONLY the audit-cleared lines. Then the Excel total, the PDF total
+        // and the claim amount are all identical, so the Accounts portal's
+        // Excel-vs-PDF cross-check passes. (A full-cycle attachment counted pending
+        // lines in the PDF grand-total but not the cleared-only Excel total, which
+        // tripped the portal's "Excel ₹X vs PDF ₹Y" rejection.)
+        const excel_b64 = performExcelExport(cleared, `${fnameBase}.xlsx`, { returnBase64: true });
+        const pdf_b64 = await downloadDeptPDF({ expenses: cleared, monthLabel: monthYear, fileLabel: `${name} — ${cycleText}`, returnBase64: true });
 
         const token = (await db.auth.getSession()).data.session?.access_token;
         const res = await fetch('/api/receipt-url', {
@@ -4190,18 +4236,147 @@
           throw new Error(em);
         }
         const body = await res.json();
-        if (body.already_exists) {
-          showMessage(`ℹ️ Already pushed — claim already exists for ${monthYear} ${cycleText}.`, 'success');
-        } else {
-          const disc = body.discrepancy ? ' ⚠️ discrepancy flagged' : '';
-          showMessage(`✅ Pushed — ${body.lines} line(s), ₹${Number(body.approved_total || approvedTotal).toLocaleString('en-IN')} (claim ${String(body.claim_id || '').slice(0, 8)})${disc}`, 'success');
+        if (!silent) {
+          if (body.already_exists) {
+            showMessage(`ℹ️ Already pushed — claim already exists for ${monthYear} ${cycleText}.`, 'success');
+          } else {
+            const disc = body.discrepancy ? ' ⚠️ discrepancy flagged' : '';
+            showMessage(`✅ Pushed — ${body.lines} line(s), ₹${Number(body.approved_total || approvedTotal).toLocaleString('en-IN')} (claim ${String(body.claim_id || '').slice(0, 8)})${disc}`, 'success');
+          }
+          await loadPortalClaims();
         }
-        await loadPortalClaims();
+        return { ok: true, safeKey, name, already_exists: !!body.already_exists, lines: body.lines ?? cleared.length, approved_total: body.approved_total ?? approvedTotal };
       } catch (err) {
-        showMessage('Push failed: ' + err.message, 'error');
+        if (!silent) showMessage('Push failed: ' + err.message, 'error');
+        return { ok: false, safeKey, name, reason: err.message };
       } finally {
         if (btn) { btn.disabled = false; btn.innerHTML = orig; }
       }
+    }
+
+    // ─── NOT-PUSHED VIEW (Audit / Super Admin) ───────────────────
+    // Every cycle that has ≥1 audit-cleared line and has NOT been pushed yet,
+    // split into Ready (all lines decided) and Partial (some lines still open).
+    function computeNotPushedCycles() {
+      // Single pass over all expenses — group into cycles and tally in one go.
+      // (Re-scanning every expense per cycle with a per-row toLocaleString was
+      // O(cycles × n) with a slow Intl call inside → froze the tab on large data.)
+      const groups = new Map();
+      for (const e of allExpensesFetched) {
+        const isCleared = e.status === 'audit_cleared';
+        const isOpen = OPEN_STATUSES.includes(e.status);
+        if (!isCleared && !isOpen) continue; // only cleared + open lines matter here
+        const date = new Date(e.created_at);
+        const cNum = date.getDate() <= 15 ? 1 : 2;
+        const cT = cNum === 1 ? '1st - 15th' : '16th - End';
+        const mY = date.toLocaleString('default', { month: 'long', year: 'numeric' });
+        const safeKey = `${e.user_id}|${mY}|${cT}`;
+        let g = groups.get(safeKey);
+        if (!g) {
+          g = { safeKey, userId: e.user_id, name: e.users?.name || 'Employee', empNo: e.users?.emp_no || '',
+                monthYear: mY, cycleText: cT, yr: date.getFullYear(), mo: date.getMonth(), cNum,
+                clearedCount: 0, clearedTotal: 0, openCount: 0, lastCleared: '' };
+          groups.set(safeKey, g);
+        }
+        if (isCleared) {
+          g.clearedCount++;
+          g.clearedTotal += (e.approved_amount != null ? +e.approved_amount : +e.amount) || 0;
+          // Track the latest audit-clear date — used by the "since" cutoff so only
+          // cycles cleared on/after tracking-start (when the J column began) show up.
+          if (e.audit_at) { const d = String(e.audit_at).slice(0, 10); if (d > g.lastCleared) g.lastCleared = d; }
+        } else g.openCount++;
+      }
+      const out = [];
+      for (const g of groups.values()) {
+        if (!g.clearedCount) continue;              // need ≥1 cleared line to push
+        if (portalClaimsByKey[g.safeKey]) continue; // already pushed
+        out.push({ ...g, ready: g.openCount === 0 });
+      }
+      out.sort((a, b) => b.yr - a.yr || b.mo - a.mo || b.cNum - a.cNum || a.name.localeCompare(b.name));
+      return out;
+    }
+
+    // Not-pushed cycles limited to the "since" cutoff (tracking start). A cycle
+    // shows only if its latest audit-clear date is on/after the cutoff — old
+    // cycles cleared before tracking existed (and possibly already pushed off-record)
+    // are hidden, so the list is accurate from the J column onward.
+    function notPushedCyclesFiltered() {
+      const cutoff = notPushedCutoff || '';
+      return computeNotPushedCycles().filter(c => !cutoff || (c.lastCleared && c.lastCleared >= cutoff));
+    }
+
+    // Keep the "Not Pushed" tab badge count in sync.
+    function updateNotPushedCount() {
+      const el = document.getElementById('notpushed-count');
+      if (!el) return;
+      try { el.textContent = notPushedCyclesFiltered().length; } catch { el.textContent = '0'; }
+    }
+
+    function renderNotPushedView() {
+      const host = document.getElementById('notpushed-view');
+      if (!host) return;
+      if (!['audit', 'super_admin'].includes(currentProfile.role)) {
+        host.innerHTML = `<div style="padding:1.5rem;color:var(--text-muted)">Only Audit / Super Admin.</div>`;
+        return;
+      }
+      const cycles = notPushedCyclesFiltered();
+      const ready = cycles.filter(c => c.ready);
+      const partial = cycles.filter(c => !c.ready);
+      updateNotPushedCount();
+
+      const fmt = n => '₹' + Number(n || 0).toLocaleString('en-IN');
+      const card = (c) => `
+        <div style="display:flex;align-items:center;gap:12px;background:var(--card-bg,#fff);border:1px solid var(--border);border-radius:12px;padding:.7rem .9rem;margin-bottom:.5rem">
+          <div style="flex:1;min-width:0">
+            <div style="font-size:.9rem;font-weight:700;color:var(--text-1,#18181b)">${escHtml(c.name)}${c.empNo ? ` <span style="font-weight:500;color:var(--text-muted);font-size:.78rem">(${escHtml(c.empNo)})</span>` : ''}</div>
+            <div style="font-size:.75rem;color:var(--text-muted)">${escHtml(c.monthYear)} · ${escHtml(c.cycleText)} · ${c.clearedCount} cleared · ${fmt(c.clearedTotal)}${c.openCount ? ` · <span style="color:#b45309;font-weight:700">${c.openCount} line pending/flagged</span>` : ''}</div>
+          </div>
+          ${c.ready
+            ? `<button onclick="pushCycleToAccounts('${c.safeKey}',this).then(()=>renderNotPushedView())" style="background:#4f46e5;color:#fff;border:none;border-radius:8px;padding:.4rem .8rem;font-size:.78rem;font-weight:700;cursor:pointer;white-space:nowrap">📤 Push</button>`
+            : `<span title="Pehle pending/flagged lines clear/reject karein" style="background:#fef3c7;color:#92400e;border-radius:8px;padding:.35rem .7rem;font-size:.72rem;font-weight:700;white-space:nowrap">⚠️ Complete first</span>`}
+        </div>`;
+
+      host.innerHTML = `
+        <div style="background:var(--card-bg,#fff);border:1px solid var(--border);border-radius:16px;padding:1.1rem 1.25rem;margin-bottom:1rem;box-shadow:0 1px 2px rgba(16,24,40,.04)">
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:1rem;flex-wrap:wrap;margin-bottom:.9rem">
+            <div>
+              <div style="font-size:.95rem;font-weight:800;color:var(--text-1,#18181b)">📤 Not pushed to Accounts</div>
+              <div style="font-size:.75rem;color:var(--text-muted);margin-top:.15rem">${cycles.length} cycle(s) baaki — ${ready.length} ready, ${partial.length} pehle complete karni hai</div>
+            </div>
+            ${ready.length ? `<button id="btn-push-all-ready" onclick="pushAllReady()" style="background:#059669;color:#fff;border:none;border-radius:10px;padding:.5rem 1rem;font-size:.82rem;font-weight:800;cursor:pointer;white-space:nowrap">📤 Push all ready (${ready.length})</button>` : ''}
+          </div>
+          <div style="display:flex;align-items:center;gap:.5rem;flex-wrap:wrap;margin-bottom:.9rem;padding:.5rem .7rem;background:var(--bg-2,#f8fafc);border-radius:8px">
+            <span style="font-size:.76rem;font-weight:700;color:var(--text-2,#52525b)">Since:</span>
+            <input type="date" id="np-since-date" value="${notPushedCutoff}" onchange="notPushedCutoff=this.value; renderNotPushedView();" style="height:32px;font-size:.78rem;border-radius:7px;padding:0 .5rem;border:1px solid var(--border);cursor:pointer">
+            <span style="font-size:.72rem;color:var(--text-muted)">is date ke baad clear hui cycles (push-tracking yahi se shuru hui — purane hidden)</span>
+          </div>
+          ${cycles.length === 0 ? `<div style="padding:1.5rem;text-align:center;color:var(--text-muted);font-size:.85rem">🎉 Is date ke baad koi not-pushed cycle nahi — sab clear.</div>` : ''}
+          ${ready.length ? `<div style="font-size:.8rem;font-weight:700;color:#065f46;margin:.4rem 0 .5rem">✅ Ready to push (${ready.length})</div>${ready.map(card).join('')}` : ''}
+          ${partial.length ? `<div style="font-size:.8rem;font-weight:700;color:#92400e;margin:1rem 0 .35rem">⚠️ Pehle complete karein (${partial.length})</div><div style="font-size:.72rem;color:var(--text-muted);margin-bottom:.5rem">In cycles me kuch line abhi pending/flagged hai. Abhi push mat karo — pehle woh clear/reject karo, warna woh amount Accounts me kabhi nahi jaayega (portal ek cycle dobara add nahi karta).</div>${partial.map(card).join('')}` : ''}
+        </div>`;
+    }
+
+    // Bulk push — every Ready cycle, one after another, with progress + summary.
+    async function pushAllReady() {
+      const ready = notPushedCyclesFiltered().filter(c => c.ready);
+      if (!ready.length) return showMessage('No ready cycles to push.', 'error');
+      if (!confirm(`Push ${ready.length} ready cycle(s) to Accounts Portal?\n\nHar cycle alag push hoga — thoda time lag sakta hai.`)) return;
+
+      const btn = document.getElementById('btn-push-all-ready');
+      if (btn) btn.disabled = true;
+      let done = 0, okc = 0, failc = 0;
+      const fails = [];
+      for (const c of ready) {
+        done++;
+        if (btn) btn.innerHTML = `Pushing ${done}/${ready.length}…`;
+        const r = await pushCycleToAccounts(c.safeKey, null, { silent: true });
+        if (r.ok) okc++; else { failc++; fails.push(`${r.name}: ${r.reason || 'failed'}`); }
+      }
+      await loadPortalClaims();
+      renderNotPushedView();
+      const summary = `✅ ${okc} pushed${failc ? ` · ❌ ${failc} failed` : ''}`;
+      showMessage(summary, failc ? 'error' : 'success');
+      if (fails.length) alert(`${summary}\n\n${fails.slice(0, 10).join('\n')}`);
     }
 
     // ─── PAYMENT SHEET EXPORT ────────────────────────────────────
