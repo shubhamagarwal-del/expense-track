@@ -4172,6 +4172,14 @@
       return cycleAllLines(safeKey).filter(e => OPEN_STATUSES.includes(e.status));
     }
 
+    // Decode a raw base64 string (no data: prefix) into a Blob for a Storage upload.
+    function b64ToBlob(b64, type) {
+      const bin = atob(b64);
+      const bytes = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+      return new Blob([bytes], { type });
+    }
+
     // opts.silent → bulk mode: no confirm dialog, no per-cycle toast; returns a
     // { ok, name, reason, … } result and leaves loadPortalClaims() to the caller.
     async function pushCycleToAccounts(safeKey, btn, opts = {}) {
@@ -4216,12 +4224,32 @@
         const excel_b64 = performExcelExport(cleared, `${fnameBase}.xlsx`, { returnBase64: true });
         const pdf_b64 = await downloadDeptPDF({ expenses: cleared, monthLabel: monthYear, fileLabel: `${name} — ${cycleText}`, returnBase64: true });
 
-        const token = (await db.auth.getSession()).data.session?.access_token;
+        const session = (await db.auth.getSession()).data.session;
+        const token = session?.access_token;
+        // Upload the report to Storage and send only its path — NOT the base64
+        // inline. A receipt-heavy PDF as base64 in the JSON body blows past Vercel's
+        // ~4.5MB request limit (413); the path keeps the body tiny, and the server
+        // streams the raw file on to the portal. Path's first segment MUST be the
+        // uploader's auth uid (receipts-bucket RLS: auth.uid() = foldername[1]).
+        const stamp = Date.now();
+        const uid = session?.user?.id;
+        const excel_path = `${uid}/push-exports/${fnameBase}-${stamp}.xlsx`;
+        const pdf_path   = `${uid}/push-exports/${fnameBase}-${stamp}.pdf`;
+        const XLSX_MIME = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+        const upX = await db.storage.from('receipts').upload(excel_path, b64ToBlob(excel_b64, XLSX_MIME), { contentType: XLSX_MIME, upsert: true });
+        if (upX.error) throw new Error('Report upload failed (Excel): ' + upX.error.message);
+        let usePdfPath = null;
+        if (pdf_b64) {
+          const upP = await db.storage.from('receipts').upload(pdf_path, b64ToBlob(pdf_b64, 'application/pdf'), { contentType: 'application/pdf', upsert: true });
+          if (upP.error) throw new Error('Report upload failed (PDF): ' + upP.error.message);
+          usePdfPath = pdf_path;
+        }
+
         const res = await fetch('/api/receipt-url', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
           body: JSON.stringify({ push_claim: {
-            excel_b64, pdf_b64, month: monthYear, cycle: cycleContract, filename_base: fnameBase,
+            excel_path, pdf_path: usePdfPath, month: monthYear, cycle: cycleContract, filename_base: fnameBase,
             user_id: userId, employee_number: u.emp_no, employee_name: name,
             lines: cleared.length, submitted_total: submittedTotal, approved_total: approvedTotal,
           } })

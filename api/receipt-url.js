@@ -1323,12 +1323,12 @@ async function reconcilePortalAdvances(res, db) {
 async function pushClaimToPortal(req, res, db, actingUser, actingProfile) {
   const p = req.body?.push_claim || {};
   const {
-    excel_b64, pdf_b64, month, cycle, filename_base,
+    excel_b64, pdf_b64, excel_path, pdf_path, month, cycle, filename_base,
     user_id, employee_number, employee_name,
     lines: cLines, submitted_total, approved_total,
   } = p;
 
-  if (!excel_b64) return res.status(400).json({ error: 'excel_b64 is required' });
+  if (!excel_b64 && !excel_path) return res.status(400).json({ error: 'excel_b64 or excel_path is required' });
 
   const baseUrl = process.env.ACCOUNTS_PORTAL_BASE_URL || process.env.ACCOUNTS2026_BASE_URL || 'https://accounts-2026.vercel.app';
   const apiKey = process.env.ACCOUNTS_PORTAL_API_KEY || process.env.ACCOUNTS2026_API_KEY;
@@ -1336,14 +1336,32 @@ async function pushClaimToPortal(req, res, db, actingUser, actingProfile) {
 
   const base = (filename_base || 'claim').replace(/[^a-z0-9._-]/gi, '_');
 
-  // Build multipart body (Node 18+/Vercel: global FormData + Blob)
+  // Report buffers come either inline as base64 (small cycles) or — for receipt-heavy
+  // cycles that would exceed the 4.5MB request-body limit — from Storage: the client
+  // uploads the file and passes its path, and the service role reads it back here.
+  async function reportBuf(b64, path) {
+    if (path) {
+      const { data, error } = await db.storage.from('receipts').download(path);
+      if (error || !data) throw new Error(`storage read failed for ${path}: ${error?.message || 'not found'}`);
+      return Buffer.from(await data.arrayBuffer());
+    }
+    return b64 ? Buffer.from(b64, 'base64') : null;
+  }
+  let excelBuf, pdfBuf;
+  try {
+    excelBuf = await reportBuf(excel_b64, excel_path);
+    pdfBuf = await reportBuf(pdf_b64, pdf_path);
+  } catch (e) {
+    return res.status(502).json({ error: 'Could not read the report from storage: ' + (e.message || e) });
+  }
+
+  // Build multipart body (Node 18+/Vercel: global FormData + Blob). This forwards the
+  // RAW file (no base64 inflation), so it stays well under the portal's own body limit.
   const form = new FormData();
-  const excelBuf = Buffer.from(excel_b64, 'base64');
   form.append('excel', new Blob([excelBuf], {
     type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
   }), `${base}.xlsx`);
-  if (pdf_b64) {
-    const pdfBuf = Buffer.from(pdf_b64, 'base64');
+  if (pdfBuf) {
     form.append('pdf', new Blob([pdfBuf], { type: 'application/pdf' }), `${base}.pdf`);
   }
   if (month) form.append('month', month);
@@ -1363,6 +1381,10 @@ async function pushClaimToPortal(req, res, db, actingUser, actingProfile) {
   }
 
   const httpStatus = portalRes.status;
+
+  // The temp report uploads have been forwarded — remove them (best-effort).
+  const tmpPaths = [excel_path, pdf_path].filter(Boolean);
+  if (tmpPaths.length) { try { await db.storage.from('receipts').remove(tmpPaths); } catch { /* leak a temp file at worst */ } }
 
   // The push sends `cycle` in the portal's compact form ("1st-15th"/"16th-End"),
   // but every LOCAL lookup (dashboard "✓ Pushed" badge, payment-sheet status,
