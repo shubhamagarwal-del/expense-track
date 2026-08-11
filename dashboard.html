@@ -1206,23 +1206,39 @@
       return base;
     }
 
-    /** Day-wise Payment Sheet — sirf audit_cleared entries jinka audit_at us din ka hai */
+    /** Pending Payment Sheet — every audit-cleared cycle whose payment is still due.
+     *  Fixes the old "only entries cleared on one exact date" behaviour, which missed
+     *  earlier-cleared-but-unpaid cycles and could re-include already-paid ones. Now:
+     *  include all audit_cleared cycles that have NO recorded payment (skip paid), so a
+     *  single download always gives the full outstanding. Date is an OPTIONAL "cleared
+     *  on/after" filter — leave blank for everything pending. */
     function exportAuditClearedPaymentSheet() {
       const dateVal = document.getElementById('audit-clear-date')?.value || '';
-      if (!dateVal) return showMessage('Pehle Audit clear date select karo.', 'error');
       const filtered = allExpensesFetched.filter(e => {
-        if (e.status !== 'audit_cleared' || !e.audit_at) return false;
-        const d = new Date(e.audit_at);
-        const ds = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-        return ds === dateVal;
+        if (e.status !== 'audit_cleared') return false;
+        // Skip cycles that already have a recorded payment — don't pay them again.
+        const d = new Date(e.created_at);
+        const mY = d.toLocaleString('en-US', { month: 'long', year: 'numeric' });
+        const cNum = d.getDate() <= 15 ? 1 : 2;
+        if ((cyclePaidMap[`${e.user_id}|${mY}|${cNum}`] || 0) > 0) return false;
+        // Optional: only cycles cleared on/after the chosen date.
+        if (dateVal) {
+          if (!e.audit_at) return false;
+          const ad = new Date(e.audit_at);
+          const ds = `${ad.getFullYear()}-${String(ad.getMonth() + 1).padStart(2, '0')}-${String(ad.getDate()).padStart(2, '0')}`;
+          if (ds < dateVal) return false;
+        }
+        return true;
       });
       if (!filtered.length) {
-        return showMessage(`${dateVal} ko koi audit-cleared entry nahi mili.`, 'error');
+        return showMessage(dateVal ? `${dateVal} ke baad koi unpaid cleared cycle nahi mila.` : 'Koi pending payment nahi — saare cleared cycles paid ho chuke. ✓', 'success');
       }
-      const fmt = new Date(dateVal + 'T00:00:00').toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }).replace(/ /g, '-');
+      const stamp = dateVal
+        ? 'since-' + new Date(dateVal + 'T00:00:00').toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }).replace(/ /g, '-')
+        : new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }).replace(/ /g, '-');
       const restore = setExportLoading('btn-audit-pmt', 'Generating…');
       setTimeout(() => {
-        try { performPaymentSheetExport(filtered, `PaymentSheet_AuditCleared_${fmt}.xlsx`); }
+        try { performPaymentSheetExport(filtered, `PaymentSheet_Pending_${stamp}.xlsx`); }
         finally { restore(); }
       }, 50);
     }
@@ -1765,10 +1781,10 @@
       <!-- ── Day-wise View — audit-clear-date-based Payment sheet ── -->
       <div id="day-view" style="display:none">
         <div style="background:var(--card-bg,#fff);border:1px solid var(--border);border-radius:16px;padding:1.25rem 1.4rem;margin-bottom:1rem;box-shadow:0 1px 2px rgba(16,24,40,.04)">
-          <div style="font-size:.9rem;font-weight:700;color:var(--text-1,#18181b);margin-bottom:.35rem">💳 Audit-cleared Payment Sheet</div>
-          <div style="font-size:.75rem;color:var(--text-muted);margin-bottom:1rem">Date select karo — us din jitni bhi entries Audit ne clear ki hain unka bank payment sheet download hoga.</div>
+          <div style="font-size:.9rem;font-weight:700;color:var(--text-1,#18181b);margin-bottom:.35rem">💳 Pending Payment Sheet</div>
+          <div style="font-size:.75rem;color:var(--text-muted);margin-bottom:1rem">Saare audit-cleared cycles jinka payment abhi <b>baaki</b> hai unka bank payment sheet download hoga — paid wale apne aap <b>skip</b>. Date optional — set karo to sirf us date ke <b>baad</b> cleared waale.</div>
           <div style="display:flex;align-items:center;gap:.6rem;flex-wrap:wrap">
-            <span style="font-size:.8rem;font-weight:600;color:var(--text-2,#52525b)">Audit clear date:</span>
+            <span style="font-size:.8rem;font-weight:600;color:var(--text-2,#52525b)">Cleared on/after (optional):</span>
             <input class="form-input" type="date" id="audit-clear-date" onclick="try{this.showPicker()}catch{}" title="Jis din audit ne clear kiya" style="width:170px;height:38px;font-size:.82rem;border-radius:8px;padding:0 .7rem;cursor:pointer" />
             <button onclick="exportAuditClearedPaymentSheet()" id="btn-audit-pmt" style="height:38px;padding:0 1.1rem;border-radius:8px;border:none;background:#047857;color:#fff;font-size:.82rem;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;gap:.4rem">💳 Download Payment Sheet</button>
           </div>
@@ -4228,6 +4244,12 @@
       if (btn) { btn.disabled = true; btn.innerHTML = 'Pushing…'; }
       try {
         const submittedTotal = cleared.reduce((s, e) => s + (Number(e.amount) || 0), 0);
+        // Date audit cleared the LAST entry of this cycle (max audit_at), as an IST
+        // date — the portal shows this per employee in its "To pay" list.
+        const lastAuditTs = cleared.reduce((mx, e) => (e.audit_at && e.audit_at > mx ? e.audit_at : mx), '');
+        const cleared_date = lastAuditTs
+          ? new Date(new Date(lastAuditTs).getTime() + 5.5 * 3600 * 1000).toISOString().slice(0, 10)
+          : null;
         const fnameBase = `${(u.emp_no || 'EMP')}_${monthYear.replace(/\s+/g, '_')}_${cycleContract}`;
         // Attach ONLY the audit-cleared lines. Then the Excel total, the PDF total
         // and the claim amount are all identical, so the Accounts portal's
@@ -4264,7 +4286,7 @@
           body: JSON.stringify({ push_claim: {
             excel_path, pdf_path: usePdfPath, month: monthYear, cycle: cycleContract, filename_base: fnameBase,
             user_id: userId, employee_number: u.emp_no, employee_name: name,
-            lines: cleared.length, submitted_total: submittedTotal, approved_total: approvedTotal,
+            lines: cleared.length, submitted_total: submittedTotal, approved_total: approvedTotal, cleared_date,
           } })
         });
         // A 413 (or any non-JSON error) must be handled BEFORE res.json(), else

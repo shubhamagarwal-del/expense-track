@@ -1338,7 +1338,7 @@ async function pushClaimToPortal(req, res, db, actingUser, actingProfile) {
   const {
     excel_b64, pdf_b64, excel_path, pdf_path, month, cycle, filename_base,
     user_id, employee_number, employee_name,
-    lines: cLines, submitted_total, approved_total,
+    lines: cLines, submitted_total, approved_total, cleared_date,
   } = p;
 
   if (!excel_b64 && !excel_path) return res.status(400).json({ error: 'excel_b64 or excel_path is required' });
@@ -1379,6 +1379,9 @@ async function pushClaimToPortal(req, res, db, actingUser, actingProfile) {
   }
   if (month) form.append('month', month);
   if (cycle) form.append('cycle', cycle);
+  // Date audit cleared the cycle's last entry (YYYY-MM-DD, IST) — the portal shows
+  // this per employee in its "To pay" list.
+  if (cleared_date) form.append('cleared_date', cleared_date);
 
   let portalRes, portalJson;
   try {
