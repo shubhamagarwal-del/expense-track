@@ -3683,9 +3683,9 @@
       return `${catPill(e.category)}<button type="button" onclick="event.stopPropagation();openCategoryEditPopover('${e.id}', this)" title="Change category" style="background:none;border:none;cursor:pointer;padding:0;font-size:.75rem;line-height:1;color:var(--text-muted)">✏️</button>`;
     }
 
-    /** Category pill — editable (pencil icon → inline dropdown) when viewed by Audit. */
+    /** Category pill — editable (pencil icon → inline dropdown) for Audit / HR / Super Admin. */
     function catPillEditable(e) {
-      if (currentProfile?.role !== 'audit') return catPill(e.category);
+      if (!['audit', 'hr', 'super_admin'].includes(currentProfile?.role)) return catPill(e.category);
       return `<span class="cat-pill-editable" data-expense-id="${e.id}" style="display:inline-flex;align-items:center;gap:.3rem">${catPillEditableInner(e)}</span>`;
     }
 
@@ -4244,12 +4244,16 @@
       if (btn) { btn.disabled = true; btn.innerHTML = 'Pushing…'; }
       try {
         const submittedTotal = cleared.reduce((s, e) => s + (Number(e.amount) || 0), 0);
-        // Date audit cleared the LAST entry of this cycle (max audit_at), as an IST
-        // date — the portal shows this per employee in its "To pay" list.
-        const lastAuditTs = cleared.reduce((mx, e) => (e.audit_at && e.audit_at > mx ? e.audit_at : mx), '');
-        const cleared_date = lastAuditTs
-          ? new Date(new Date(lastAuditTs).getTime() + 5.5 * 3600 * 1000).toISOString().slice(0, 10)
-          : null;
+        // Key dates for this cycle, each = the LATEST among its cleared entries, as an
+        // IST date (YYYY-MM-DD). The portal shows these per employee in its To-pay list:
+        //   uploaded_date = when the expense was submitted (created_at)
+        //   approved_date = when it was approved (HR, else L1)
+        //   cleared_date  = when Audit cleared it (audit_at)
+        const istDate = ts => ts ? new Date(new Date(ts).getTime() + 5.5 * 3600 * 1000).toISOString().slice(0, 10) : null;
+        const maxTs = pick => cleared.reduce((mx, e) => { const t = pick(e) || ''; return t > mx ? t : mx; }, '');
+        const uploaded_date = istDate(maxTs(e => e.created_at));
+        const approved_date = istDate(maxTs(e => e.hr_at || e.l1_at));
+        const cleared_date  = istDate(maxTs(e => e.audit_at));
         const fnameBase = `${(u.emp_no || 'EMP')}_${monthYear.replace(/\s+/g, '_')}_${cycleContract}`;
         // Attach ONLY the audit-cleared lines. Then the Excel total, the PDF total
         // and the claim amount are all identical, so the Accounts portal's
@@ -4286,7 +4290,8 @@
           body: JSON.stringify({ push_claim: {
             excel_path, pdf_path: usePdfPath, month: monthYear, cycle: cycleContract, filename_base: fnameBase,
             user_id: userId, employee_number: u.emp_no, employee_name: name,
-            lines: cleared.length, submitted_total: submittedTotal, approved_total: approvedTotal, cleared_date,
+            lines: cleared.length, submitted_total: submittedTotal, approved_total: approvedTotal,
+            uploaded_date, approved_date, cleared_date,
           } })
         });
         // A 413 (or any non-JSON error) must be handled BEFORE res.json(), else
