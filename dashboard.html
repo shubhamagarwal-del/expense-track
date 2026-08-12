@@ -3689,6 +3689,13 @@
       return `<span class="cat-pill-editable" data-expense-id="${e.id}" style="display:inline-flex;align-items:center;gap:.3rem">${catPillEditableInner(e)}</span>`;
     }
 
+    /** Small block of the key dates: Uploaded (submitted), Manager (L1) approved, HR approved. */
+    function uploadApproveDates(e) {
+      const line = (label, ts) => ts ? `<div>${label} ${formatDate(ts)}</div>` : '';
+      const html = line('📤 Uploaded:', e.created_at) + line('✓ Manager:', e.l1_at) + line('✓ HR:', e.hr_at);
+      return html ? `<div style="font-size:.62rem;color:var(--text-muted);margin-top:.2rem;line-height:1.55">${html}</div>` : '';
+    }
+
     function openCategoryEditPopover(expenseId, btnEl) {
       const exp = allExpensesFetched.find(x => x.id === expenseId);
       const wrap = btnEl.closest('.cat-pill-editable');
@@ -4246,14 +4253,16 @@
         const submittedTotal = cleared.reduce((s, e) => s + (Number(e.amount) || 0), 0);
         // Key dates for this cycle, each = the LATEST among its cleared entries, as an
         // IST date (YYYY-MM-DD). The portal shows these per employee in its To-pay list:
-        //   uploaded_date = when the expense was submitted (created_at)
-        //   approved_date = when it was approved (HR, else L1)
-        //   cleared_date  = when Audit cleared it (audit_at)
+        //   uploaded_date          = when the expense was submitted (created_at)
+        //   manager_approved_date  = when the Manager (L1) approved it (l1_at)
+        //   hr_approved_date       = when HR approved it (hr_at)
+        //   cleared_date           = when Audit cleared it (audit_at)
         const istDate = ts => ts ? new Date(new Date(ts).getTime() + 5.5 * 3600 * 1000).toISOString().slice(0, 10) : null;
         const maxTs = pick => cleared.reduce((mx, e) => { const t = pick(e) || ''; return t > mx ? t : mx; }, '');
-        const uploaded_date = istDate(maxTs(e => e.created_at));
-        const approved_date = istDate(maxTs(e => e.hr_at || e.l1_at));
-        const cleared_date  = istDate(maxTs(e => e.audit_at));
+        const uploaded_date         = istDate(maxTs(e => e.created_at));
+        const manager_approved_date = istDate(maxTs(e => e.l1_at));
+        const hr_approved_date      = istDate(maxTs(e => e.hr_at));
+        const cleared_date          = istDate(maxTs(e => e.audit_at));
         const fnameBase = `${(u.emp_no || 'EMP')}_${monthYear.replace(/\s+/g, '_')}_${cycleContract}`;
         // Attach ONLY the audit-cleared lines. Then the Excel total, the PDF total
         // and the claim amount are all identical, so the Accounts portal's
@@ -4291,7 +4300,7 @@
             excel_path, pdf_path: usePdfPath, month: monthYear, cycle: cycleContract, filename_base: fnameBase,
             user_id: userId, employee_number: u.emp_no, employee_name: name,
             lines: cleared.length, submitted_total: submittedTotal, approved_total: approvedTotal,
-            uploaded_date, approved_date, cleared_date,
+            uploaded_date, manager_approved_date, hr_approved_date, cleared_date,
           } })
         });
         // A 413 (or any non-JSON error) must be handled BEFORE res.json(), else
@@ -6038,6 +6047,7 @@
                       </td>
                       <td style="padding:.5rem .75rem">
                         ${statusBadge(e.status)}
+                        ${uploadApproveDates(e)}
                         ${e.l1_by_name?`<div style="font-size:.62rem;color:var(--text-muted);margin-top:.2rem">L1: ${escHtml(e.l1_by_name)}</div>`:''}
                         ${e.l2_by_name?`<div style="font-size:.62rem;color:var(--text-muted)">L2: ${escHtml(e.l2_by_name)}</div>`:''}
                         ${(e.status === 'audit_cleared' || e.status === 'audit_query') && e.audit_by_name?`<div style="font-size:.62rem;color:var(--text-muted)">Audit: ${escHtml(e.audit_by_name)}</div>`:''}

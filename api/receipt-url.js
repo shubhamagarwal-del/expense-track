@@ -1338,7 +1338,7 @@ async function pushClaimToPortal(req, res, db, actingUser, actingProfile) {
   const {
     excel_b64, pdf_b64, excel_path, pdf_path, month, cycle, filename_base,
     user_id, employee_number, employee_name,
-    lines: cLines, submitted_total, approved_total, uploaded_date, approved_date, cleared_date,
+    lines: cLines, submitted_total, approved_total, uploaded_date, manager_approved_date, hr_approved_date, cleared_date,
   } = p;
 
   if (!excel_b64 && !excel_path) return res.status(400).json({ error: 'excel_b64 or excel_path is required' });
@@ -1379,10 +1379,11 @@ async function pushClaimToPortal(req, res, db, actingUser, actingProfile) {
   }
   if (month) form.append('month', month);
   if (cycle) form.append('cycle', cycle);
-  // Key dates for this cycle (YYYY-MM-DD, IST) — the portal shows these per employee
-  // in its "To pay" list: uploaded (submitted), approved (HR/L1), cleared (Audit).
+  // Key dates for this cycle (YYYY-MM-DD, IST) — the portal shows these per employee in
+  // its "To pay" list: uploaded (submitted), manager-approved (L1), HR-approved, cleared (Audit).
   if (uploaded_date) form.append('uploaded_date', uploaded_date);
-  if (approved_date) form.append('approved_date', approved_date);
+  if (manager_approved_date) form.append('manager_approved_date', manager_approved_date);
+  if (hr_approved_date) form.append('hr_approved_date', hr_approved_date);
   if (cleared_date) form.append('cleared_date', cleared_date);
 
   let portalRes, portalJson;
