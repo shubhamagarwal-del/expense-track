@@ -2243,7 +2243,7 @@
                                   ${e.rejection_reason ? `<div style="margin-top:.4rem;padding:.4rem;background:var(--bg-3);border-radius:4px;font-size:.8rem;border-left:3px solid var(--red)"><strong>Reason:</strong> ${escHtml(e.rejection_reason)}</div>` : ''}
                                 </td>
                                 <td style="padding:.75rem">
-                                  ${approvalStepper(e)}
+                                  ${approvalStepper(e)}${uploadApproveDates(e)}
                                   ${l1Done ? `<div style="font-size:.68rem;color:var(--text-muted);margin-top:.25rem">L1: ${escHtml(e.l1_by_name||'—')}${e.l1_remark?` — ${escHtml(e.l1_remark)}`:''}</div>` : ''}
                                   ${l2Done ? `<div style="font-size:.68rem;color:var(--text-muted)">L2: ${escHtml(e.l2_by_name||'—')}${e.l2_remark?` — ${escHtml(e.l2_remark)}`:''}</div>` : ''}
                                   ${auditDone ? `<div style="font-size:.68rem;color:var(--text-muted)">Audit: ${escHtml(e.audit_by_name||'—')}${e.audit_note?` — ${escHtml(e.audit_note)}`:''}</div>` : ''}
@@ -2969,7 +2969,7 @@
         ${formatCurrency(approvedAmt)}
         ${amtChanged ? `<div style="font-size:.68rem;color:#059669;font-weight:600">Adjusted</div>` : ''}
       </td>
-      <td>${statusBadge(e.status)}<div style="margin-top:4px">${approvalStepper(e)}</div>${e.status === 'audit_cleared' ? `<div style="font-size:.62rem;color:var(--text-muted);margin-top:.2rem">Audit: ${escHtml(e.audit_by_name||'—')}</div>` : ''}${e.reopened_by_name?`<div style="font-size:.62rem;color:#b45309;font-weight:600;margin-top:.2rem">🔄 Re-reviewed by ${escHtml(e.reopened_by_name)}</div>`:''}</td>
+      <td>${statusBadge(e.status)}<div style="margin-top:4px">${approvalStepper(e)}${uploadApproveDates(e)}</div>${e.status === 'audit_cleared' ? `<div style="font-size:.62rem;color:var(--text-muted);margin-top:.2rem">Audit: ${escHtml(e.audit_by_name||'—')}</div>` : ''}${e.reopened_by_name?`<div style="font-size:.62rem;color:#b45309;font-weight:600;margin-top:.2rem">🔄 Re-reviewed by ${escHtml(e.reopened_by_name)}</div>`:''}</td>
       <td>${receiptCell(e)}</td>
     </tr>`;
     }
@@ -3029,7 +3029,7 @@
         </div>
         ${statusBadge(e.status)}
       </div>
-      <div style="margin:.4rem 0">${approvalStepper(e)}</div>
+      <div style="margin:.4rem 0">${approvalStepper(e)}${uploadApproveDates(e)}</div>
       <div class="expense-card-meta">
         ${catPill(e.category)}
         <span class="expense-card-date">${formatDate(e.created_at)}</span>
@@ -3107,7 +3107,7 @@
         </div>
         ${statusBadge(e.status)}
       </div>
-      <div style="margin:.5rem 0">${approvalStepper(e)}</div>
+      <div style="margin:.5rem 0">${approvalStepper(e)}${uploadApproveDates(e)}</div>
       <div class="expense-card-meta">
         ${catPillEditable(e)}
         <span class="expense-card-date">${formatDate(e.created_at)}</span>
