@@ -500,6 +500,25 @@ function approvalStepper(e) {
   window.addEventListener('scroll', hide, true);
 })();
 
+/** Return small 📝 note icon(s) for whichever approval remarks exist on an
+ *  expense (Manager / HR / Audit / Override). Each hovers to reveal the remark
+ *  via the shared initRemarkTips floating tooltip. Empty string when none. */
+function remarkNotes(e) {
+  const items = [
+    ['Manager',  e.l1_by_name,    e.l1_remark],
+    ['HR',       e.hr_by_name,    e.hr_remark],
+    ['Audit',    e.audit_by_name, e.audit_note],
+    ['Override', e.l2_by_name,    e.l2_remark],
+  ].filter(([, , t]) => t && String(t).trim());
+  if (!items.length) return '';
+  const icons = items.map(([label, who, text]) => {
+    const t = String(text).trim();
+    const lbl = label + (who ? ' · ' + who : '');
+    return `<span class="rmk-note" tabindex="0" data-rmk-label="${escHtml(lbl)}" data-rmk-text="${escHtml(t)}" title="${escHtml(label + (who ? ' (' + who + ')' : '') + ': ' + t)}" style="cursor:help;font-size:13px;line-height:1;user-select:none">📝</span>`;
+  }).join('');
+  return `<div class="rmk-notes-row" style="margin-top:.3rem;display:inline-flex;gap:.2rem;flex-wrap:wrap;align-items:center">${icons}</div>`;
+}
+
 /** Return a styled category pill HTML string. */
 function catPill(category) {
   const cls = category.replace(/\s+/g, '-');
