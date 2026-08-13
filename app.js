@@ -404,11 +404,11 @@ function approvalStepper(e) {
   const roles = [
     { key: 'you',     label: 'You',     icon: '🧑', done: true },
     { key: 'manager', label: 'Manager', icon: '👔', done: stat !== 'pending' && stat !== 'l1_rejected' && stat !== 'rejected',
-      active: stat === 'pending' },
+      active: stat === 'pending', remark: e.l1_remark, who: e.l1_by_name },
     { key: 'hr',      label: 'HR',      icon: '🛡️', done: ['hr_approved','audit_cleared','audit_review','audit_query'].includes(stat),
-      active: stat === 'l1_approved' },
+      active: stat === 'l1_approved', remark: e.hr_remark, who: e.hr_by_name },
     { key: 'audit',   label: 'Audit',   icon: '🔍', done: stat === 'audit_cleared',
-      active: stat === 'hr_approved' || stat === 'audit_review' },
+      active: stat === 'hr_approved' || stat === 'audit_review', remark: e.audit_note, who: e.audit_by_name },
   ];
   const isRejected = stat === 'rejected' || stat === 'l1_rejected';
   const isQueried  = stat === 'audit_query'; // shown visually like a rejection, at the Audit step
@@ -425,9 +425,14 @@ function approvalStepper(e) {
     const labelColor = isRejectedHere ? '#dc2626' : isActive ? '#2563eb' : isDone ? '#059669' : '#9ca3af';
     const labelWeight = isActive ? '600' : '400';
     const icon = isRejectedHere ? '✗ ' : isDone ? '✓ ' : isActive ? '● ' : '○ ';
+    const rmkTxt = (r.remark || '').trim();
+    const rmkLbl = r.label + (r.who ? ' · ' + r.who : '');
+    const rmkTip = rmkTxt
+      ? `<span class="rmk-note" tabindex="0" onclick="event.stopPropagation()" data-rmk-label="${escHtml(rmkLbl)}" data-rmk-text="${escHtml(rmkTxt)}" title="${escHtml(r.label + (r.who ? ' ('+r.who+')' : '') + ': ' + rmkTxt)}" style="cursor:help;margin-left:2px;font-size:11px;line-height:1;user-select:none">📝</span>`
+      : '';
     return `<span style="display:inline-flex;align-items:center;gap:3px;padding:2px 6px;border-radius:4px;${bg ? 'background:'+bg+';' : ''}font-size:11px;font-weight:${labelWeight};color:${labelColor}">
       ${dot(color, isActive)}
-      <span>${icon}${r.label}</span>
+      <span>${icon}${r.label}</span>${rmkTip}
     </span>`;
   });
 
@@ -447,6 +452,53 @@ function approvalStepper(e) {
   const clickableAttr = !isFinal ? 'cursor:pointer;background:#f8faff;border:1px dashed #bfdbfe;border-radius:8px;padding:4px 8px;margin:-4px -8px;transition:all .15s' : '';
   return `<span class="approval-stepper" data-id="${e.id}" data-status="${stat}" style="display:inline-flex;align-items:center;gap:1px;flex-wrap:wrap;${clickableAttr}" title="${!isFinal ? 'Tap to review or approve this expense' : ''}">${pipelineInner}${!isFinal ? '<span style="font-size:10px;color:#2563eb;font-weight:600;margin-left:6px">👆 Tap</span>' : ''}</span>${suffix}`;
 }
+
+/* Floating tooltip for the approval remark 📝 icons. Uses a single position:fixed
+   element so it is NEVER clipped by an overflow:hidden ancestor (table cells, cards).
+   Delegated on document → works for every dynamically-rendered stepper. Runs once. */
+(function initRemarkTips() {
+  if (typeof document === 'undefined' || window.__rmkTipInit) return;
+  window.__rmkTipInit = true;
+  let tip = null;
+  const ensure = () => {
+    if (tip) return tip;
+    tip = document.createElement('div');
+    tip.setAttribute('role', 'tooltip');
+    tip.style.cssText = 'position:fixed;z-index:99999;pointer-events:none;opacity:0;display:none;'
+      + 'max-width:260px;background:#1e293b;color:#fff;font-size:11.5px;line-height:1.45;'
+      + 'padding:7px 10px;border-radius:8px;box-shadow:0 8px 24px rgba(2,6,23,.32);'
+      + 'transition:opacity .12s;white-space:normal;text-align:left';
+    (document.body || document.documentElement).appendChild(tip);
+    return tip;
+  };
+  const show = (n) => {
+    const t = ensure();
+    t.innerHTML = '';
+    const s = document.createElement('strong');
+    s.textContent = n.getAttribute('data-rmk-label') || '';
+    s.style.cssText = 'color:#93c5fd;font-weight:700;font-size:10px;text-transform:uppercase;letter-spacing:.03em;display:block;margin-bottom:2px';
+    t.appendChild(s);
+    t.appendChild(document.createTextNode(n.getAttribute('data-rmk-text') || ''));
+    t.style.display = 'block';
+    t.style.opacity = '0';
+    const r = n.getBoundingClientRect();
+    const tw = t.offsetWidth, th = t.offsetHeight;
+    let left = r.left + r.width / 2 - tw / 2;
+    left = Math.max(8, Math.min(left, window.innerWidth - tw - 8));
+    let top = r.top - th - 8;
+    if (top < 8) top = r.bottom + 8; // flip below when no room above
+    t.style.left = left + 'px';
+    t.style.top = top + 'px';
+    requestAnimationFrame(() => { t.style.opacity = '1'; });
+  };
+  const hide = () => { if (tip) tip.style.opacity = '0'; };
+  const pick = (e) => (e.target && e.target.closest) ? e.target.closest('.rmk-note') : null;
+  document.addEventListener('mouseover', (e) => { const n = pick(e); if (n) show(n); });
+  document.addEventListener('mouseout',  (e) => { if (pick(e)) hide(); });
+  document.addEventListener('focusin',   (e) => { const n = pick(e); if (n) show(n); });
+  document.addEventListener('focusout',  (e) => { if (pick(e)) hide(); });
+  window.addEventListener('scroll', hide, true);
+})();
 
 /** Return a styled category pill HTML string. */
 function catPill(category) {

@@ -1614,6 +1614,10 @@
         .kpi-sub{font-size:.78rem;color:var(--text-muted,#6b7280);font-weight:500}
         .kpi-spark{grid-column:1 / -1;grid-row:2;justify-self:end;align-self:end;width:104px;height:30px;pointer-events:none;opacity:.95}
         @media(max-width:560px){.kpi-spark{display:none}}
+        /* Approval remark note icon (📝). Tooltip itself is a position:fixed element
+           built in app.js (initRemarkTips) so it is never clipped by overflow:hidden. */
+        .rmk-note{cursor:help;outline:none;transition:filter .12s;filter:grayscale(.2) opacity(.85)}
+        .rmk-note:hover,.rmk-note:focus{filter:none}
       </style>
       <div class="kpi-grid" style="${currentProfile.role === 'audit' ? 'display:none' : ''}">
         <div class="kpi-card">
