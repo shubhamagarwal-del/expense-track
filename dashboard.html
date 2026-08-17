@@ -941,7 +941,12 @@
     }
 
     /** Show every advance transaction (outstanding + recovered) for one employee. */
-    function showAdvanceHistory(userId, userName) {
+    async function showAdvanceHistory(userId, userName) {
+      // Portal advance breakdown (entry-by-entry + adjusted + true remaining).
+      if (!Object.keys(portalAdvByUser).length) await loadPortalAdvForBreakdown();
+      if (!(cyclePaymentsList && cyclePaymentsList.length)) await loadCyclePayments();
+      const portalBd = buildAdvanceBreakdown(portalAdvByUser[userId] || [], advAdjustmentsFromPayments((cyclePaymentsList || []).filter(p => p.user_id === userId)));
+      const portalHtml = portalBd.totalGiven > 0.005 ? `<div style="margin-bottom:1rem">${advanceBreakdownHtml(portalBd)}</div>` : '';
       const rows = advancesList.filter(a => a.user_id === userId).sort((a, b) => new Date(b.given_at) - new Date(a.given_at));
       const outstanding = rows.reduce((s, a) => s + (a.remaining != null ? Number(a.remaining) : (a.status === 'outstanding' ? Number(a.amount || 0) : 0)), 0);
       const canUndo = ['audit', 'super_admin'].includes(currentProfile?.role);
@@ -956,7 +961,9 @@
             <h3 style="margin:0;font-size:1.05rem;font-weight:800">💵 Advance History — ${escHtml(userName || '')}</h3>
             <button onclick="this.closest('div[style*=fixed]').remove()" style="background:none;border:none;font-size:1.3rem;cursor:pointer;color:#64748b">✕</button>
           </div>
+          ${portalHtml}
           ${rows.length ? `
+          <div style="font-size:.72rem;color:var(--text-muted);font-weight:700;text-transform:uppercase;margin:.2rem 0 .4rem">Local advances</div>
           <table style="width:100%;border-collapse:collapse;font-size:.82rem;border:1px solid var(--border);border-radius:8px;overflow:hidden">
             <thead><tr style="background:var(--bg-2)">
               <th style="padding:.4rem .5rem;text-align:left;font-size:.7rem;color:var(--text-muted)">DATE</th>
@@ -991,8 +998,8 @@
             </tr>${recoveryLogHtml}`;
             }).join('')}</tbody>
           </table>
-          <div style="margin-top:.75rem;text-align:right;font-weight:700;font-size:.88rem">Total Outstanding: ${formatCurrency(outstanding)}</div>
-          ` : `<p style="color:var(--text-muted);font-size:.88rem;margin:1rem 0 0">No advances recorded for this employee.</p>`}
+          <div style="margin-top:.75rem;text-align:right;font-weight:700;font-size:.88rem">Local advances outstanding: ${formatCurrency(outstanding)}</div>
+          ` : (portalHtml ? '' : `<p style="color:var(--text-muted);font-size:.88rem;margin:1rem 0 0">No advances recorded for this employee.</p>`)}
         </div>`;
       document.body.appendChild(overlay);
     }
