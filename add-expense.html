@@ -1792,11 +1792,17 @@
       }
 
       try {
+        const { data: { session } } = await db.auth.getSession();
+
+        // ── Absent-day guard: block filing an expense on a day the employee was marked Absent ──
+        const offReason = await checkAbsentDayBlock(dateIso, session.access_token);
+        if (offReason === false) return;                        // cancelled → abort (finally resets loading)
+        if (offReason) newEntries.forEach(e => e.off_day_reason = offReason);
+
         const startOfDay = new Date(dateIso).toISOString();
         const endOfDay   = new Date(new Date(dateIso).getTime() + 86399999).toISOString();
 
         // Delete via server-side API (service role key bypasses RLS — direct client delete silently fails)
-        const { data: { session } } = await db.auth.getSession();
         const delRes = await fetch('/api/delete-expenses', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.access_token}` },
@@ -1816,6 +1822,42 @@
         await renderSheet();
       } catch (err) { showMessage(err.message, 'error'); }
       finally { setLoading(btn, false); _savingDay = false; }
+    }
+
+    // Absent-day guard. Asks the server whether the employee was marked Absent (A) on
+    // this date (from the face-machine / HR attendance). If so, blocks the save unless
+    // they confirm it's next-day travel — then returns a preset reason to stamp on the
+    // entries. Returns: null = not an absent day (proceed) · false = cancelled (abort) ·
+    // string = proceed and record this reason. Fail-open: any lookup error → allow.
+    async function checkAbsentDayBlock(dateIso, token) {
+      let off;
+      try {
+        const r = await fetch('/api/receipt-url?my_attendance_off=1', { headers: { Authorization: `Bearer ${token}` } });
+        if (!r.ok) return null;
+        off = (await r.json()).off || [];
+      } catch { return null; }
+      if (!off.some(o => o.att_date === dateIso && String(o.status).toUpperCase() === 'A')) return null;
+      const pretty = new Date(dateIso).toLocaleDateString('en-IN', { weekday: 'short', day: '2-digit', month: 'short', year: 'numeric' });
+      const REASON = 'Next-day travel — raat ko nikla, agle din ke site kaam ke liye';
+      return await new Promise(resolve => {
+        const ov = document.createElement('div');
+        ov.style.cssText = 'position:fixed;inset:0;background:rgba(2,6,23,.6);z-index:100000;display:flex;align-items:center;justify-content:center;padding:1rem';
+        ov.innerHTML = `<div style="background:#fff;border-radius:16px;max-width:440px;width:100%;box-shadow:0 20px 60px rgba(0,0,0,.4);overflow:hidden">
+          <div style="padding:1.2rem 1.3rem 0">
+            <div style="font-size:2rem">🚫</div>
+            <div style="font-size:1.1rem;font-weight:800;margin-top:.3rem;color:#b91c1c">${pretty} ko aap Absent the</div>
+            <div style="margin-top:.5rem;font-size:.9rem;color:#475569;line-height:1.5">Is din normally expense allowed nahi. Agar aap <b>agle din ke kaam ke liye raat ko travel</b> kar rahe the, to niche wala button dabao — expense reason ke saath chali jayegi.</div>
+          </div>
+          <div style="display:flex;gap:.6rem;padding:1.2rem 1.3rem">
+            <button id="oda-cancel" style="flex:1;padding:.7rem;border:1px solid #cbd5e1;background:#fff;border-radius:10px;font-weight:700;font-size:.85rem;cursor:pointer;color:#475569">Cancel</button>
+            <button id="oda-ok" style="flex:2;padding:.7rem;border:none;background:#2563eb;color:#fff;border-radius:10px;font-weight:700;font-size:.82rem;cursor:pointer">✅ Agle din ke kaam ka raat travel</button>
+          </div></div>`;
+        const done = v => { ov.remove(); resolve(v); };
+        ov.querySelector('#oda-cancel').onclick = () => done(false);
+        ov.querySelector('#oda-ok').onclick = () => done(REASON);
+        ov.addEventListener('click', e => { if (e.target === ov) done(false); });
+        document.body.appendChild(ov);
+      });
     }
 
     // ── Site autocomplete ─────────────────────────────────

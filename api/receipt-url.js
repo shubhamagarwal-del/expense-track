@@ -295,6 +295,20 @@ export default async function handler(req, res) {
       return res.status(200).json({ attendance_off: data || [] });
     }
 
+    // ?my_attendance_off=1 → the CURRENT user's OWN off-days. Self-service (any role) so
+    // add-expense can block filing an expense on a day the employee was marked Absent.
+    if (req.query?.my_attendance_off) {
+      const { data: me } = await supabaseAdmin.from('users').select('emp_no').eq('id', user.id).single();
+      if (!me?.emp_no) return res.status(200).json({ off: [] });
+      const { data, error } = await supabaseAdmin
+        .from('employee_attendance')
+        .select('att_date, status')
+        .eq('emp_no', me.emp_no)
+        .in('status', ['A', 'L', 'CO', 'SUN', 'SAT', 'H', 'WO', 'Paternity Leave']);
+      if (error) return res.status(500).json({ error: error.message });
+      return res.status(200).json({ off: data || [] });
+    }
+
     // ?advances=1 → employee advance ledger (for Advance/Due display).
     // Audit/Super Admin get everyone's; an employee only ever gets their own.
     // Each row also gets `recovered_amount`/`remaining` computed from its recovery log,
@@ -701,6 +715,90 @@ export default async function handler(req, res) {
         inserted += Math.min(500, clean.length - i);
       }
       return res.status(200).json({ ok: true, source_month, imported: inserted });
+    }
+
+    // ── POST { upload_attendance_machine: { rows:[{emp_code,name,att_date,status}] } } →
+    //    Import the eSSL eTimeTrackLite "Monthly Status Report" (raw machine codes + names).
+    //    Maps machine Emp.Code → SSS_{4pad}, VERIFIED by name (containment / Levenshtein ≥ .55);
+    //    rows whose code doesn't resolve or whose name disagrees are SKIPPED and reported —
+    //    so a mis-enrolled machine id can never write attendance onto the wrong SSS employee. ──
+    if (req.body?.upload_attendance_machine) {
+      const { data: profile } = await supabaseAdmin.from('users').select('role').eq('id', user.id).single();
+      if (!profile || !['super_admin', 'audit', 'hr'].includes(profile.role)) {
+        return res.status(403).json({ error: 'Only Super Admin, Audit, or HR can upload attendance' });
+      }
+      const { rows } = req.body.upload_attendance_machine;
+      if (!Array.isArray(rows) || !rows.length) return res.status(400).json({ error: 'rows[] required' });
+
+      const { data: allUsers } = await supabaseAdmin.from('users').select('emp_no,name');
+      const byEmpNo = {};
+      (allUsers || []).forEach(u => { if (u.emp_no) byEmpNo[String(u.emp_no).trim().toUpperCase()] = u.name || ''; });
+
+      const norm = s => String(s || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+      const lev = (a, b) => {
+        const m = a.length, n = b.length;
+        if (!m) return n; if (!n) return m;
+        let prev = Array.from({ length: n + 1 }, (_, i) => i);
+        for (let i = 1; i <= m; i++) {
+          const cur = [i];
+          for (let j = 1; j <= n; j++)
+            cur[j] = Math.min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+          prev = cur;
+        }
+        return prev[n];
+      };
+      const samePerson = (a, b) => {
+        a = norm(a); b = norm(b);
+        if (!a || !b) return false;
+        if (a.includes(b) || b.includes(a)) return true;
+        return 1 - lev(a, b) / Math.max(a.length, b.length) >= 0.55;
+      };
+      const toSss = code => {
+        const d = String(code || '').replace(/\D/g, '');
+        return d ? 'SSS_' + String(parseInt(d, 10)).padStart(4, '0') : null;
+      };
+      const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+      const monthLabel = d => { const dt = new Date(d + 'T00:00:00Z'); return MONTHS[dt.getUTCMonth()] + ' ' + dt.getUTCFullYear(); };
+
+      // Resolve each unique (emp_code|name) once → emp_no or a skip reason
+      const resolved = new Map(), skipped = [];
+      const keyOf = r => `${r.emp_code}|${r.name}`;
+      for (const r of rows) {
+        const k = keyOf(r);
+        if (resolved.has(k)) continue;
+        const sss = toSss(r.emp_code);
+        const etName = sss ? byEmpNo[sss] : null;
+        if (etName && samePerson(r.name, etName)) {
+          resolved.set(k, { emp_no: sss });
+        } else {
+          const reason = !sss ? 'invalid code' : !etName ? 'not in ExpenseTrack' : `name mismatch → ${etName}`;
+          resolved.set(k, { skip: true });
+          skipped.push({ code: r.emp_code, name: r.name, sss, reason });
+        }
+      }
+
+      // Build off-day rows for mapped employees, grouped by derived source_month
+      const bySource = {}, mappedEmps = new Set();
+      for (const r of rows) {
+        const got = resolved.get(keyOf(r));
+        if (!got || got.skip || !r.att_date || !r.status) continue;
+        const sm = monthLabel(r.att_date);
+        (bySource[sm] = bySource[sm] || []).push({ emp_no: got.emp_no, att_date: r.att_date, status: String(r.status).trim(), location: null, source_month: sm });
+        mappedEmps.add(got.emp_no);
+      }
+
+      let imported = 0;
+      for (const sm of Object.keys(bySource)) {
+        const { error: delErr } = await supabaseAdmin.from('employee_attendance').delete().eq('source_month', sm);
+        if (delErr) return res.status(500).json({ error: delErr.message });
+        const clean = bySource[sm];
+        for (let i = 0; i < clean.length; i += 500) {
+          const { error } = await supabaseAdmin.from('employee_attendance').upsert(clean.slice(i, i + 500), { onConflict: 'emp_no,att_date' });
+          if (error) return res.status(500).json({ error: error.message });
+          imported += Math.min(500, clean.length - i);
+        }
+      }
+      return res.status(200).json({ ok: true, imported, employees: mappedEmps.size, months: Object.keys(bySource), skipped });
     }
 
     // ── POST { push_claim: {...} } → push an audit-cleared cycle report (Excel + PDF) to Accounts Portal ──
