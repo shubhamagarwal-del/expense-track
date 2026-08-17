@@ -1392,17 +1392,28 @@ async function reconcilePortalAdvances(res, db) {
     return res.status(500).json({ error: 'Accounts portal API key is not set (ACCOUNTS2026_API_KEY)' });
   }
 
-  let payload;
-  try {
-    const r = await fetch(`${baseUrl}/api/external/employee-advances?only_outstanding=false&include_entries=true`, {
-      headers: { 'x-api-key': apiKey }
-    });
+  // The portal's advances endpoint (include_entries=true) is slow + occasionally 500s
+  // (cold start / ~30s responses). Retry up to 3× on 5xx / network / timeout so a
+  // transient blip doesn't fail the whole sync. Per-attempt 18s abort guard; the
+  // function itself has a 60s budget (vercel.json maxDuration).
+  const advUrl = `${baseUrl}/api/external/employee-advances?only_outstanding=false&include_entries=true`;
+  let payload, r = null, lastErr = null;
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    try {
+      const ctrl = new AbortController();
+      const to = setTimeout(() => ctrl.abort(), 18000);
+      r = await fetch(advUrl, { headers: { 'x-api-key': apiKey }, signal: ctrl.signal });
+      clearTimeout(to);
+    } catch (e) { lastErr = e; r = null; if (attempt < 3) { await new Promise(s => setTimeout(s, 1500)); continue; } break; }
     if (r.status === 401) return res.status(502).json({ error: 'Accounts portal rejected the API key (401)' });
-    if (!r.ok) return res.status(502).json({ error: `Accounts portal returned HTTP ${r.status}` });
-    payload = await r.json();
-  } catch (err) {
-    return res.status(502).json({ error: 'Could not reach accounts portal: ' + (err.message ?? err) });
+    if (r.ok) break;
+    if (r.status < 500) break;                                   // don't retry 4xx
+    if (attempt < 3) await new Promise(s => setTimeout(s, 1500 * attempt)); // backoff on 5xx
   }
+  if (!r) return res.status(502).json({ error: 'Accounts portal advances API not reachable (slow / timed out) — try Sync again in a moment' + (lastErr ? ` [${lastErr.message}]` : '') });
+  if (!r.ok) return res.status(502).json({ error: `Accounts portal returned HTTP ${r.status} (their advances API is slow/flaky right now — please try Sync again in a moment)` });
+  try { payload = await r.json(); }
+  catch (err) { return res.status(502).json({ error: 'Accounts portal sent a bad response: ' + (err.message ?? err) }); }
 
   const employees = payload?.data || [];
   // Preload our users table once for emp_no matching
