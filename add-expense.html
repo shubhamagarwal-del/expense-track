@@ -915,7 +915,9 @@
       'Printing & Stationery': null,
       'Petrol / Diesel':       null,
       'Courier / Parcel':      null,
-      'Parking':               null
+      'Parking':               null,
+      'Repair & Maintenance':  null,
+      'Water Tanker':          null
     };
 
     // SITE_DATA is defined globally in app.js (loaded above) — shared with the dashboard.
@@ -1188,6 +1190,8 @@
             <option value="Petrol / Diesel"       ${normalCat === 'Petrol / Diesel'       ? 'selected' : ''}>Petrol / Diesel</option>
             <option value="Courier / Parcel"      ${normalCat === 'Courier / Parcel'      ? 'selected' : ''}>Courier / Parcel</option>
             <option value="Parking"               ${normalCat === 'Parking'               ? 'selected' : ''}>Parking</option>
+            <option value="Repair & Maintenance"  ${normalCat === 'Repair & Maintenance'  ? 'selected' : ''}>Repair & Maintenance</option>
+            <option value="Water Tanker"          ${normalCat === 'Water Tanker'          ? 'selected' : ''}>Water Tanker</option>
           </select>
         </div>
       </div>
@@ -1606,6 +1610,12 @@
       } else if (type === 'PETROL_DIESEL') {
         row.category = 'Petrol / Diesel';
         row.site = parts[1]||''; row.description = parts[2]||'';
+      } else if (type === 'REPAIR_MAINTENANCE') {
+        row.category = 'Repair & Maintenance';
+        row.site = parts[1]||''; row.description = parts[2]||'';
+      } else if (type === 'WATER_TANKER') {
+        row.category = 'Water Tanker';
+        row.site = parts[1]||''; row.description = parts[2]||'';
       // Legacy formats — kept for backward compatibility
       } else if (type === 'TRAVEL' || type === 'BUS' || type === 'TAXI') {
         row.category  = 'Travel';
@@ -1784,6 +1794,10 @@
           finalDescription = `PRINTING_STATIONERY|${site}|${desc}`;
         } else if (category === 'Petrol / Diesel') {
           finalDescription = `PETROL_DIESEL|${site}|${desc}`;
+        } else if (category === 'Repair & Maintenance') {
+          finalDescription = `REPAIR_MAINTENANCE|${site}|${desc}`;
+        } else if (category === 'Water Tanker') {
+          finalDescription = `WATER_TANKER|${site}|${desc}`;
         } else {
           finalDescription = `REGULAR|${site}|${desc}`;
         }

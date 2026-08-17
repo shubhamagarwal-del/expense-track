@@ -154,7 +154,7 @@ export default async function handler(req, res) {
   if (action === 'update_category') {
     if (!['audit', 'hr', 'super_admin'].includes(profile.role))
       return res.status(403).json({ error: 'Only Audit, HR or Super Admin can change an expense category' });
-    const VALID_CATEGORIES = ['Travel', 'Food', 'Hotel Room Rent', 'Printing & Stationery', 'Petrol / Diesel', 'Courier / Parcel', 'Parking'];
+    const VALID_CATEGORIES = ['Travel', 'Food', 'Hotel Room Rent', 'Printing & Stationery', 'Petrol / Diesel', 'Courier / Parcel', 'Parking', 'Repair & Maintenance', 'Water Tanker'];
     if (!VALID_CATEGORIES.includes(category))
       return res.status(400).json({ error: 'Invalid category' });
     const { error: catErr } = await supabaseAdmin

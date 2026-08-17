@@ -1150,7 +1150,7 @@
       const type  = parts[0];
       if (['TRAVEL','TRAVEL_BUS','TRAVEL_TAXI','TRAVEL_TRAIN','TRAVEL_FLIGHT'].includes(type)) return parts[3] || '';
       if (type === 'TRAVEL_BIKE') return parts[4] || '';
-      if (['FOOD','REGULAR','ROOM_RENT','BUS','TAXI','BIKE','PRINTING_STATIONERY','PETROL_DIESEL'].includes(type)) return parts[1] || '';
+      if (['FOOD','REGULAR','ROOM_RENT','BUS','TAXI','BIKE','PRINTING_STATIONERY','PETROL_DIESEL','REPAIR_MAINTENANCE','WATER_TANKER'].includes(type)) return parts[1] || '';
       if (type === 'OTHER') return parts[2] || '';
       return e.users?.site_name || '';
     }
@@ -1170,6 +1170,8 @@
       else if (type === 'ROOM_RENT') { d = parts[2] || ''; }
       else if (type === 'PRINTING_STATIONERY') { d = parts[2] || ''; }
       else if (type === 'PETROL_DIESEL') { d = parts[2] || ''; }
+      else if (type === 'REPAIR_MAINTENANCE') { d = parts[2] || ''; }
+      else if (type === 'WATER_TANKER') { d = parts[2] || ''; }
       return { from: f, to: t, desc: (d || '').trim() };
     }
 
@@ -2878,6 +2880,8 @@
         ROOM_RENT:     { label: '🏠 Hotel Room Rent',         color: '#7c3aed', site: p[1], note: p[2] },
         PRINTING_STATIONERY: { label: '🖨️ Printing & Stationery', color: '#0891b2', site: p[1], note: p[2] },
         PETROL_DIESEL: { label: '⛽ Petrol / Diesel',         color: '#ca8a04', site: p[1], note: p[2] },
+        REPAIR_MAINTENANCE: { label: '🔧 Repair & Maintenance', color: '#be123c', site: p[1], note: p[2] },
+        WATER_TANKER:  { label: '🚰 Water Tanker',           color: '#0e7490', site: p[1], note: p[2] },
         REGULAR:       { site: p[1], note: p[2] },
         OTHER:         { name: p[1], site: p[2], note: p[3] },
       };
@@ -2940,6 +2944,8 @@
       if (type === 'ROOM_RENT') return join(['Hotel Room Rent', p[1]||'', p[2]||'']);
       if (type === 'PRINTING_STATIONERY') return join(['Printing & Stationery', p[1]||'', p[2]||'']);
       if (type === 'PETROL_DIESEL') return join(['Petrol / Diesel', p[1]||'', p[2]||'']);
+      if (type === 'REPAIR_MAINTENANCE') return join(['Repair & Maintenance', p[1]||'', p[2]||'']);
+      if (type === 'WATER_TANKER') return join(['Water Tanker', p[1]||'', p[2]||'']);
       if (type === 'REGULAR') return join([p[1]||'', p[2]||'']);
       return raw; // unknown/legacy format — show as-is rather than hiding it
     }
@@ -3683,7 +3689,7 @@
     }
 
     // ── Audit: inline category correction ───────────────────────
-    const AUDIT_CATEGORY_OPTIONS = ['Travel', 'Food', 'Hotel Room Rent', 'Printing & Stationery', 'Petrol / Diesel', 'Courier / Parcel', 'Parking'];
+    const AUDIT_CATEGORY_OPTIONS = ['Travel', 'Food', 'Hotel Room Rent', 'Printing & Stationery', 'Petrol / Diesel', 'Courier / Parcel', 'Parking', 'Repair & Maintenance', 'Water Tanker'];
 
     /** Inner content (pill + pencil button) shared by the initial render and the post-edit restore. */
     function catPillEditableInner(e) {

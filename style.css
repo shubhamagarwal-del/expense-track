@@ -880,6 +880,8 @@ tbody tr:hover { background: #fafbff; }
 .cp-Other     { background: #f3e8ff; color: #6d28d9; }
 .cp-Room-Rent { background: #fce7f3; color: #9d174d; }
 .cp-Courier-\/-Parcel { background: #e0e7ff; color: #3730a3; }
+.cp-Repair-\&-Maintenance { background: #ffe4e6; color: #be123c; }
+.cp-Water-Tanker { background: #cffafe; color: #0e7490; }
 /* Legacy / sub-type pills */
 .cp-Bus       { background: #e0f2fe; color: #0369a1; }
 .cp-Taxi      { background: #fef3c7; color: #b45309; }
