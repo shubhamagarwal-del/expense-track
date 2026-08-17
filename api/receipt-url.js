@@ -361,7 +361,7 @@ export default async function handler(req, res) {
       const ALLOWED_VIEW_ROLES = ['admin', 'super_admin', 'hr', 'audit'];
       let q = supabaseAdmin
         .from('cycle_payments')
-        .select('user_id, month_year, cycle_num, amount_paid, utr_number, bene_name, payment_date');
+        .select('user_id, month_year, cycle_num, amount_paid, utr_number, bene_name, payment_date, advance_adjusted, cash_paid, remaining, settlement_status, settlement');
       if (!ALLOWED_VIEW_ROLES.includes(profile.role)) q = q.eq('user_id', user.id);
       const { data, error } = await q;
       if (error) return res.status(500).json({ error: error.message });

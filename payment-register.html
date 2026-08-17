@@ -197,9 +197,16 @@
         const res = await fetch('/api/receipt-url?payments=1', { headers: { Authorization: `Bearer ${token}` } });
         const { payments } = res.ok ? await res.json() : { payments: [] };
         const paidMap = {};
+        const settleMap = {}; // key -> { advance, cash, remaining, status, adjustments[] }
         (payments || []).forEach(p => {
           const k = `${p.user_id}|${p.month_year}|${p.cycle_num}`;
           paidMap[k] = (paidMap[k] || 0) + Number(p.amount_paid || 0);
+          const s = (settleMap[k] ||= { advance: 0, cash: 0, remaining: 0, status: null, adjustments: [] });
+          s.advance += Number(p.advance_adjusted || 0);
+          s.cash    += Number(p.cash_paid || 0);
+          s.remaining += Number(p.remaining || 0);
+          s.status = p.settlement_status || s.status;
+          if (p.settlement?.adjustments) s.adjustments.push(...p.settlement.adjustments);
         });
 
         // Group expenses by user + month + cycle
@@ -227,7 +234,7 @@
           const pending = g.total - paid;
           let status = 'unpaid';
           if (paid > 0.005) status = pending > 0.005 ? 'partial' : 'paid';
-          return { ...g, paid, pending, status };
+          return { ...g, paid, pending, status, settle: settleMap[key] || null };
         }).sort((a, b) => (b.yr - a.yr) || (b.mo - a.mo) || a.name.localeCompare(b.name));
 
         renderPaymentRegister();
@@ -258,6 +265,19 @@
     let prRendered = 0;
     let prObserver = null;
 
+    // "Settled via" — how a cycle's payment was actually settled (advance / cash + from where).
+    function settledViaHtml(s) {
+      if (!s || (s.advance <= 0.005 && s.cash <= 0.005 && !(s.adjustments || []).length))
+        return '<span style="color:var(--text-muted)">—</span>';
+      const chips = [];
+      if (s.advance > 0.005) chips.push(`<span style="color:#0f766e;font-weight:700;font-size:.76rem">💎 Advance ${formatCurrency(s.advance)}</span>`);
+      if (s.cash > 0.005) chips.push(`<span style="color:#166534;font-weight:700;font-size:.76rem">💵 Cash ${formatCurrency(s.cash)}</span>`);
+      const src = (s.adjustments || []).map(a =>
+        `<div style="font-size:.66rem;color:var(--text-muted);white-space:nowrap">${a.type === 'advance' ? '💎' : '💵'} ${escHtml(a.wallet || (a.type === 'cash' ? 'Bank' : '—'))}${a.reference ? ` · <span style="font-family:ui-monospace,monospace">${escHtml(String(a.reference))}</span>` : ''}</div>`
+      ).join('');
+      return `<div style="display:flex;flex-direction:column;gap:1px">${chips.join('')}${src}</div>`;
+    }
+
     function paymentRowHtml(r) {
       return `
         <tr style="border-top:1px solid var(--border)">
@@ -269,6 +289,7 @@
           <td style="padding:.6rem .9rem;white-space:nowrap">${escHtml(r.monthYear)} <span style="background:var(--primary);color:white;border-radius:5px;padding:0 6px;font-size:.65rem;font-weight:700">${escHtml(r.cycleText)}</span></td>
           <td style="padding:.6rem .9rem;text-align:right;font-weight:600">${formatCurrency(r.total)}</td>
           <td style="padding:.6rem .9rem;text-align:right;color:#166534;font-weight:600">${formatCurrency(r.paid)}</td>
+          <td style="padding:.6rem .9rem">${settledViaHtml(r.settle)}</td>
           <td style="padding:.6rem .9rem;text-align:right;color:#92400e;font-weight:600">${r.pending > 0.005 ? formatCurrency(r.pending) : '—'}</td>
           <td style="padding:.6rem .9rem">${statusBadge(r.status)}</td>
         </tr>`;
@@ -292,12 +313,13 @@
                 <th style="padding:.65rem .9rem;text-align:left;font-size:.68rem;text-transform:uppercase;color:var(--text-muted);font-weight:700">Cycle</th>
                 <th style="padding:.65rem .9rem;text-align:right;font-size:.68rem;text-transform:uppercase;color:var(--text-muted);font-weight:700">Approved</th>
                 <th style="padding:.65rem .9rem;text-align:right;font-size:.68rem;text-transform:uppercase;color:var(--text-muted);font-weight:700">Paid</th>
+                <th style="padding:.65rem .9rem;text-align:left;font-size:.68rem;text-transform:uppercase;color:var(--text-muted);font-weight:700">Settled via</th>
                 <th style="padding:.65rem .9rem;text-align:right;font-size:.68rem;text-transform:uppercase;color:var(--text-muted);font-weight:700">Pending</th>
                 <th style="padding:.65rem .9rem;text-align:left;font-size:.68rem;text-transform:uppercase;color:var(--text-muted);font-weight:700">Status</th>
               </tr>
             </thead>
             <tbody id="pr-tbody">
-              <tr id="pr-sentinel"><td colspan="7" style="height:1px;padding:0;border:none"></td></tr>
+              <tr id="pr-sentinel"><td colspan="8" style="height:1px;padding:0;border:none"></td></tr>
             </tbody>
           </table>
         </div>`;
@@ -323,11 +345,16 @@
     function exportPaymentRegister() {
       const rows = getFilteredPaymentRows();
       if (!rows.length) { showMessage('Nothing to export for this filter.', 'info'); return; }
-      const headers = ['Employee', 'Emp No', 'Department', 'Month', 'Cycle', 'Approved', 'Paid', 'Pending', 'Status'];
-      const data = rows.map(r => [
-        r.name, r.empNo, r.department, r.monthYear, r.cycleText,
-        r.total, r.paid, r.pending, r.status === 'paid' ? 'Fully Paid' : r.status === 'partial' ? 'Partial' : 'Unpaid'
-      ]);
+      const headers = ['Employee', 'Emp No', 'Department', 'Month', 'Cycle', 'Approved', 'Paid', 'Advance Adjusted', 'Cash Paid', 'Settled Via (source · ref)', 'Pending', 'Status'];
+      const data = rows.map(r => {
+        const s = r.settle;
+        const via = s ? (s.adjustments || []).map(a => `${a.type === 'advance' ? 'Advance' : 'Cash'}: ${a.wallet || (a.type === 'cash' ? 'Bank' : '')}${a.reference ? ' ' + a.reference : ''}`).join(' | ') : '';
+        return [
+          r.name, r.empNo, r.department, r.monthYear, r.cycleText,
+          r.total, r.paid, s ? s.advance : 0, s ? s.cash : 0, via, r.pending,
+          r.status === 'paid' ? 'Fully Paid' : r.status === 'partial' ? 'Partial' : 'Unpaid'
+        ];
+      });
       const ws = XLSX.utils.aoa_to_sheet([headers, ...data]);
       ws['!cols'] = headers.map(h => ({ wch: Math.max(h.length + 2, 14) }));
       const wb = XLSX.utils.book_new();
