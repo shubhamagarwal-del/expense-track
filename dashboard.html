@@ -3080,7 +3080,7 @@
         <span class="expense-card-date">${formatDate(e.created_at)}</span>
       </div>
       <div class="expense-card-meta" style="font-size: 0.7rem; color: var(--text-3); margin-top: 0.25rem">
-        🕒 Submitted: ${formatDateTime(e.created_at)}
+        🕒 Submitted: ${formatDateTime(e.uploaded_at || e.created_at)}
       </div>
       <div class="expense-card-desc">${parseDescForDisplay(e.description)}</div>
       ${attendanceFlagBadge(e)}
@@ -3165,7 +3165,7 @@
         ${lms ? `<div style="font-size:.75rem;color:#059669;font-weight:600;margin-top:2px">👔 ${escHtml(lms.map(m=>m.name).join(' / '))}</div>` : ''}
       </div>
       <div class="expense-card-meta" style="font-size: 0.7rem; color: var(--text-3); margin-top: 0.25rem">
-        🕒 Submitted: ${formatDateTime(e.created_at)}
+        🕒 Submitted: ${formatDateTime(e.uploaded_at || e.created_at)}
       </div>
       <div class="expense-card-desc">${parseDescForDisplay(e.description)}</div>
       ${attendanceFlagBadge(e)}
@@ -3738,7 +3738,7 @@
     /** Small block of the key dates: Uploaded (submitted), Manager (L1) approved, HR approved. */
     function uploadApproveDates(e) {
       const line = (label, ts) => ts ? `<div>${label} ${formatDate(ts)}</div>` : '';
-      const html = line('📤 Uploaded:', e.created_at) + line('✓ Manager:', e.l1_at) + line('✓ HR:', e.hr_at);
+      const html = line('📤 Uploaded:', e.uploaded_at || e.created_at) + line('✓ Manager:', e.l1_at) + line('✓ HR:', e.hr_at);
       return html ? `<div style="font-size:.62rem;color:var(--text-muted);margin-top:.2rem;line-height:1.55">${html}</div>` : '';
     }
 
@@ -4402,7 +4402,7 @@
         //   cleared_date           = when Audit cleared it (audit_at)
         const istDate = ts => ts ? new Date(new Date(ts).getTime() + 5.5 * 3600 * 1000).toISOString().slice(0, 10) : null;
         const maxTs = pick => cleared.reduce((mx, e) => { const t = pick(e) || ''; return t > mx ? t : mx; }, '');
-        const uploaded_date         = istDate(maxTs(e => e.created_at));
+        const uploaded_date         = istDate(maxTs(e => e.uploaded_at || e.created_at));
         const manager_approved_date = istDate(maxTs(e => e.l1_at));
         const hr_approved_date      = istDate(maxTs(e => e.hr_at));
         const cleared_date          = istDate(maxTs(e => e.audit_at));
