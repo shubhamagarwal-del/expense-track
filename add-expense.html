@@ -1015,32 +1015,41 @@
       const cash = s ? Number(s.cash_paid || 0) : 0;
       const paid = adv + cash;
       const due = Math.max(0, approved - paid);
-      const advOut = Number(myAdvanceOutstanding || 0);
-      if (approved <= 0.005 && paid <= 0.005 && advOut <= 0.005) return '';
+      // Advance: total received (portal) minus everything adjusted across all this
+      // employee's cycles → the real remaining balance (the portal's own figure
+      // doesn't yet net off settlement adjustments).
+      const advGiven = Number(myAdvanceOutstanding || 0);
+      const advAdjusted = mySettlements ? Object.values(mySettlements).reduce((t, x) => t + Number(x.advance_adjusted || 0), 0) : 0;
+      const advRemaining = Math.max(0, advGiven - advAdjusted);
+      if (approved <= 0.005 && paid <= 0.005 && advGiven <= 0.005) return '';
       const st = paid > 0.005 ? (due <= 0.005 ? 'settled' : 'partial') : 'due';
       const badge = st === 'settled'
         ? '<span style="background:#dcfce7;color:#166534;border-radius:999px;padding:2px 10px;font-size:.72rem;font-weight:800">✓ Settled</span>'
         : st === 'partial'
         ? '<span style="background:#fef3c7;color:#92400e;border-radius:999px;padding:2px 10px;font-size:.72rem;font-weight:800">◐ Partial</span>'
-        : '<span style="background:#fef3c7;color:#92400e;border-radius:999px;padding:2px 10px;font-size:.72rem;font-weight:800">⏳ Baki hai</span>';
+        : '<span style="background:#fef3c7;color:#92400e;border-radius:999px;padding:2px 10px;font-size:.72rem;font-weight:800">⏳ Due</span>';
       const cell = (label, val, color) => `<div style="flex:1;text-align:center"><div style="font-size:.66rem;color:#64748b;font-weight:700;text-transform:uppercase;letter-spacing:.02em">${label}</div><div style="font-size:1.05rem;font-weight:800;color:${color}">${formatCurrency(val)}</div></div>`;
       const adjRows = s ? (s.settlement?.adjustments || []).map(a => {
         const isAdv = a.type === 'advance';
         const bits = [a.date, a.wallet].filter(Boolean).map(x => escHtml(String(x))).join(' · ');
         return `<div style="display:flex;justify-content:space-between;align-items:baseline;gap:.5rem;font-size:.78rem;padding:.4rem 0;border-top:1px dashed #e2e8f0">
-          <span>${isAdv ? '💎 Advance se adjust' : '💵 Cash paid'}${bits ? ` · ${bits}` : ''}${a.reference ? `<br><span style="font-size:.66rem;color:#94a3b8">${escHtml(String(a.reference))}</span>` : ''}</span>
+          <span>${isAdv ? '💎 Adjusted from advance' : '💵 Paid in cash'}${bits ? ` · ${bits}` : ''}${a.reference ? `<br><span style="font-size:.66rem;color:#94a3b8">Ref: ${escHtml(String(a.reference))}</span>` : ''}</span>
           <span style="font-weight:700;color:${isAdv ? '#0f766e' : '#166534'};white-space:nowrap">− ${formatCurrency(a.amount)}</span>
         </div>`;
       }).join('') : '';
-      const advNote = advOut > 0.005
-        ? `<div style="margin-top:.6rem;background:#f5f3ff;border:1px solid #ddd6fe;border-radius:10px;padding:.55rem .75rem;display:flex;justify-content:space-between;align-items:center;font-size:.82rem"><span style="color:#5b21b6;font-weight:700">💼 Aapka advance outstanding</span><span style="color:#5b21b6;font-weight:800">${formatCurrency(advOut)}</span></div>`
+      const advCell = (label, val) => `<div style="flex:1;min-width:80px;text-align:center"><div style="font-size:.6rem;color:#7c3aed;font-weight:700;text-transform:uppercase;letter-spacing:.02em">${label}</div><div style="font-size:.92rem;font-weight:800;color:#5b21b6">${formatCurrency(val)}</div></div>`;
+      const advNote = advGiven > 0.005
+        ? `<div style="margin-top:.6rem;background:#f5f3ff;border:1px solid #ddd6fe;border-radius:10px;padding:.55rem .55rem">
+             <div style="color:#5b21b6;font-weight:800;font-size:.72rem;text-transform:uppercase;letter-spacing:.02em;margin:0 .2rem .3rem">💼 Advance</div>
+             <div style="display:flex;gap:.3rem;flex-wrap:wrap">${advCell('Received', advGiven)}${advCell('Adjusted', advAdjusted)}${advCell('Remaining', advRemaining)}</div>
+           </div>`
         : '';
       return `<div style="background:#fff;border:1px solid #e2e8f0;border-left:4px solid #4f46e5;border-radius:14px;padding:1rem 1.1rem;margin-bottom:1rem;box-shadow:0 1px 3px rgba(16,24,40,.05)">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.6rem">
-          <div style="font-weight:800;font-size:.95rem;color:#1e293b">💳 Is cycle ka payment</div>${badge}
+          <div style="font-weight:800;font-size:.95rem;color:#1e293b">💳 Cycle Payment</div>${badge}
         </div>
         <div style="display:flex;gap:.4rem;background:#f8fafc;border-radius:10px;padding:.6rem .4rem">
-          ${cell('Approved', approved, '#1e293b')}${cell('Paid', paid, '#166534')}${cell('Baki / Due', due, due > 0.005 ? '#b91c1c' : '#64748b')}
+          ${cell('Approved', approved, '#1e293b')}${cell('Paid', paid, '#166534')}${cell('Due', due, due > 0.005 ? '#b91c1c' : '#64748b')}
         </div>
         ${adjRows ? `<div style="margin-top:.5rem">${adjRows}</div>` : ''}
         ${advNote}
