@@ -754,6 +754,7 @@
 
     // "userId|Month Year|cycleNum" -> total amount paid (from imported bank reports)
     let cyclePaidMap = {};
+    let cycleSettleMap = {}; // "userId|Month YYYY|cycleNum" -> { advance, cash, remaining }
     let cyclePaymentsList = [];
 
     // user_id -> total outstanding advance amount (Audit / Super Admin see everyone's; an employee sees only their own)
@@ -876,12 +877,17 @@
         if (!res.ok) return;
         const { payments } = await res.json();
         cyclePaymentsList = payments || [];
-        const map = {};
+        const map = {}, smap = {};
         (payments || []).forEach(p => {
           const k = `${p.user_id}|${p.month_year}|${p.cycle_num}`;
           map[k] = (map[k] || 0) + Number(p.amount_paid || 0);
+          const s = (smap[k] ||= { advance: 0, cash: 0, remaining: 0 });
+          s.advance += Number(p.advance_adjusted || 0);
+          s.cash    += Number(p.cash_paid || 0);
+          s.remaining += Number(p.remaining || 0);
         });
         cyclePaidMap = map;
+        cycleSettleMap = smap;
         if (summaryMode) renderSummaryView();
       } catch {}
     }
@@ -1480,6 +1486,8 @@
             const tagCol = g.cNum === 1 ? '#6366f1' : '#7c3aed';
             const cyclePaid = paidForExpenses(g.expenses);
             const cycleDue  = totalAmt - cyclePaid;
+            const _e0 = g.expenses[0]; const _d0 = _e0 && new Date(_e0.created_at);
+            const settle = _d0 ? cycleSettleMap[`${_e0.user_id}|${_d0.toLocaleString('en-US',{month:'long',year:'numeric'})}|${_d0.getDate() <= 15 ? 1 : 2}`] : null;
             return `
               <div onclick="filterByCycle('${g.month}','${g.cycle}')"
                    style="background:white;border-radius:14px;padding:1.1rem 1.25rem;border:1.5px solid #e5e7eb;cursor:pointer;transition:all .15s"
@@ -1502,6 +1510,8 @@
                 </div>
                 <div style="display:flex;flex-wrap:wrap;gap:.3rem;padding-top:.5rem;border-top:1px dashed #e5e7eb">
                   <span style="background:#dcfce7;color:#166534;border-radius:5px;padding:1px 6px;font-size:.68rem;font-weight:700">💰 Paid ${formatCurrency(cyclePaid)}</span>
+                  ${settle && settle.advance > 0.005 ? `<span title="Advance se adjust hua" style="background:#ede9fe;color:#5b21b6;border-radius:5px;padding:1px 6px;font-size:.68rem;font-weight:700">💎 Advance ${formatCurrency(settle.advance)}</span>` : ''}
+                  ${settle && settle.cash > 0.005 ? `<span title="Cash / bank se paid" style="background:#dbeafe;color:#1e40af;border-radius:5px;padding:1px 6px;font-size:.68rem;font-weight:700">💵 Cash ${formatCurrency(settle.cash)}</span>` : ''}
                   ${cycleDue > 0.005 ? `<span style="background:#fef3c7;color:#92400e;border-radius:5px;padding:1px 6px;font-size:.68rem;font-weight:700">⏳ Due ${formatCurrency(cycleDue)}</span>` : `<span style="background:#dcfce7;color:#166534;border-radius:5px;padding:1px 6px;font-size:.68rem;font-weight:700">✓ Fully paid</span>`}
                 </div>
               </div>`;
