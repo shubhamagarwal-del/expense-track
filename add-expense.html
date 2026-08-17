@@ -978,8 +978,8 @@
 
     // ── Employee settlement card: how THIS cycle was settled (advance / cash / remaining),
     //    pulled from the Accounts Portal via ExpenseTrack's sync. Read-only, self-service. ──
-    let mySettlements = null;        // { "May 2026|1": {row}, ... }
-    let myAdvanceOutstanding = null; // employee's own current outstanding advance
+    let mySettlements = null;  // { "May 2026|1": {row}, ... }
+    let myAdvanceRows = null;  // employee's own portal advance entries
     async function loadMySettlements() {
       mySettlements = {};
       try {
@@ -990,22 +990,12 @@
       } catch {}
     }
     async function loadMyAdvance() {
-      myAdvanceOutstanding = 0;
+      myAdvanceRows = [];
       try {
         const token = (await db.auth.getSession()).data.session?.access_token;
         const r = await fetch('/api/receipt-url?portal_advances=1', { headers: { Authorization: `Bearer ${token}` } });
         if (!r.ok) return;
-        const rows = (await r.json()).portal_advances || [];
-        // Same rule as the admin Advances page: latest outstanding_after, else given − refunded.
-        let given = 0, refunded = 0, latest = null, latestDate = null;
-        rows.forEach(x => {
-          if (x.event === 'given') given += Number(x.amount) || 0;
-          if (x.event === 'refunded') refunded += Number(x.amount) || 0;
-          if (x.outstanding_after != null && (latestDate == null || (x.advance_date && x.advance_date > latestDate))) {
-            latest = Number(x.outstanding_after); latestDate = x.advance_date;
-          }
-        });
-        myAdvanceOutstanding = latest != null ? latest : Math.max(0, given - refunded);
+        myAdvanceRows = (await r.json()).portal_advances || [];
       } catch {}
     }
     function settlementCardHtml(monthName, cycleNum, cycleTotal) {
@@ -1015,13 +1005,10 @@
       const cash = s ? Number(s.cash_paid || 0) : 0;
       const paid = adv + cash;
       const due = Math.max(0, approved - paid);
-      // Advance: total received (portal) minus everything adjusted across all this
-      // employee's cycles → the real remaining balance (the portal's own figure
-      // doesn't yet net off settlement adjustments).
-      const advGiven = Number(myAdvanceOutstanding || 0);
-      const advAdjusted = mySettlements ? Object.values(mySettlements).reduce((t, x) => t + Number(x.advance_adjusted || 0), 0) : 0;
-      const advRemaining = Math.max(0, advGiven - advAdjusted);
-      if (approved <= 0.005 && paid <= 0.005 && advGiven <= 0.005) return '';
+      // Advance: full entry-by-entry breakdown (received − adjusted = remaining),
+      // adjustments matched to advance entries by reference (shared helper in app.js).
+      const advBd = buildAdvanceBreakdown(myAdvanceRows, advAdjustmentsFromPayments(Object.values(mySettlements || {})));
+      if (approved <= 0.005 && paid <= 0.005 && advBd.totalGiven <= 0.005) return '';
       const st = paid > 0.005 ? (due <= 0.005 ? 'settled' : 'partial') : 'due';
       const badge = st === 'settled'
         ? '<span style="background:#dcfce7;color:#166534;border-radius:999px;padding:2px 10px;font-size:.72rem;font-weight:800">✓ Settled</span>'
@@ -1037,13 +1024,7 @@
           <span style="font-weight:700;color:${isAdv ? '#0f766e' : '#166534'};white-space:nowrap">− ${formatCurrency(a.amount)}</span>
         </div>`;
       }).join('') : '';
-      const advCell = (label, val) => `<div style="flex:1;min-width:80px;text-align:center"><div style="font-size:.6rem;color:#7c3aed;font-weight:700;text-transform:uppercase;letter-spacing:.02em">${label}</div><div style="font-size:.92rem;font-weight:800;color:#5b21b6">${formatCurrency(val)}</div></div>`;
-      const advNote = advGiven > 0.005
-        ? `<div style="margin-top:.6rem;background:#f5f3ff;border:1px solid #ddd6fe;border-radius:10px;padding:.55rem .55rem">
-             <div style="color:#5b21b6;font-weight:800;font-size:.72rem;text-transform:uppercase;letter-spacing:.02em;margin:0 .2rem .3rem">💼 Advance</div>
-             <div style="display:flex;gap:.3rem;flex-wrap:wrap">${advCell('Received', advGiven)}${advCell('Adjusted', advAdjusted)}${advCell('Remaining', advRemaining)}</div>
-           </div>`
-        : '';
+      const advNote = advanceBreakdownHtml(advBd);
       return `<div style="background:#fff;border:1px solid #e2e8f0;border-left:4px solid #4f46e5;border-radius:14px;padding:1rem 1.1rem;margin-bottom:1rem;box-shadow:0 1px 3px rgba(16,24,40,.05)">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.6rem">
           <div style="font-weight:800;font-size:.95rem;color:#1e293b">💳 Cycle Payment</div>${badge}
@@ -1061,7 +1042,7 @@
       const cycle = document.getElementById('sheet-cycle').value;
       if (!monthVal) return;
       if (mySettlements === null) await loadMySettlements();
-      if (myAdvanceOutstanding === null) await loadMyAdvance();
+      if (myAdvanceRows === null) await loadMyAdvance();
 
       const [year, month] = monthVal.split('-').map(Number);
       const startOfMonth = new Date(year, month - 1, 1).toISOString();

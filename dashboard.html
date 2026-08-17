@@ -793,6 +793,20 @@
       return advanceOutstandingMap[userId] || 0;
     }
 
+    // Portal advance rows grouped by matched user_id — for the per-employee
+    // advance breakdown (received / adjusted / remaining, entry-by-entry).
+    let portalAdvByUser = {};
+    async function loadPortalAdvForBreakdown() {
+      try {
+        const token = (await db.auth.getSession()).data.session?.access_token;
+        const r = await fetch('/api/receipt-url?portal_advances=1', { headers: { Authorization: `Bearer ${token}` } });
+        if (!r.ok) return;
+        const map = {};
+        ((await r.json()).portal_advances || []).forEach(a => { if (a.matched_employee_id) (map[a.matched_employee_id] ||= []).push(a); });
+        portalAdvByUser = map;
+      } catch {}
+    }
+
     /** Undo a logged advance recovery (e.g. a payment sheet was exported/netted but the bank transfer never went through). */
     async function undoAdvanceRecovery(recoveryId, userId, userName) {
       if (!confirm('Undo this recovery? The advance amount will go back to outstanding.')) return;
@@ -1279,8 +1293,7 @@
         allExpensesFetched = expenses;
         updateEmpStats(expenses);
         refreshListView();
-        loadCyclePayments().then(() => renderCycleBreakdown(expenses));
-        loadAdvances().then(() => renderCycleBreakdown(expenses));
+        Promise.all([loadCyclePayments(), loadAdvances(), loadPortalAdvForBreakdown()]).then(() => renderCycleBreakdown(expenses));
         restoreUiStateAfterReload(); // no-op after the first call, or if nothing was saved
       } catch (err) {
         showMessage('Failed to load expenses: ' + err.message, 'error');
@@ -1439,6 +1452,8 @@
       const overallPaid = paidForExpenses(expenses);
       const overallAdvance = advanceFor(currentProfile.id);
       const overallDue = overallApproved - overallPaid - overallAdvance;
+      const _puid = expenses[0]?.user_id;
+      const advBd = buildAdvanceBreakdown(portalAdvByUser[_puid] || [], advAdjustmentsFromPayments((cyclePaymentsList || []).filter(p => p.user_id === _puid)));
 
       const summaryHtml = `
         <div style="font-size:.78rem;font-weight:700;color:#6b7280;text-transform:uppercase;letter-spacing:.05em;margin-bottom:.75rem">
@@ -1462,7 +1477,8 @@
             <div style="font-size:.72rem;color:#92400e;font-weight:700;text-transform:uppercase">⏳ Payment Due</div>
             <div style="font-size:1.35rem;font-weight:800;color:#92400e;margin-top:.3rem">${formatCurrency(overallDue > 0.005 ? overallDue : 0)}</div>
           </div>
-        </div>`;
+        </div>
+        ${advBd.totalGiven > 0.005 ? `<div style="margin:-.75rem 0 1.5rem">${advanceBreakdownHtml(advBd)}</div>` : ''}`;
 
       el.innerHTML = `
         ${summaryHtml}

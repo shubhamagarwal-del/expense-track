@@ -252,6 +252,7 @@
 
     // ── Accounts Portal Advances (external mirror — read only) ──
     let portalAdvRows = [];
+    let advAdjByUser = {}; // user_id -> [advance-type settlement adjustments]
     async function loadPortalAdvances() {
       const wrap = document.getElementById('portal-adv-wrap');
       try {
@@ -260,6 +261,16 @@
         const body = await res.json();
         if (!res.ok) throw new Error(body.error || 'Failed to load portal advances');
         portalAdvRows = body.portal_advances || [];
+        // Also pull cycle payments → which advances were adjusted against which cycles.
+        try {
+          const pr = await fetch('/api/receipt-url?payments=1', { headers: { Authorization: `Bearer ${token}` } });
+          if (pr.ok) {
+            const byU = {};
+            ((await pr.json()).payments || []).forEach(p => { (byU[p.user_id] ||= []).push(p); });
+            advAdjByUser = {};
+            Object.keys(byU).forEach(uid => { advAdjByUser[uid] = advAdjustmentsFromPayments(byU[uid]); });
+          }
+        } catch {}
         renderPortalAdvances();
       } catch (err) {
         wrap.innerHTML = `<div style="padding:1rem;color:#991b1b;font-size:.85rem">Error: ${err.message}</div>`;
@@ -277,7 +288,8 @@
       const byEmp = {};
       portalAdvRows.forEach(r => {
         const key = r.employee_number || r.employee_name || 'Unknown';
-        if (!byEmp[key]) byEmp[key] = { key, employee_number: r.employee_number, employee_name: r.employee_name, matched: !!r.matched_employee_id, entries: [], given: 0, refunded: 0, latestOutstanding: null, latestDate: null };
+        if (!byEmp[key]) byEmp[key] = { key, employee_number: r.employee_number, employee_name: r.employee_name, matched: !!r.matched_employee_id, matched_id: r.matched_employee_id || null, entries: [], given: 0, refunded: 0, latestOutstanding: null, latestDate: null };
+        if (r.matched_employee_id && !byEmp[key].matched_id) byEmp[key].matched_id = r.matched_employee_id;
         byEmp[key].entries.push(r);
         if (r.event === 'given') byEmp[key].given += Number(r.amount) || 0;
         if (r.event === 'refunded') byEmp[key].refunded += Number(r.amount) || 0;
@@ -288,8 +300,10 @@
           }
         }
       });
-      const emps = Object.values(byEmp).sort((a, b) => (b.latestDate || '').localeCompare(a.latestDate || ''));
-      const grandOutstanding = emps.reduce((s, e) => s + (e.latestOutstanding != null ? e.latestOutstanding : (e.given - e.refunded)), 0);
+      const emps = Object.values(byEmp)
+        .map(e => ({ ...e, bd: buildAdvanceBreakdown(e.entries, advAdjByUser[e.matched_id] || []) }))
+        .sort((a, b) => (b.latestDate || '').localeCompare(a.latestDate || ''));
+      const grandOutstanding = emps.reduce((s, e) => s + e.bd.totalRemaining, 0);
       const fmt = n => '₹' + Number(n || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
       wrap.innerHTML = `
@@ -309,17 +323,18 @@
               </tr>
             </thead>
             <tbody>
-              ${emps.map(e => `
-                <tr style="border-top:1px solid var(--border)">
+              ${emps.map((e, i) => `
+                <tr style="border-top:1px solid var(--border);cursor:pointer" onclick="const d=document.getElementById('advd-${i}');d.style.display=d.style.display==='none'?'':'none'">
                   <td style="padding:.55rem .8rem">
-                    <div style="font-weight:600">${(e.employee_name || '—').replace(/</g,'&lt;')}</div>
+                    <div style="font-weight:600">▸ ${(e.employee_name || '—').replace(/</g,'&lt;')}</div>
                     <div style="font-size:.72rem;color:var(--text-muted)">${(e.employee_number || '').replace(/</g,'&lt;')} ${e.matched ? '' : '<span title="No matching employee in ExpenseTrack" style="color:#991b1b;font-weight:700">· UNMATCHED</span>'}</div>
                   </td>
-                  <td style="padding:.55rem .8rem;text-align:right;color:#166534;font-weight:600">${fmt(e.given)}</td>
+                  <td style="padding:.55rem .8rem;text-align:right;color:#166534;font-weight:600">${fmt(e.bd.totalGiven)}</td>
                   <td style="padding:.55rem .8rem;text-align:right;color:#7c3aed">${fmt(e.refunded)}</td>
-                  <td style="padding:.55rem .8rem;text-align:right;font-weight:700;color:#92400e">${fmt(e.latestOutstanding != null ? e.latestOutstanding : (e.given - e.refunded))}</td>
+                  <td style="padding:.55rem .8rem;text-align:right;font-weight:700;color:#92400e">${fmt(e.bd.totalRemaining)}${e.bd.totalAdjusted > 0.005 ? `<div style="font-size:.62rem;color:#b45309;font-weight:600">−${fmt(e.bd.totalAdjusted)} adjusted</div>` : ''}</td>
                   <td style="padding:.55rem .8rem;color:var(--text-muted)">${e.latestDate || '—'}</td>
-                </tr>`).join('')}
+                </tr>
+                <tr id="advd-${i}" style="display:none"><td colspan="5" style="padding:.2rem .8rem .7rem;background:#faf9ff">${advanceBreakdownHtml(e.bd)}</td></tr>`).join('')}
             </tbody>
           </table>
         </div>`;

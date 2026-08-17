@@ -519,6 +519,62 @@ function remarkNotes(e) {
   return `<div class="rmk-notes-row" style="margin-top:.3rem;display:inline-flex;gap:.2rem;flex-wrap:wrap;align-items:center">${icons}</div>`;
 }
 
+/** Build an employee advance breakdown: their portal advance entries + the
+ *  advance-type settlement adjustments made against them (matched by reference).
+ *  remaining(entry) = amount − adjusted; totals net across all entries. */
+function buildAdvanceBreakdown(advances, advAdjustments) {
+  const adjByRef = {};
+  let totalAdjusted = 0;
+  (advAdjustments || []).forEach(a => {
+    const ref = a.reference || '';
+    adjByRef[ref] = (adjByRef[ref] || 0) + Number(a.amount || 0);
+    totalAdjusted += Number(a.amount || 0);
+  });
+  let totalGiven = 0;
+  const entries = (advances || []).filter(a => !a.event || a.event === 'given').map(a => {
+    const amount = Number(a.amount || 0);
+    totalGiven += amount;
+    const ref = a.bank_reference || a.reference || '';
+    const adjusted = adjByRef[ref] || 0;
+    return { date: a.advance_date || a.date || '', amount, reference: ref, wallet: a.bank || a.wallet || '', adjusted, remaining: Math.max(0, amount - adjusted) };
+  });
+  return { entries, totalGiven, totalAdjusted, totalRemaining: Math.max(0, totalGiven - totalAdjusted), adjustments: advAdjustments || [] };
+}
+
+/** Render an advance breakdown (entry-by-entry + Received/Adjusted/Remaining totals). */
+function advanceBreakdownHtml(bd, opts) {
+  if (!bd || bd.totalGiven <= 0.005) return '';
+  const showEntries = !(opts && opts.compact);
+  const rows = bd.entries.map(e => {
+    const meta = [e.date, e.wallet].filter(Boolean).map(x => escHtml(String(x))).join(' · ');
+    const adjTag = e.adjusted > 0.005 ? `<span style="color:#b45309">− ${formatCurrency(e.adjusted)} adjusted</span> · ` : '';
+    return `<div style="display:flex;justify-content:space-between;gap:.5rem;font-size:.74rem;padding:.3rem 0;border-top:1px dashed #ede9fe">
+      <span style="color:#4b5563">💎 ${formatCurrency(e.amount)}${meta ? ` · ${meta}` : ''}${e.reference ? `<br><span style="font-size:.63rem;color:#a78bfa">Ref: ${escHtml(e.reference)}</span>` : ''}</span>
+      <span style="white-space:nowrap;text-align:right;font-size:.72rem">${adjTag}<b style="color:#5b21b6">${formatCurrency(e.remaining)} left</b></span>
+    </div>`;
+  }).join('');
+  const tCell = (label, val) => `<span style="flex:1;min-width:78px;text-align:center;font-size:.7rem"><div style="color:#7c3aed;font-weight:700;font-size:.58rem;text-transform:uppercase;letter-spacing:.02em">${label}</div><b style="color:#5b21b6">${formatCurrency(val)}</b></span>`;
+  return `<div style="background:#f5f3ff;border:1px solid #ddd6fe;border-radius:10px;padding:.6rem .7rem;margin-top:.5rem">
+    <div style="color:#5b21b6;font-weight:800;font-size:.72rem;text-transform:uppercase;letter-spacing:.02em">💼 Advance</div>
+    ${showEntries ? rows : ''}
+    <div style="display:flex;gap:.3rem;flex-wrap:wrap;${showEntries ? 'border-top:1px solid #ddd6fe;' : ''}padding-top:.35rem;margin-top:.3rem">
+      ${tCell('Received', bd.totalGiven)}${tCell('Adjusted', bd.totalAdjusted)}${tCell('Remaining', bd.totalRemaining)}
+    </div>
+  </div>`;
+}
+
+/** Advance-type settlement adjustments for an employee, from their cycle_payments rows. */
+function advAdjustmentsFromPayments(payments) {
+  const out = [];
+  (payments || []).forEach(p => {
+    const cyc = `${p.month_year} · ${p.cycle_num === 1 ? '1st-15th' : '16th-End'}`;
+    ((p.settlement && p.settlement.adjustments) || []).forEach(a => {
+      if (a.type === 'advance') out.push({ reference: a.reference, amount: Number(a.amount || 0), cycle: cyc, date: a.date });
+    });
+  });
+  return out;
+}
+
 /** Return a styled category pill HTML string. */
 function catPill(category) {
   const cls = category.replace(/\s+/g, '-');
