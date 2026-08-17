@@ -309,6 +309,18 @@ export default async function handler(req, res) {
       return res.status(200).json({ off: data || [] });
     }
 
+    // ?my_settlements=1 → the CURRENT user's OWN cycle settlements (advance/cash/remaining).
+    // Self-service so an employee can see exactly how each of their cycles was settled.
+    if (req.query?.my_settlements) {
+      const { data, error } = await supabaseAdmin
+        .from('cycle_payments')
+        .select('month_year, cycle_num, amount_paid, advance_adjusted, cash_paid, remaining, settlement_status, settlement, payment_date, utr_number')
+        .eq('user_id', user.id)
+        .order('payment_date', { ascending: false, nullsFirst: false });
+      if (error) return res.status(500).json({ error: error.message });
+      return res.status(200).json({ settlements: data || [] });
+    }
+
     // ?advances=1 → employee advance ledger (for Advance/Due display).
     // Audit/Super Admin get everyone's; an employee only ever gets their own.
     // Each row also gets `recovered_amount`/`remaining` computed from its recovery log,
@@ -1147,8 +1159,17 @@ async function syncAccounts2026(res, db) {
     paidByKey[k] = (paidByKey[k] || 0) + Number(p.amount_paid || 0);
   });
 
-  const summary = { total: claims.length, synced: [], unmatchedEmployee: [], skippedNotReimbursed: [], duplicates: [], advancesRecovered: [] };
+  const summary = { total: claims.length, synced: [], unmatchedEmployee: [], skippedNotReimbursed: [], duplicates: [], advancesRecovered: [], settlementBackfilled: 0 };
   const toInsert = [];
+  const settlementUpdates = []; // { utr, cols } — backfill settlement onto already-synced rows
+  // Flatten the portal's settlement object into the columns we store (migration 28).
+  const settleColsOf = (s) => s ? {
+    advance_adjusted: Number(s.advance_adjusted || 0),
+    cash_paid:        Number(s.cash_paid || 0),
+    remaining:        Number(s.remaining || 0),
+    settlement_status: s.status || null,
+    settlement:        s,
+  } : null;
 
   for (const claim of claims) {
     if (!claim.reimbursed) { summary.skippedNotReimbursed.push({ claim_id: claim.claim_id, employee: claim.employee_name }); continue; }
@@ -1160,12 +1181,21 @@ async function syncAccounts2026(res, db) {
     // is just the bank narration and can be identical across different employees/claims when
     // one bank transfer settles several claims at once ("combined" payments).
     const utr = `ACCT2026-${claim.claim_id}`;
-    if (existingUtrs.has(utr)) { summary.duplicates.push({ claim_id: claim.claim_id, employee: claim.employee_name }); continue; }
+    if (existingUtrs.has(utr)) {
+      // Already synced — refresh/backfill its settlement breakdown (upsert ignores dups).
+      const sc = settleColsOf(claim.settlement);
+      if (sc) settlementUpdates.push({ utr, cols: sc });
+      summary.duplicates.push({ claim_id: claim.claim_id, employee: claim.employee_name }); continue;
+    }
 
     // accounts-2026's exact cycle string format isn't confirmed yet — this heuristic
     // treats anything mentioning "16"/"second half" as cycle 2, else cycle 1.
     const cycleNum = /16|second/i.test(String(claim.cycle || '')) ? 2 : 1;
-    const amount = Number(claim.payment?.amount ?? claim.approved_total ?? 0);
+    const sc = settleColsOf(claim.settlement);
+    // amount_paid = the settled total (advance-adjusted + cash). Falls back to the old
+    // heuristic only for claims the portal hasn't given a settlement object for.
+    const amount = sc ? (sc.advance_adjusted + sc.cash_paid)
+                      : Number(claim.payment?.amount ?? claim.approved_total ?? 0);
 
     toInsert.push({
       user_id: u.id, month_year: claim.month || '', cycle_num: cycleNum,
@@ -1173,6 +1203,7 @@ async function syncAccounts2026(res, db) {
       utr_number: utr,
       bene_name: claim.employee_name || u.name,
       paid_by: null,
+      ...(sc || {}),
     });
     existingUtrs.add(utr);
     summary.synced.push({ employee: u.name, employee_number: claim.employee_number, month: claim.month, cycle: cycleNum, amount });
@@ -1197,6 +1228,13 @@ async function syncAccounts2026(res, db) {
       .from('cycle_payments')
       .upsert(toInsert, { onConflict: 'utr_number,user_id,month_year,cycle_num', ignoreDuplicates: true });
     if (insErr) return res.status(500).json({ error: insErr.message });
+  }
+
+  // Backfill/refresh the settlement breakdown onto already-synced cycle_payments rows
+  // (the upsert above ignores duplicates, so these need an explicit update).
+  for (const su of settlementUpdates) {
+    const { error } = await db.from('cycle_payments').update(su.cols).eq('utr_number', su.utr);
+    if (!error) summary.settlementBackfilled++;
   }
 
   return res.status(200).json(summary);
