@@ -239,12 +239,17 @@
       loadEmployeesForPicker();
       loadPortalAdvances();
 
+      // Auto-pull fresh Accounts-Portal advances on open (throttled, background),
+      // so the admin never has to click "🔄 Sync now" for up-to-date data. The
+      // sync is idempotent (upsert on advance_id) so background re-runs are safe.
+      setTimeout(maybeAutoSyncPortalAdv, 1500);
+
       // Keep the page fresh without a manual reload: refresh when the admin
       // returns to this tab, and a slow background poll as a safety net. These
       // tables are served via the service-role API (not in the realtime
       // publication), so a focus+poll refresh is the safe way to stay current
       // without opening client RLS on financial tables.
-      const _silentRefresh = () => { loadAdvances(); loadPortalAdvances(); };
+      const _silentRefresh = () => { loadAdvances(); loadPortalAdvances(); maybeAutoSyncPortalAdv(); };
       document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') _silentRefresh(); });
       window.addEventListener('focus', _silentRefresh);
       setInterval(() => { if (document.visibilityState === 'visible') _silentRefresh(); }, 60000);
@@ -362,6 +367,33 @@
         btn.disabled = false;
         btn.innerHTML = orig;
       }
+    }
+
+    // ── Auto-sync (background, throttled) ────────────────────────────────
+    // The manual "🔄 Sync now" button stays; this makes a fresh portal pull
+    // happen on its own when the page is opened / re-focused, at most once every
+    // AUTO_SYNC_MIN minutes so the slow portal API isn't hammered. Silent — no
+    // toast for auto runs; errors are ignored (daily cron + button are fallbacks).
+    const AUTO_SYNC_MIN = 15;
+    let _autoAdvBusy = false;
+    async function maybeAutoSyncPortalAdv() {
+      if (_autoAdvBusy) return;
+      let last = 0; try { last = Number(localStorage.getItem('et_autosync_portaladv') || 0); } catch {}
+      if (Date.now() - last < AUTO_SYNC_MIN * 60000) return;
+      _autoAdvBusy = true;
+      try { localStorage.setItem('et_autosync_portaladv', String(Date.now())); } catch {}
+      const btn = document.getElementById('btn-sync-portal-adv');
+      const orig = btn ? btn.innerHTML : '';
+      if (btn) { btn.disabled = true; btn.innerHTML = '🔄 Auto-syncing…'; }
+      try {
+        const token = (await db.auth.getSession()).data.session?.access_token;
+        const res = await fetch('/api/receipt-url', {
+          method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+          body: JSON.stringify({ sync_portal_advances: true })
+        });
+        if (res.ok) await loadPortalAdvances();
+      } catch {}
+      finally { _autoAdvBusy = false; if (btn) { btn.disabled = false; btn.innerHTML = orig; } }
     }
 
     // Recompute + paint the outstanding/recovered totals from advRows — shared by

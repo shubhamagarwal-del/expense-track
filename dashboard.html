@@ -1888,6 +1888,11 @@
       if (['super_admin', 'audit'].includes(currentProfile.role)) {
         const sb = document.getElementById('btn-sync-accounts');
         if (sb) sb.style.display = 'inline-flex';
+        // Auto-pull reimbursed claims from accounts-2026 on open + re-focus
+        // (throttled, background) so Paid/settlement data stays fresh without a click.
+        setTimeout(maybeAutoSyncAccounts, 3000);
+        document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') maybeAutoSyncAccounts(); });
+        window.addEventListener('focus', maybeAutoSyncAccounts);
       }
       // Attendance upload — Super Admin, Audit, HR
       if (['super_admin', 'audit', 'hr'].includes(currentProfile.role)) {
@@ -4911,6 +4916,33 @@
       } finally {
         if (btn) { btn.disabled = false; btn.innerHTML = orig; }
       }
+    }
+
+    // ── Auto-sync (background, throttled) ────────────────────────────────
+    // Same pull as the "Sync" button, but fired on its own when the panel is
+    // opened / re-focused — at most once every 15 min (localStorage throttle),
+    // silent (no result modal, errors swallowed). Manual button + daily cron stay.
+    let _autoAcctBusy = false;
+    async function maybeAutoSyncAccounts() {
+      if (_autoAcctBusy) return;
+      if (!['super_admin', 'audit'].includes(currentProfile?.role)) return;
+      let last = 0; try { last = Number(localStorage.getItem('et_autosync_accounts') || 0); } catch {}
+      if (Date.now() - last < 15 * 60000) return;
+      _autoAcctBusy = true;
+      try { localStorage.setItem('et_autosync_accounts', String(Date.now())); } catch {}
+      const btn = document.getElementById('btn-sync-accounts');
+      const orig = btn ? btn.innerHTML : '';
+      if (btn) { btn.disabled = true; btn.innerHTML = '⏳ Syncing…'; }
+      try {
+        const token = (await db.auth.getSession()).data.session?.access_token;
+        const res = await fetch('/api/receipt-url', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+          body: JSON.stringify({ sync_accounts: true })
+        });
+        if (res.ok) { await loadCyclePayments(); refreshListView(true); }
+      } catch {}
+      finally { _autoAcctBusy = false; if (btn) { btn.disabled = false; btn.innerHTML = orig; } }
     }
 
     function showAccountsSyncResult(r) {
