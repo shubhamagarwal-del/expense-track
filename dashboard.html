@@ -310,6 +310,9 @@
         </div>
       </div>
       <div class="modal-footer" style="gap:.75rem">
+        <button class="btn btn-secondary" id="am-remove-btn"
+          style="display:none;margin-right:auto;background:#fff;border:1px solid #fecaca;color:#dc2626;font-weight:700"
+          onclick="removeFromApprovalModal()" title="Remove this expense instead of approving — the employee will see the reason">🗑️ Remove</button>
         <button class="btn btn-secondary" onclick="closeApprovalModal()">Cancel</button>
         <button class="btn btn-secondary" id="am-reject-btn"
           style="background:#fef2f2;border:1px solid #fecaca;color:#dc2626;font-weight:700"
@@ -3107,6 +3110,7 @@
       })() : ''}
       ${(e.status === 'rejected' || e.status === 'l1_rejected' || e.status === 'audit_query' || e.status === 'deleted') ? `<a href="add-expense.html?editDate=${encodeURIComponent(e.created_at)}" style="display:inline-block;margin-top:.5rem;font-size:.78rem;font-weight:700;color:var(--primary)">${t('fix_resubmit_link')}</a>` : ''}
       ${receiptCardFooter(e)}
+      ${currentProfile.role === 'employee' && e.status === 'pending' ? `<button onclick="employeeDeleteOwnExpense('${e.id}')" class="btn btn-secondary btn-sm" style="margin-top:.55rem;width:100%;color:#dc2626;border-color:#fecaca;font-size:.78rem;font-weight:700" title="Delete this pending expense — only possible before your manager approves it">🗑️ Delete</button>` : ''}
     </div>`;
     }
 
@@ -3271,6 +3275,12 @@
       };
       document.getElementById('am-title').textContent = titlesMap[currentProfile.role] || 'Review';
       document.getElementById('am-subtitle').textContent = subtitleMap[currentProfile.role] || '';
+
+      // Approvers (Manager/HR/Audit/Super Admin) can remove (soft-delete) an entry
+      // instead of approving it — hidden on already-deleted/superseded rows.
+      const rmBtn = document.getElementById('am-remove-btn');
+      if (rmBtn) rmBtn.style.display = (['admin', 'hr', 'audit', 'super_admin'].includes(currentProfile.role)
+        && !['deleted', 'superseded'].includes(e.status)) ? 'inline-flex' : 'none';
 
       // Super Admin receipt upload section
       const saSection = document.getElementById('am-sa-receipt-section');
@@ -3540,10 +3550,10 @@
 
     async function deleteExpense(id) {
       const reason = prompt("Please enter a reason for deleting this expense (the employee will see this):");
-      if (reason === null) return; // cancelled
+      if (reason === null) return false; // cancelled
       if (!reason.trim()) {
         showMessage('A reason is required to delete an expense.', 'error');
-        return;
+        return false;
       }
       try {
         const token = (await db.auth.getSession()).data.session?.access_token;
@@ -3556,6 +3566,39 @@
         if (!res.ok) throw new Error(body.error || 'Delete failed');
         invalidateExpensesCache();
         showMessage('Expense deleted!', 'success');
+        await loadAdminExpenses();
+        return true;
+      } catch (err) {
+        showMessage(err.message, 'error');
+        return false;
+      }
+    }
+
+    // Approval-modal "🗑️ Remove": soft-delete the entry under review (reuses the
+    // reason-prompt delete), then close the modal only if the delete went through.
+    async function removeFromApprovalModal() {
+      const id = document.getElementById('am-expense-id').value;
+      if (!id) return;
+      const ok = await deleteExpense(id);
+      if (ok) closeApprovalModal();
+    }
+
+    // Employee "🗑️ Delete" on their own still-pending expense (before the manager
+    // approves it). The delete-expenses API only lets a user hard-delete their OWN
+    // pending rows, so this is safe to expose directly.
+    async function employeeDeleteOwnExpense(id) {
+      if (!confirm('Delete this pending expense? This cannot be undone.')) return;
+      try {
+        const token = (await db.auth.getSession()).data.session?.access_token;
+        const res = await fetch('/api/delete-expenses', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+          body: JSON.stringify({ ids: [id] }),
+        });
+        const body = await res.json();
+        if (!res.ok) throw new Error(body.error || 'Delete failed');
+        invalidateExpensesCache();
+        showMessage('Expense deleted.', 'success');
         await loadAdminExpenses();
       } catch (err) {
         showMessage(err.message, 'error');
