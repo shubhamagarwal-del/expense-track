@@ -256,14 +256,28 @@ export default async function handler(req, res) {
     }
 
     // ?portal_advances=1 → mirror of Accounts Portal advances (read-only).
-    // Admins/HR/Audit/Super Admin get all; an employee only gets their own matched rows.
+    // HR / Audit / Super Admin get everyone; a Manager (admin) gets only their own
+    // department's employees; a plain employee gets only their own matched rows.
     if (req.query?.portal_advances) {
       let q = supabaseAdmin
         .from('accounts_portal_advances')
         .select('id, advance_id, event, employee_number, employee_name, amount, advance_date, narration, bank_reference, bank, outstanding_after, matched_employee_id, received_at')
         .order('advance_date', { ascending: false })
         .order('received_at', { ascending: false });
-      if (!['admin','hr','audit','super_admin'].includes(profile.role)) q = q.eq('matched_employee_id', user.id);
+      if (profile.role === 'admin') {
+        // Line Manager → scope to their own department's employees.
+        const { data: me } = await supabaseAdmin.from('users').select('department').eq('id', user.id).single();
+        const dept = (me?.department || '').trim();
+        if (dept) {
+          const { data: team } = await supabaseAdmin.from('users').select('id').ilike('department', dept);
+          const ids = (team || []).map(u => u.id);
+          q = q.in('matched_employee_id', ids.length ? ids : ['00000000-0000-0000-0000-000000000000']);
+        } else {
+          q = q.eq('matched_employee_id', user.id); // no department set → only their own (safe default)
+        }
+      } else if (!['hr', 'audit', 'super_admin'].includes(profile.role)) {
+        q = q.eq('matched_employee_id', user.id); // plain employee → own only
+      }
       const { data, error } = await q;
       if (error) return res.status(500).json({ error: error.message });
       return res.status(200).json({ portal_advances: data || [] });
