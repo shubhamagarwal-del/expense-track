@@ -531,7 +531,16 @@ function buildAdvanceBreakdown(advances, advAdjustments) {
     totalAdjusted += Number(a.amount || 0);
   });
   let totalGiven = 0;
-  const entries = (advances || []).filter(a => !a.event || a.event === 'given').map(a => {
+  // De-duplicate by bank reference — the portal sync can write the same advance
+  // event more than once (e.g. Pradeep SSS_0275 had 7 rows for 4 real advances),
+  // which would otherwise double-count the total.
+  const seenRef = new Set();
+  const entries = (advances || []).filter(a => {
+    if (a.event && a.event !== 'given') return false;
+    const ref = a.bank_reference || a.reference || '';
+    if (ref) { if (seenRef.has(ref)) return false; seenRef.add(ref); }
+    return true;
+  }).map(a => {
     const amount = Number(a.amount || 0);
     totalGiven += amount;
     const ref = a.bank_reference || a.reference || '';
