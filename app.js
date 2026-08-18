@@ -658,8 +658,8 @@ function populateSidebar(profile) {
     if (el('sb-payment-register-link')) el('sb-payment-register-link').style.display = '';
   }
 
-  // Advances: audit, super_admin only
-  if (['audit', 'super_admin'].includes(role)) {
+  // Advances: Manager (admin), HR, Audit, Super Admin
+  if (['admin', 'hr', 'audit', 'super_admin'].includes(role)) {
     if (el('sb-advances-link')) el('sb-advances-link').style.display = '';
   }
 

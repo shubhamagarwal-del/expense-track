@@ -229,7 +229,7 @@
       if (!profile) { showMessage('Could not load profile.', 'error'); setTimeout(logout, 2000); return; }
       currentProfile = profile;
       populateSidebar(profile);
-      if (!['audit', 'super_admin'].includes(profile.role)) {
+      if (!['admin', 'hr', 'audit', 'super_admin'].includes(profile.role)) {
         window.location.href = 'dashboard.html';
         return;
       }
