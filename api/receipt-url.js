@@ -261,7 +261,7 @@ export default async function handler(req, res) {
     if (req.query?.portal_advances) {
       let q = supabaseAdmin
         .from('accounts_portal_advances')
-        .select('id, advance_id, event, employee_number, employee_name, amount, advance_date, narration, bank_reference, bank, outstanding_after, matched_employee_id, received_at')
+        .select('id, advance_id, event, employee_number, employee_name, amount, advance_date, narration, bank_reference, bank, outstanding_after, matched_employee_id, received_at, last_seen_at')
         .order('advance_date', { ascending: false })
         .order('received_at', { ascending: false });
       if (profile.role === 'admin') {
@@ -280,7 +280,7 @@ export default async function handler(req, res) {
       }
       const { data, error } = await q;
       if (error) return res.status(500).json({ error: error.message });
-      return res.status(200).json({ portal_advances: data || [] });
+      return res.status(200).json({ portal_advances: freshestPortalAdvances(data || []) });
     }
 
     // ?portal_claims=1 → claims already pushed to Accounts Portal (for per-cycle "Pushed" status).
@@ -1398,6 +1398,43 @@ async function handleAccountsPortalWebhook(req, res, db) {
   return res.status(200).json({ ok: true, matched: !!matched_employee_id });
 }
 
+/**
+ * Keep only the rows the Accounts Portal still reports — per employee.
+ *
+ * Every reconcile run stamps `last_seen_at` on each entry the portal currently
+ * returns. So for one employee, the rows carrying their newest stamp are exactly
+ * that employee's live portal ledger; anything with an older stamp is a leftover
+ * (an advance the portal reversed, or a legacy duplicate stored under a different
+ * id) and is filtered out here instead of being deleted — the mirror self-heals
+ * on read, and the underlying history stays intact and reversible.
+ *
+ * Per-employee (not global) on purpose: if a sync only covers some employees,
+ * everyone else keeps their own last-known-good set instead of vanishing.
+ * Employees with no stamp at all (never synced since this was added) are passed
+ * through untouched, so behaviour is unchanged until the first stamped sync.
+ */
+function freshestPortalAdvances(rows) {
+  const keyOf = r => String(r.employee_number || r.matched_employee_id || r.employee_name || '?').trim().toLowerCase();
+  const newest = new Map();
+  for (const r of rows) {
+    if (!r.last_seen_at) continue;
+    const k = keyOf(r);
+    const cur = newest.get(k);
+    if (!cur || r.last_seen_at > cur) newest.set(k, r.last_seen_at);
+  }
+  // Small tolerance so a run whose writes straddle a chunk boundary isn't split.
+  const TOLERANCE_MS = 10 * 60 * 1000;
+  return rows.filter(r => {
+    const latest = newest.get(keyOf(r));
+    if (!latest) return true;          // employee never stamped → leave as-is
+    // Unstamped row = written by the advance webhook since the last reconcile.
+    // Always keep it: it is brand-new portal data, and the next reconcile either
+    // confirms it (stamps it) or retires it. Never treat "no stamp" as stale.
+    if (!r.last_seen_at) return true;
+    return new Date(latest) - new Date(r.last_seen_at) <= TOLERANCE_MS;
+  });
+}
+
 async function reconcilePortalAdvances(res, db) {
   // Same Accounts portal + key the reimbursements sync already uses (ACCOUNTS2026_*).
   const baseUrl = process.env.ACCOUNTS_PORTAL_BASE_URL || process.env.ACCOUNTS2026_BASE_URL || 'https://accounts-2026.vercel.app';
@@ -1434,12 +1471,16 @@ async function reconcilePortalAdvances(res, db) {
   const { data: users } = await db.from('users').select('id, emp_no').not('emp_no', 'is', null);
   const byEmpNo = new Map((users || []).map(u => [String(u.emp_no).trim().toLowerCase(), u.id]));
 
-  // Existing advance_ids we already know about, so we skip pure no-ops
-  const { data: existing } = await db.from('accounts_portal_advances').select('advance_id');
-  const knownIds = new Set((existing || []).map(r => r.advance_id));
+  // Every row written by THIS run carries the same stamp. Rows the portal still
+  // reports get re-stamped; a row the portal has dropped (reversed/corrected
+  // advance) simply stops being re-stamped and falls out of the read filter in
+  // `?portal_advances=1`. Nothing is deleted — the mirror self-heals by freshness,
+  // so it can never read higher than the portal again, and the history stays
+  // auditable/reversible.
+  const syncTs = new Date().toISOString();
 
   const rowsToUpsert = [];
-  const summary = { employees: employees.length, upserted: 0, unmatched: 0, skipped_existing: 0 };
+  const summary = { employees: employees.length, upserted: 0, unmatched: 0, sync_ts: syncTs };
 
   for (const emp of employees) {
     const matched_employee_id = byEmpNo.get(String(emp.employee_number || '').trim().toLowerCase()) || null;
@@ -1456,9 +1497,11 @@ async function reconcilePortalAdvances(res, db) {
       const bankRef = e.bank_reference || '';
       const synthId = `ACCT-${emp.recipient_id || emp.employee_number}-${e.date || ''}-${eventNorm}-${Math.round(Number(e.amount || 0) * 100)}-${bankRef}`;
 
-      if (knownIds.has(synthId)) { summary.skipped_existing++; continue; }
+      // Re-stamp on EVERY run (no skip-if-known shortcut): the freshness stamp is
+      // what tells the read side this entry still exists on the portal.
       rowsToUpsert.push({
         advance_id: synthId,
+        last_seen_at: syncTs,
         event: eventNorm,
         employee_number: emp.employee_number || null,
         employee_name: emp.employee_name || null,
@@ -1472,7 +1515,6 @@ async function reconcilePortalAdvances(res, db) {
         matched_employee_id,
         raw_payload: { source: 'reconcile', employee: emp, entry: e },
       });
-      knownIds.add(synthId);
     }
   }
 
