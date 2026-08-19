@@ -980,6 +980,44 @@ export default async function handler(req, res) {
       return res.status(200).json({ message: 'Receipt updated' });
     }
 
+    // ── POST { expense_id, remove_receipt } → detach a wrongly-uploaded receipt (super_admin, hr) ──
+    // `remove_receipt` is either a specific receipt URL, or 'all' to clear every one.
+    // Needed because the attach branch above only fires when a NEW url is supplied, so
+    // there was no way to take a wrong receipt off an entry without having a correct
+    // file to overwrite it with. The stored file itself is intentionally left in the
+    // bucket (same as the replace flow) so the original upload stays auditable.
+    if (req.body?.expense_id && req.body?.remove_receipt) {
+      const { data: profile } = await supabaseAdmin.from('users').select('role').eq('id', user.id).single();
+      if (!profile || !['super_admin', 'hr'].includes(profile.role)) {
+        return res.status(403).json({ error: 'Not authorised to edit receipts' });
+      }
+      const { data: exp, error: readErr } = await supabaseAdmin
+        .from('expenses').select('receipt_url').eq('id', req.body.expense_id).single();
+      if (readErr) return res.status(500).json({ error: readErr.message });
+
+      // Same shape-tolerant parse the client uses: legacy single URL or JSON array.
+      let urls = [];
+      const raw = exp?.receipt_url;
+      if (raw) {
+        if (typeof raw === 'string' && raw.trim().startsWith('[')) {
+          try { urls = JSON.parse(raw).filter(Boolean); } catch { urls = [raw]; }
+        } else urls = [raw];
+      }
+
+      const target = String(req.body.remove_receipt);
+      const remaining = target === 'all' ? [] : urls.filter(u => u !== target);
+      if (target !== 'all' && remaining.length === urls.length) {
+        return res.status(404).json({ error: 'That receipt is not attached to this expense' });
+      }
+
+      const { error } = await supabaseAdmin
+        .from('expenses')
+        .update({ receipt_url: remaining.length ? JSON.stringify(remaining) : null })
+        .eq('id', req.body.expense_id);
+      if (error) return res.status(500).json({ error: error.message });
+      return res.status(200).json({ message: 'Receipt removed', remaining: remaining.length });
+    }
+
     // ── POST { expense_id } → record a receipt view (admin-side roles) ──
     if (req.body?.expense_id) {
       const { data: profile } = await supabaseAdmin.from('users').select('role').eq('id', user.id).single();

@@ -1067,6 +1067,45 @@ function parseReceiptUrls(val) {
   return [val];
 }
 
+/** HR / Super Admin may detach a wrongly-uploaded receipt. Guarded with typeof
+ *  because `currentProfile` is a page-level binding that not every page defines. */
+function canEditReceipts() {
+  const p = typeof currentProfile !== 'undefined' ? currentProfile : null;
+  return ['super_admin', 'hr'].includes(p?.role);
+}
+
+/** Detach a receipt from an expense (HR / Super Admin).
+ *  `url` is a specific receipt, or 'all' to clear every one. The entry itself is
+ *  kept — only the attachment goes — so the employee can upload the correct bill
+ *  against the same expense instead of re-submitting the whole day. */
+async function removeExpenseReceipt(expenseId, url) {
+  if (!canEditReceipts()) return false;
+  const msg = url === 'all'
+    ? 'Remove ALL receipts from this expense? The employee will need to upload the correct one again.'
+    : 'Remove this receipt? The employee will need to upload the correct one again.';
+  if (!confirm(msg)) return false;
+  try {
+    await initSupabase();
+    const { data: { session } } = await db.auth.getSession();
+    const res = await fetch('/api/receipt-url', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session?.access_token}` },
+      body: JSON.stringify({ expense_id: expenseId, remove_receipt: url }),
+    });
+    const body = await res.json();
+    if (!res.ok) throw new Error(body.error || 'Remove failed');
+    if (typeof showMessage === 'function') showMessage('Receipt removed.', 'success');
+    // Refresh whichever list this page is showing.
+    if (typeof invalidateExpensesCache === 'function') invalidateExpensesCache();
+    if (typeof loadAdminExpenses === 'function') await loadAdminExpenses();
+    return true;
+  } catch (err) {
+    if (typeof showMessage === 'function') showMessage(err.message, 'error');
+    else alert(err.message);
+    return false;
+  }
+}
+
 /** Open expense receipt(s). Shows a picker modal when there are multiple.
  *  expenseId (optional) — if provided, the view is audited via /api/expense-view
  *  so admins can be required to view a receipt before approving. */
@@ -1086,9 +1125,19 @@ function viewExpenseReceipts(urlOrJson, expenseId) {
         <h3 style="margin:0;font-size:1rem;font-weight:700">View Receipts</h3>
         <button onclick="document.getElementById('_rcpt-picker').remove()" style="background:none;border:none;font-size:1.2rem;cursor:pointer;color:#6b7280">✕</button>
       </div>
-      ${urls.map((u, i) => `<button data-url="${escHtml(u)}" style="display:block;width:100%;text-align:left;padding:.6rem .8rem;margin-bottom:.4rem;border:1px solid #e5e7eb;border-radius:8px;cursor:pointer;background:#f9fafb;font-size:.85rem">📎 Receipt ${i + 1}</button>`).join('')}
+      ${urls.map((u, i) => `<div style="display:flex;gap:.4rem;margin-bottom:.4rem">
+        <button data-url="${escHtml(u)}" style="flex:1;text-align:left;padding:.6rem .8rem;border:1px solid #e5e7eb;border-radius:8px;cursor:pointer;background:#f9fafb;font-size:.85rem">📎 Receipt ${i + 1}</button>
+        ${canEditReceipts() ? `<button data-del-url="${escHtml(u)}" title="Remove this receipt" style="border:1px solid #fecaca;background:#fff;color:#dc2626;border-radius:8px;padding:0 .6rem;cursor:pointer;font-size:.85rem">🗑️</button>` : ''}
+      </div>`).join('')}
+      ${canEditReceipts() && urls.length > 1 ? `<button data-del-url="all" style="display:block;width:100%;margin-top:.5rem;padding:.5rem;border:1px solid #fecaca;background:#fff;color:#dc2626;border-radius:8px;cursor:pointer;font-size:.78rem;font-weight:700">🗑️ Remove all ${urls.length} receipts</button>` : ''}
     </div>`;
   picker.addEventListener('click', (ev) => {
+    const del = ev.target.closest('[data-del-url]');
+    if (del) {
+      ev.stopPropagation();
+      removeExpenseReceipt(expenseId, del.dataset.delUrl).then(ok => { if (ok) picker.remove(); });
+      return;
+    }
     const btn = ev.target.closest('[data-url]');
     // Open the receipt on top of this list (viewer z-index 10000 > picker 9999)
     // but DON'T close the list — so after closing the image the user lands back
