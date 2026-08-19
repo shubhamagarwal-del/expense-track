@@ -3099,7 +3099,7 @@
         <span class="expense-card-date">${formatDate(e.created_at)}</span>
       </div>
       <div class="expense-card-meta" style="font-size: 0.7rem; color: var(--text-3); margin-top: 0.25rem">
-        🕒 Submitted: ${e.uploaded_at ? formatDateTime(e.uploaded_at) : '<em title="Older entry — the actual upload time was not recorded" style="opacity:.7">not recorded</em>'}
+        🕒 Submitted: ${e.uploaded_at ? formatDateTime(e.uploaded_at) : `${formatDateTime(e.created_at)} <span title="Older entry — upload date was not recorded; this is the selected date" style="opacity:.65">(selected date)</span>`}
       </div>
       <div class="expense-card-desc">${parseDescForDisplay(e.description)}</div>
       ${attendanceFlagBadge(e)}
@@ -3185,7 +3185,7 @@
         ${lms ? `<div style="font-size:.75rem;color:#059669;font-weight:600;margin-top:2px">👔 ${escHtml(lms.map(m=>m.name).join(' / '))}</div>` : ''}
       </div>
       <div class="expense-card-meta" style="font-size: 0.7rem; color: var(--text-3); margin-top: 0.25rem">
-        🕒 Submitted: ${e.uploaded_at ? formatDateTime(e.uploaded_at) : '<em title="Older entry — the actual upload time was not recorded" style="opacity:.7">not recorded</em>'}
+        🕒 Submitted: ${e.uploaded_at ? formatDateTime(e.uploaded_at) : `${formatDateTime(e.created_at)} <span title="Older entry — upload date was not recorded; this is the selected date" style="opacity:.65">(selected date)</span>`}
       </div>
       <div class="expense-card-desc">${parseDescForDisplay(e.description)}</div>
       ${attendanceFlagBadge(e)}
@@ -3817,9 +3817,12 @@
       // its DATE part is the expense date the employee picked (only the time-of-day is
       // the real clock), so falling back to it reads as "uploaded on the day of travel".
       // Entries created before uploaded_at existed say so instead of showing a wrong date.
+      // Older rows have no uploaded_at. Their created_at still carries the real
+      // clock TIME of submission — only its DATE is the one the employee picked —
+      // so it is shown, tagged "selected date" so nobody reads it as an upload date.
       const up = e.uploaded_at
         ? `<div>📤 Uploaded: ${formatDateTime(e.uploaded_at)}</div>`
-        : `<div style="opacity:.7" title="This entry predates upload-time tracking — only the expense date was stored, so the real upload time is unknown">📤 Uploaded: <em>not recorded</em></div>`;
+        : `<div title="Older entry — upload date was not recorded. This is the date the employee selected; the time is the real submission time.">📤 Uploaded: ${formatDateTime(e.created_at)} <span style="opacity:.65">(selected date)</span></div>`;
       const html = up + line('✓ Manager:', e.l1_at) + line('✓ HR:', e.hr_at);
       return html ? `<div style="font-size:.62rem;color:var(--text-muted);margin-top:.2rem;line-height:1.55">${html}</div>` : '';
     }
