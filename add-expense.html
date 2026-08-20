@@ -1917,16 +1917,24 @@
         if (!r.ok) return null;
         off = (await r.json()).off || [];
       } catch { return null; }
-      if (!off.some(o => o.att_date === dateIso && String(o.status).toUpperCase() === 'A')) return null;
+      // Days the employee was genuinely off work. Absent was the only one prompted at
+      // first, which left Leave silently allowed — same situation, no reason recorded.
+      // SUN / SAT / CO / H stay out on purpose: field staff routinely work weekly-offs,
+      // comp-offs and holidays, so prompting on those would be noise, not a check.
+      const OFF_LABELS = { 'A': 'Absent', 'L': 'Leave', 'MED. LEAVE': 'Medical Leave', 'PATERNITY LEAVE': 'Paternity Leave' };
+      const hit = off.find(o => o.att_date === dateIso && OFF_LABELS[String(o.status || '').trim().toUpperCase()]);
+      if (!hit) return null;
+      const label = OFF_LABELS[String(hit.status).trim().toUpperCase()];
+      const wasLine = label === 'Absent' ? 'aap Absent the' : `aap ${label} pe the`;
       const pretty = new Date(dateIso).toLocaleDateString('en-IN', { weekday: 'short', day: '2-digit', month: 'short', year: 'numeric' });
-      const REASON = 'Next-day travel — raat ko nikla, agle din ke site kaam ke liye';
+      const REASON = `Next-day travel — raat ko nikla, agle din ke site kaam ke liye (${label} day)`;
       return await new Promise(resolve => {
         const ov = document.createElement('div');
         ov.style.cssText = 'position:fixed;inset:0;background:rgba(2,6,23,.6);z-index:100000;display:flex;align-items:center;justify-content:center;padding:1rem';
         ov.innerHTML = `<div style="background:#fff;border-radius:16px;max-width:440px;width:100%;box-shadow:0 20px 60px rgba(0,0,0,.4);overflow:hidden">
           <div style="padding:1.2rem 1.3rem 0">
             <div style="font-size:2rem">🚫</div>
-            <div style="font-size:1.1rem;font-weight:800;margin-top:.3rem;color:#b91c1c">${pretty} ko aap Absent the</div>
+            <div style="font-size:1.1rem;font-weight:800;margin-top:.3rem;color:#b91c1c">${pretty} ko ${wasLine}</div>
             <div style="margin-top:.5rem;font-size:.9rem;color:#475569;line-height:1.5">Is din normally expense allowed nahi. Agar aap <b>agle din ke kaam ke liye raat ko travel</b> kar rahe the, to niche wala button dabao — expense reason ke saath chali jayegi.</div>
           </div>
           <div style="display:flex;gap:.6rem;padding:1.2rem 1.3rem">
