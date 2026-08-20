@@ -318,7 +318,7 @@ export default async function handler(req, res) {
         .from('employee_attendance')
         .select('att_date, status')
         .eq('emp_no', me.emp_no)
-        .in('status', ['A', 'L', 'CO', 'SUN', 'SAT', 'H', 'WO', 'Paternity Leave']);
+        .in('status', ['A', 'L', 'CO', 'SUN', 'SAT', 'H', 'WO', 'Paternity Leave', 'Med. Leave']);
       if (error) return res.status(500).json({ error: error.message });
       return res.status(200).json({ off: data || [] });
     }

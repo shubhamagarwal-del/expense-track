@@ -4229,7 +4229,9 @@
 
     // Parse the monthly attendance Excel (one sheet per month) and upload each month's
     // off/chhutti days. Same rule as the flag: A/L/CO/SUN/SAT/H/Paternity = off.
-    const ATT_CHHUTTI = new Set(['A', 'L', 'CO', 'SUN', 'SAT', 'H', 'Paternity Leave']);
+    // Off-day marks worth importing. 'Med. Leave' appears from July 2026 onward; it is
+    // a day the employee was not at work, so it belongs here with the other leaves.
+    const ATT_CHHUTTI = new Set(['A', 'L', 'CO', 'SUN', 'SAT', 'H', 'Paternity Leave', 'Med. Leave']);
 
     // Parse an eSSL eTimeTrackLite "Monthly Status Report" workbook (raw machine
     // export). Returns [{emp_code,name,att_date,status}] for OFF marks (A / WO).
