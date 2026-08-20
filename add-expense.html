@@ -1922,11 +1922,17 @@
       // SUN / SAT / CO / H stay out on purpose: field staff routinely work weekly-offs,
       // comp-offs and holidays, so prompting on those would be noise, not a check.
       const OFF_LABELS = { 'A': 'Absent', 'L': 'Leave', 'MED. LEAVE': 'Medical Leave', 'PATERNITY LEAVE': 'Paternity Leave' };
-      const hit = off.find(o => o.att_date === dateIso && OFF_LABELS[String(o.status || '').trim().toUpperCase()]);
+      // dateIso arrives as a full UTC timestamp (dayDate.toISOString()), while att_date is a
+      // plain YYYY-MM-DD. Comparing them directly never matched, so this check silently did
+      // nothing. Rebuild the date from LOCAL parts — east of UTC, midnight local is the
+      // previous day in UTC, so slicing the ISO string would land a day early.
+      const _d = new Date(dateIso);
+      const dayKey = `${_d.getFullYear()}-${String(_d.getMonth() + 1).padStart(2, '0')}-${String(_d.getDate()).padStart(2, '0')}`;
+      const hit = off.find(o => String(o.att_date).slice(0, 10) === dayKey && OFF_LABELS[String(o.status || '').trim().toUpperCase()]);
       if (!hit) return null;
       const label = OFF_LABELS[String(hit.status).trim().toUpperCase()];
       const wasLine = label === 'Absent' ? 'aap Absent the' : `aap ${label} pe the`;
-      const pretty = new Date(dateIso).toLocaleDateString('en-IN', { weekday: 'short', day: '2-digit', month: 'short', year: 'numeric' });
+      const pretty = _d.toLocaleDateString('en-IN', { weekday: 'short', day: '2-digit', month: 'short', year: 'numeric' });
       const REASON = `Next-day travel — raat ko nikla, agle din ke site kaam ke liye (${label} day)`;
       return await new Promise(resolve => {
         const ov = document.createElement('div');
