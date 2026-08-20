@@ -4176,7 +4176,16 @@
     }
 
     // ── Attendance cross-check: flag expenses filed on a chhutti (off) day ──
-    let attendanceOffStatus = {};  // "empno|YYYY-MM-DD" → raw code (A/L/CO/SUN/SAT/H/Paternity Leave)
+    /** Employee codes are written inconsistently — SSS_0317 in one place, SSS-0317 or
+     *  "SSS 0327" in another, sss0245 / 00160 / 189 in the machine export. Comparing the
+     *  raw strings silently loses those people, so every attendance lookup keys on the
+     *  digits alone: the number is the identity, the prefix and separator are decoration. */
+    function empKey(v) {
+      const d = String(v == null ? '' : v).replace(/\D/g, '');
+      return d ? String(parseInt(d, 10)) : '';
+    }
+
+    let attendanceOffStatus = {};  // "empkey|YYYY-MM-DD" → raw code (A/L/CO/SUN/SAT/H/Paternity Leave)
     let empLocation = {};          // "empno" → SITE | Office | Discom | Warehouse
     let attendanceMaxDate = '';    // latest off-day date we have → beyond this we can't verify "next day"
     async function loadAttendanceOff() {
@@ -4189,7 +4198,8 @@
         empLocation = {};
         attendanceMaxDate = '';
         (body.attendance_off || []).forEach(r => {
-          const emp = String(r.emp_no).trim();
+          const emp = empKey(r.emp_no);
+          if (!emp) return;
           attendanceOffStatus[`${emp}|${r.att_date}`] = r.status;
           if (r.location) empLocation[emp] = r.location;
           if (r.att_date > attendanceMaxDate) attendanceMaxDate = r.att_date;
@@ -4200,7 +4210,7 @@
      *  day (likely travelled the eve for next day's work) · null = not an off-day expense. */
     function expenseOffSeverity(e) {
       if (!expenseOffDay(e)) return null;
-      const emp = (e.users?.emp_no || '').trim();
+      const emp = empKey(e.users?.emp_no);
       const d = new Date(e.created_at); d.setDate(d.getDate() + 1);
       const nd = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
       if (attendanceOffStatus[`${emp}|${nd}`]) return 'strong';   // next day also off
@@ -4209,7 +4219,7 @@
     }
     /** Small Site/Office tag for an employee, from attendance LOCATION. '' if unknown. */
     function empLocationTag(empNo) {
-      const loc = empLocation[(empNo || '').trim()];
+      const loc = empLocation[empKey(empNo)];
       if (!loc) return '';
       const isSite = /site|discom|warehouse/i.test(loc);
       const bg = isSite ? '#ecfeff' : '#eef2ff', col = isSite ? '#155e75' : '#4338ca';
@@ -4219,7 +4229,7 @@
     const ATT_LABEL = { A: 'Absent', L: 'Leave', CO: 'Comp-off', SUN: 'Sunday', SAT: 'Saturday', H: 'Holiday', 'Paternity Leave': 'Paternity Leave' };
     /** If this expense was filed on the employee's off day, return the readable status, else null. */
     function expenseOffDay(e) {
-      const emp = (e.users?.emp_no || '').trim();
+      const emp = empKey(e.users?.emp_no);
       if (!emp) return null;
       const d = new Date(e.created_at);
       const ds = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;

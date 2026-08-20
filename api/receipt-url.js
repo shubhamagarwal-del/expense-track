@@ -314,10 +314,23 @@ export default async function handler(req, res) {
     if (req.query?.my_attendance_off) {
       const { data: me } = await supabaseAdmin.from('users').select('emp_no').eq('id', user.id).single();
       if (!me?.emp_no) return res.status(200).json({ off: [] });
+      // The stored code and the attendance code are often written differently — SSS_0317 vs
+      // SSS-0317, "SSS 0327", sss0245, 00160. Matching the raw string drops those employees
+      // out of the check entirely, so ask for every spelling of the same number.
+      const empDigits = String(me.emp_no).replace(/\D/g, '');
+      const empNum = empDigits ? parseInt(empDigits, 10) : null;
+      const variants = new Set([String(me.emp_no).trim()]);
+      if (empNum != null) {
+        const p4 = String(empNum).padStart(4, '0');
+        ['SSS_', 'SSS-', 'SSS ', 'SSS', ''].forEach(pre => {
+          variants.add(pre + p4); variants.add(pre + String(empNum));
+          variants.add((pre + p4).toLowerCase()); variants.add((pre + String(empNum)).toLowerCase());
+        });
+      }
       const { data, error } = await supabaseAdmin
         .from('employee_attendance')
         .select('att_date, status')
-        .eq('emp_no', me.emp_no)
+        .in('emp_no', [...variants])
         .in('status', ['A', 'L', 'CO', 'SUN', 'SAT', 'H', 'WO', 'Paternity Leave', 'Med. Leave']);
       if (error) return res.status(500).json({ error: error.message });
       return res.status(200).json({ off: data || [] });
@@ -731,7 +744,13 @@ export default async function handler(req, res) {
       if (delErr) return res.status(500).json({ error: delErr.message });
       const clean = rows
         .filter(r => r && r.emp_no && r.att_date && r.status)
-        .map(r => ({ emp_no: String(r.emp_no).trim(), att_date: r.att_date, status: String(r.status).trim(), location: r.location ? String(r.location).trim() : null, source_month }));
+        .map(r => {
+          // Store one canonical spelling (SSS_0317) whatever the sheet used, so the mirror
+          // never accumulates the same person under several codes.
+          const d = String(r.emp_no).replace(/\D/g, '');
+          const emp_no = d ? 'SSS_' + String(parseInt(d, 10)).padStart(4, '0') : String(r.emp_no).trim();
+          return { emp_no, att_date: r.att_date, status: String(r.status).trim(), location: r.location ? String(r.location).trim() : null, source_month };
+        });
       let inserted = 0;
       for (let i = 0; i < clean.length; i += 500) {
         const { error } = await supabaseAdmin
