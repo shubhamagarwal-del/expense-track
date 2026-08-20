@@ -304,7 +304,7 @@ export default async function handler(req, res) {
       const { data, error } = await supabaseAdmin
         .from('employee_attendance')
         .select('emp_no, att_date, status, location')
-        .in('status', ['A', 'L', 'CO', 'SUN', 'SAT', 'H', 'Paternity Leave']); // off-days only — excludes check-in 'P'
+        .in('status', ['A', 'L', 'CO', 'SUN', 'SAT', 'H', 'Paternity Leave', 'Med. Leave']); // off-days only — 'P' rows (check-ins, office punches) never flag
       if (error) return res.status(500).json({ error: error.message });
       return res.status(200).json({ attendance_off: data || [] });
     }
