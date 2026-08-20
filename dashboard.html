@@ -4236,7 +4236,12 @@
     // Parse an eSSL eTimeTrackLite "Monthly Status Report" workbook (raw machine
     // export). Returns [{emp_code,name,att_date,status}] for OFF marks (A / WO).
     // Server maps machine Emp.Code → SSS by name; returns [] for a non-machine file.
-    const MSS_OFF = new Set(['A', 'WO']);
+    // Machine marks that mean "not at work". The report's own summary columns give the
+    // full vocabulary — P, A, L, H, HP, WO, WOP — so the rest are working days: P, plus
+    // HP (half present) and WOP (worked on a week-off). Leave and Holiday belong here:
+    // dropping them would make a machine-sourced month far thinner than the months
+    // imported from the HR workbook, where L and CO are the largest off categories.
+    const MSS_OFF = new Set(['A', 'WO', 'L', 'H']);
     function parseMachineMSS(wb) {
       const out = [];
       for (const sheetName of wb.SheetNames) {
@@ -4320,6 +4325,18 @@
         // ── eSSL eTimeTrackLite "Monthly Status Report" auto-detected → machine importer ──
         const machineRows = parseMachineMSS(wb);
         if (machineRows.length) {
+          // Importing REPLACES every existing row of each month the file covers. A report
+          // spanning several months would therefore overwrite months already imported from
+          // the HR workbook, so name the months and let the uploader back out first.
+          const mCount = {};
+          machineRows.forEach(r => { const d = new Date(r.att_date + 'T00:00:00Z');
+            const lbl = d.toLocaleString('en-US', { month: 'long', timeZone: 'UTC' }) + ' ' + d.getUTCFullYear();
+            mCount[lbl] = (mCount[lbl] || 0) + 1; });
+          const monthList = Object.entries(mCount).map(([m, c]) => `• ${m} — ${c} off-day marks`).join('\n');
+          if (!confirm(`Face-machine report detected.\n\nThis will REPLACE all existing attendance for:\n${monthList}\n\nContinue?`)) {
+            showMessage('Attendance upload cancelled.', 'info');
+            return;
+          }
           showMessage(`Reading face-machine report — ${machineRows.length} off-day marks, mapping…`, 'info');
           const res = await fetch('/api/receipt-url', {
             method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
