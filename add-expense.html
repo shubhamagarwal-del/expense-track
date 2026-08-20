@@ -1917,11 +1917,13 @@
         if (!r.ok) return null;
         off = (await r.json()).off || [];
       } catch { return null; }
-      // Days the employee was genuinely off work. Absent was the only one prompted at
-      // first, which left Leave silently allowed — same situation, no reason recorded.
-      // SUN / SAT / CO / H stay out on purpose: field staff routinely work weekly-offs,
-      // comp-offs and holidays, so prompting on those would be noise, not a check.
-      const OFF_LABELS = { 'A': 'Absent', 'L': 'Leave', 'MED. LEAVE': 'Medical Leave', 'PATERNITY LEAVE': 'Paternity Leave' };
+      // Days the employee was genuinely off work. CO belongs here with the leaves: it never
+      // falls on a Sunday in the data (Mon-Sat only) because it IS the compensatory day off,
+      // taken on a working day for a Sunday already worked — a day away from work, exactly
+      // like Leave. A day actually worked is marked P or "WO Working" instead.
+      // SUN and SAT stay out: those are the weekly offs, which field staff routinely work,
+      // so prompting on them would be noise rather than a check.
+      const OFF_LABELS = { 'A': 'Absent', 'L': 'Leave', 'CO': 'Comp-off', 'MED. LEAVE': 'Medical Leave', 'PATERNITY LEAVE': 'Paternity Leave' };
       // dateIso arrives as a full UTC timestamp (dayDate.toISOString()), while att_date is a
       // plain YYYY-MM-DD. Comparing them directly never matched, so this check silently did
       // nothing. Rebuild the date from LOCAL parts — east of UTC, midnight local is the
