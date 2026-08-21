@@ -303,7 +303,24 @@
         wrap.innerHTML = `<div style="padding:2.5rem;text-align:center;color:var(--text-muted)">No records match this filter.</div>`;
         return;
       }
+      // Totals come from every filtered row, not just the ~30 currently rendered —
+      // the table lazy-loads as you scroll, so summing the DOM would undercount.
+      const tApproved = rows.reduce((a, r) => a + (Number(r.total) || 0), 0);
+      const tPaid     = rows.reduce((a, r) => a + (Number(r.paid) || 0), 0);
+      const tPending  = rows.reduce((a, r) => a + (Number(r.pending) || 0), 0);
+      const cell = (label, value, color) => `
+        <div style="display:flex;flex-direction:column;gap:.15rem;padding:.6rem .9rem">
+          <span style="font-size:.66rem;text-transform:uppercase;letter-spacing:.06em;color:var(--text-muted);font-weight:700">${label}</span>
+          <span style="font-size:1.05rem;font-weight:800;color:${color};font-variant-numeric:tabular-nums">${value}</span>
+        </div>`;
+
       wrap.innerHTML = `
+        <div style="display:flex;flex-wrap:wrap;gap:1px;background:var(--border);border-bottom:1px solid var(--border)">
+          <div style="flex:1;min-width:120px;background:var(--card-bg,#fff)">${cell('Cycles', String(rows.length), 'var(--text-1,#18181b)')}</div>
+          <div style="flex:1;min-width:140px;background:var(--card-bg,#fff)">${cell('Approved', formatCurrency(tApproved), 'var(--text-1,#18181b)')}</div>
+          <div style="flex:1;min-width:140px;background:var(--card-bg,#fff)">${cell('Paid', formatCurrency(tPaid), '#166534')}</div>
+          <div style="flex:1;min-width:140px;background:var(--card-bg,#fff)">${cell('Pending', tPending > 0.005 ? formatCurrency(tPending) : '—', '#92400e')}</div>
+        </div>
         <div style="overflow-x:auto">
           <table style="width:100%;border-collapse:collapse;font-size:.85rem">
             <thead>
@@ -321,6 +338,16 @@
             <tbody id="pr-tbody">
               <tr id="pr-sentinel"><td colspan="8" style="height:1px;padding:0;border:none"></td></tr>
             </tbody>
+            <tfoot>
+              <tr style="background:var(--bg-page,#f9fafb);border-top:2px solid var(--border);font-weight:800">
+                <td style="padding:.7rem .9rem" colspan="3">Total — ${rows.length} cycle${rows.length === 1 ? '' : 's'}</td>
+                <td style="padding:.7rem .9rem;text-align:right;font-variant-numeric:tabular-nums">${formatCurrency(tApproved)}</td>
+                <td style="padding:.7rem .9rem;text-align:right;color:#166534;font-variant-numeric:tabular-nums">${formatCurrency(tPaid)}</td>
+                <td style="padding:.7rem .9rem"></td>
+                <td style="padding:.7rem .9rem;text-align:right;color:#92400e;font-variant-numeric:tabular-nums">${tPending > 0.005 ? formatCurrency(tPending) : '—'}</td>
+                <td style="padding:.7rem .9rem"></td>
+              </tr>
+            </tfoot>
           </table>
         </div>`;
 
