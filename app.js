@@ -1,3 +1,34 @@
+/* ─────────────────────────────────────────────────────────────────────────
+   Pin every displayed date/time to IST.
+
+   Expense dates, cycles and attendance are all Indian business dates, but the
+   ~76 toLocale* calls across these pages formatted in whatever zone the viewer's
+   device was set to. An audit browser running on UTC-12 therefore rendered every
+   timestamp before 12:00 UTC a full day early: an expense stored at
+   2026-05-08T06:53Z read as "7 May" there and "8 May" to the employee. Seven
+   expenses were flagged for a date mismatch that only existed on screen
+   (_AUDIT_FLAG_REVERT_2026-08-20.md).
+
+   Patching the prototypes rather than each call site keeps the guarantee whole:
+   a formatter added later inherits it, and none can be missed. An explicit
+   timeZone in the options always wins, so deliberate conversions still work.
+
+   This is display only. Date-keyed LOGIC (the daily sheet, attendance matching)
+   still reads local parts via getDate()/toDateString(); both sides of each of
+   those comparisons shift together, so they stay self-consistent — correcting
+   them means moving both halves at once, which needs its own testing.
+   ───────────────────────────────────────────────────────────────────────── */
+(function pinDisplayTimeZoneToIST() {
+  const TZ = 'Asia/Kolkata';
+  ['toLocaleDateString', 'toLocaleTimeString', 'toLocaleString'].forEach((fn) => {
+    const original = Date.prototype[fn];
+    Date.prototype[fn] = function (locales, options) {
+      if (options && options.timeZone) return original.call(this, locales, options);
+      return original.call(this, locales, Object.assign({}, options, { timeZone: TZ }));
+    };
+  });
+})();
+
 /* ============================================================
    app.js — Shared Supabase client + utilities
    ============================================================ */
