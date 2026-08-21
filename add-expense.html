@@ -1793,6 +1793,17 @@
 
       for (const row of rowElements) {
         const amount = parseFloat(row.querySelector('.row-amount').value);
+        // A blank or zero amount used to save happily and even pass approval —
+        // Gajendra Kumar had 20 such entries, ten of them approved at Rs0. There is
+        // no expense worth nothing, so stop it at the point it is entered.
+        if (!(amount > 0)) {
+          setLoading(btn, false); _savingDay = false;
+          const amtInput = row.querySelector('.row-amount');
+          amtInput.focus();
+          showMessage('Please enter an amount greater than ₹0 for every expense.', 'error');
+          amtInput.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          return;
+        }
         const category = row.querySelector('.row-cat').value;
         const siteInput = row.querySelector('.row-site');
         const site = siteInput.value.trim();
