@@ -999,6 +999,22 @@ export default async function handler(req, res) {
       return res.status(200).json({ message: 'Receipt updated' });
     }
 
+    // ── POST { set_my_site } → remember the site the employee just picked ──
+    // The Location Request screen guesses a site from profile.site_name, falling back
+    // to the nearest fenced site. Both miss for most people, so a manual pick is saved
+    // here as their usual site and becomes the default from the next visit on. Written
+    // server-side because public.users has RLS on with no UPDATE policy — a browser
+    // update matches zero rows and reports success, which would look saved but not be.
+    // Only ever writes the caller's own row.
+    if (req.body?.set_my_site !== undefined) {
+      const site = String(req.body.set_my_site || '').trim();
+      if (site.length > 120) return res.status(400).json({ error: 'Site name is too long' });
+      const { error } = await supabaseAdmin
+        .from('users').update({ site_name: site || null }).eq('id', user.id);
+      if (error) return res.status(500).json({ error: error.message });
+      return res.status(200).json({ ok: true, site_name: site || null });
+    }
+
     // ── POST { expense_id, remove_receipt } → detach a wrongly-uploaded receipt (super_admin, hr) ──
     // `remove_receipt` is either a specific receipt URL, or 'all' to clear every one.
     // Needed because the attach branch above only fires when a NEW url is supplied, so

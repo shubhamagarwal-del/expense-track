@@ -89,6 +89,7 @@ export default function App() {
   const [pickedSiteCode, setPickedSiteCode] = useState(null);
   const [sheetOpen, setSheetOpen] = useState(false);
   const [sheetQ, setSheetQ] = useState('');
+  const [siteSaved, setSiteSaved] = useState(false);   // shows a one-off "saved as your usual site" hint
   const [vh, setVh] = useState(typeof window !== 'undefined' ? window.innerHeight : 800);
   const sheetInputRef = useRef(null);
   const videoRef = useRef(null);
@@ -333,6 +334,36 @@ export default function App() {
     submitLocation(photoPreview.file);
   }
 
+  // Remember the pick as the employee's usual site, so the next visit starts on it
+  // instead of guessing again. Saved through the API: public.users has RLS on with no
+  // UPDATE policy, so a browser update would match zero rows and still report success.
+  async function saveMySite(name) {
+    try {
+      const { data: { session } } = await getDb().auth.getSession();
+      const r = await fetch('/api/receipt-url', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session?.access_token}` },
+        body: JSON.stringify({ set_my_site: name }),
+      });
+      return r.ok;
+    } catch { return false; }   // the pick still applies for this visit
+  }
+
+  async function rememberSite(site) {
+    setPickedSiteCode(site.code);
+    setSheetOpen(false);
+    setProfile((p) => (p ? { ...p, site_name: site.name } : p)); // so resolveUsualSite() matches straight away
+    setSiteSaved(await saveMySite(site.name));
+  }
+
+  async function forgetSite() {
+    setPickedSiteCode(null);
+    setSiteSaved(false);
+    setSheetOpen(false);
+    setProfile((p) => (p ? { ...p, site_name: '' } : p));
+    await saveMySite('');
+  }
+
   function resolveUsualSite() {
     const mine = (profile?.site_name || '').trim().toLowerCase();
     return mine ? getSites().find((s) => s.name.toLowerCase() === mine) : null;
@@ -452,7 +483,7 @@ export default function App() {
                       <span style={{ marginLeft: 6, background: '#eff6ff', color: '#2563eb', borderRadius: 5, padding: '1px 6px', fontSize: '.62rem', fontWeight: 800, whiteSpace: 'nowrap' }}>📍 auto-detected</span>
                     )}
                     {pickedSite && (
-                      <span style={{ marginLeft: 6, background: '#f0fdf4', color: '#15803d', borderRadius: 5, padding: '1px 6px', fontSize: '.62rem', fontWeight: 800, whiteSpace: 'nowrap' }}>✎ you chose this</span>
+                      <span style={{ marginLeft: 6, background: '#f0fdf4', color: '#15803d', borderRadius: 5, padding: '1px 6px', fontSize: '.62rem', fontWeight: 800, whiteSpace: 'nowrap' }}>{siteSaved ? '✓ saved as your site' : '✎ you chose this'}</span>
                     )}
                   </div>
                   <div style={{ fontSize: '.74rem', fontWeight: 700, marginTop: 1, color: liveInside === true ? '#16a34a' : liveInside === false ? '#b45309' : '#64748b' }}>
@@ -601,13 +632,13 @@ export default function App() {
               </div>
               <div style={{ overflowY: 'auto', padding: '0 .5rem .8rem' }}>
                 {pickedSiteCode && (
-                  <div onClick={() => { setPickedSiteCode(null); setSheetOpen(false); }}
+                  <div onClick={forgetSite}
                     style={{ padding: '.7rem .8rem', margin: '0 .3rem .3rem', borderRadius: 12, cursor: 'pointer', fontSize: '.85rem', fontWeight: 700, color: '#2563eb', background: '#eff6ff' }}>↺ Back to the detected site</div>
                 )}
                 {matches.map((st) => {
                   const isSel = displaySite && displaySite.code === st.code;
                   return (
-                    <div key={st.code} onClick={() => { setPickedSiteCode(st.code); setSheetOpen(false); }}
+                    <div key={st.code} onClick={() => rememberSite(st)}
                       style={{ padding: '.7rem .8rem', borderRadius: 12, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '.6rem', background: isSel ? '#f0fdf4' : 'transparent' }}>
                       <span style={{ fontSize: '1rem' }}>📍</span>
                       <span style={{ flex: 1 }}>
