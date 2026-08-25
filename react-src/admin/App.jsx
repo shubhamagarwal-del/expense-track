@@ -518,6 +518,7 @@ export default function App() {
                         const geoKey = r.latitude != null && r.longitude != null ? (+r.latitude).toFixed(4) + ',' + (+r.longitude).toFixed(4) : null;
                         const place = r.location_name || (geoKey && geoNames[geoKey]) || null;
                         const isLocReq = r.source === 'notification';
+                        const isVerify = r.site_code === 'VERIFY';
                         return (
                           <tr key={i} style={{ borderTop: '1px solid var(--border)', borderLeft: isLocReq ? '3px solid #4338ca' : '3px solid transparent', background: isLocReq ? 'rgba(79,70,229,.05)' : undefined }}>
                             <td style={td}>
@@ -527,16 +528,21 @@ export default function App() {
                             <td style={td}>
                               <div style={{ fontWeight: 600 }}>{r.site_name || '—'}</div>
                               <div style={{ fontSize: '.72rem', color: 'var(--text-muted)' }}>{r.site_code || ''}</div>
-                              {r.site_mismatch && r.nearest_site_name && (
+                              {r.site_mismatch && r.nearest_site_name && !isVerify && (
                                 <div style={{ fontSize: '.7rem', color: '#b45309', marginTop: '.15rem' }}>→ near: {r.nearest_site_name}{r.nearest_distance_m != null ? ` (${r.nearest_distance_m}m)` : ''}</div>
                               )}
                             </td>
                             <td style={td}>
-                              {r.inside_fence === true ? badge('✅ Inside', '#dcfce7', '#166534')
+                              {/* VERIFY is not a site — it is the placeholder the Location Request
+                                  screen submits when it could not resolve one. Judging it against a
+                                  fence is meaningless, and "near: <some site 16 km away>" reads like
+                                  a problem when nothing is wrong. */}
+                              {isVerify ? badge('📍 Location only', '#eef2ff', '#4338ca')
+                                : r.inside_fence === true ? badge('✅ Inside', '#dcfce7', '#166534')
                                 : r.inside_fence === false ? badge('⚠️ Outside', '#fef3c7', '#92400e')
                                 : badge('No fence', '#f3f4f6', '#6b7280')}
                               {isLocReq && <div style={{ marginTop: '.25rem' }}>{badge('🔔 Location Request', '#eef2ff', '#4338ca')}</div>}
-                              {r.site_mismatch && <div style={{ marginTop: '.25rem' }}>{badge('📍 Mismatch', '#fef3c7', '#b45309')}</div>}
+                              {r.site_mismatch && !isVerify && <div style={{ marginTop: '.25rem' }}>{badge('📍 Mismatch', '#fef3c7', '#b45309')}</div>}
                               {conf && <div style={{ marginTop: '.25rem' }}>{badge(`🔴 Att: ${conf}`, '#fee2e2', '#991b1b')}</div>}
                               {r.blocked && <div style={{ marginTop: '.25rem' }}>{badge('⛔ Blocked (VPN)', '#7f1d1d', '#fff')}</div>}
                               {rowFlags(r).map((f) => FLAG_META[f]
