@@ -25,14 +25,21 @@ const attConflict = (r) => (r.att_status && OFF_LABEL[r.att_status] ? OFF_LABEL[
 
 // ── Anti-spoof flag display ──
 const FLAG_META = {
+  // Confirmed by a second lookup after the first verdict had time to settle.
   vpn: { label: '🛡️ VPN/Proxy', bg: '#fee2e2', col: '#991b1b' },
-  ip_far: { label: '📍 IP far', bg: '#fef3c7', col: '#b45309' },
+  // First verdict only. Shown quietly until recheck_vpn either promotes or drops it —
+  // a proxy hit on a recycled mobile IP is usually stale reputation data, not a VPN.
+  vpn_suspected: { label: '🛡️ VPN? checking', bg: '#f3f4f6', col: '#6b7280' },
   impossible_travel: { label: '⚡ Impossible travel', bg: '#fee2e2', col: '#991b1b' },
   poor_gps: { label: '📡 Weak GPS', bg: '#f3f4f6', col: '#6b7280' },
+  // ip_far is deliberately absent: it fired on 417 of 627 check-ins across every
+  // employee, because these carriers surface traffic at a distant gateway. Any
+  // still stored on old rows simply stop rendering.
 };
 const rowFlags = (r) => (Array.isArray(r.spoof_flags) ? r.spoof_flags : []);
 // "Suspicious" = a real tamper signal (poor_gps alone is just an unreliable fix, not fraud).
-const isSuspect = (r) => !!r.blocked || rowFlags(r).some((f) => f !== 'poor_gps');
+const QUIET_FLAGS = new Set(['poor_gps', 'vpn_suspected', 'ip_far']);
+const isSuspect = (r) => !!r.blocked || rowFlags(r).some((f) => !QUIET_FLAGS.has(f));
 const timeIN = (iso) => new Date(iso).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' });
 const todayStr = () => {
   const d = new Date();
@@ -82,6 +89,27 @@ export default function App() {
 
   useEffect(() => { if (profile && window.populateSidebar) window.populateSidebar(profile); }, [profile]);
   useEffect(() => { if (profile) load(); }, [profile, date]);
+
+  // Settle any suspected-VPN rows in the background, then refresh so the badge that
+  // remains is one that survived a second lookup. Runs once per page open; failures
+  // are ignored, leaving the rows suspected for the next attempt.
+  useEffect(() => {
+    if (!profile || !['audit', 'hr', 'super_admin'].includes(profile.role)) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const t = await token();
+        const r = await fetch('/api/receipt-url', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${t}` },
+          body: JSON.stringify({ recheck_vpn: true }),
+        });
+        const b = await r.json();
+        if (!cancelled && r.ok && (b.confirmed || b.cleared)) load(true);
+      } catch { /* leave them suspected */ }
+    })();
+    return () => { cancelled = true; };
+  }, [profile]);
 
   // LIVE updates: Supabase Realtime — the instant a check-in or push-check row
   // changes in the DB, silently refetch so HR sees it without reloading.
@@ -512,7 +540,7 @@ export default function App() {
                               {conf && <div style={{ marginTop: '.25rem' }}>{badge(`🔴 Att: ${conf}`, '#fee2e2', '#991b1b')}</div>}
                               {r.blocked && <div style={{ marginTop: '.25rem' }}>{badge('⛔ Blocked (VPN)', '#7f1d1d', '#fff')}</div>}
                               {rowFlags(r).map((f) => FLAG_META[f]
-                                ? <div key={f} style={{ marginTop: '.25rem' }}>{badge(f === 'ip_far' && r.ip_gps_km != null ? `📍 IP ${r.ip_gps_km}km away` : FLAG_META[f].label, FLAG_META[f].bg, FLAG_META[f].col)}</div>
+                                ? <div key={f} style={{ marginTop: '.25rem' }}>{badge(FLAG_META[f].label, FLAG_META[f].bg, FLAG_META[f].col)}</div>
                                 : null)}
                               {r.ip_proxy && r.ip_type && <div style={{ fontSize: '.66rem', color: '#991b1b', marginTop: '.2rem', fontWeight: 700 }}>IP: {r.ip_type}{r.ip_city ? ` · ${r.ip_city}` : ''}{r.ip_country ? `, ${r.ip_country}` : ''}</div>}
                             </td>

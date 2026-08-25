@@ -531,15 +531,22 @@ export default async function handler(req, res) {
       ]);
 
       const spoof_flags = [];
-      // 1. VPN / proxy / Tor — proxycheck says the IP is an anonymiser.
-      if (intel?.proxy) spoof_flags.push('vpn');
-      // 2. GPS-vs-IP mismatch — ONLY trust this when the IP is CLEAN (a VPN's geo
-      //    is meaningless). A residential IP hundreds of km from the claimed GPS is
-      //    a strong fake-GPS tell. IP geo is city-level coarse, so use a wide margin.
+      // 1. VPN / proxy / Tor. Recorded as SUSPECTED, not proven: these are Indian
+      //    mobile IPs, and a carrier hands the same address around. If a proxy ran on
+      //    it last week, the reputation database still says proxy today. That is what
+      //    happened on 25 Aug — 152.59.126.248 came back SOCKS5/risk 66 while the
+      //    employee stood 5 m inside the fence; re-queried later the same IP reports
+      //    clean Jio Wireless, risk 0. recheck_vpn below settles it before Audit ever
+      //    sees a red flag.
+      if (intel?.proxy) spoof_flags.push('vpn_suspected');
+      // 2. IP-vs-GPS distance is recorded for context but no longer flagged. On these
+      //    carriers the traffic surfaces at a regional gateway, so the IP lands
+      //    hundreds of km from the handset as a matter of routine: it fired on 417 of
+      //    627 check-ins, across all 28 employees, every one of them genuine. A flag
+      //    that says "everyone" says nothing, and it buries the ones that matter.
       let ip_gps_km = null;
       if (intel && !intel.proxy && intel.latitude != null && intel.longitude != null) {
         ip_gps_km = Math.round(haversineMetres(latitude, longitude, intel.latitude, intel.longitude) / 1000);
-        if (ip_gps_km > 200) spoof_flags.push('ip_far');
       }
       // 3. Impossible travel — vs this employee's most recent prior check-in.
       const prev = prevCkRes?.data?.[0];
@@ -554,6 +561,9 @@ export default async function handler(req, res) {
       // Optional hard block: only when explicitly enabled AND it's a clear VPN on a
       // real attendance check-in. Off by default so a false positive can never lock
       // out a genuine employee on day one — the row is still recorded either way.
+      // Blocking stays off unless explicitly enabled, and now also requires an
+      // anonymiser type — a plain "proxy: yes" on a mobile IP is not enough to lock
+      // out someone standing on site.
       const blockVpn = process.env.CHECKIN_BLOCK_VPN === '1'
         && source === 'regular' && intel?.proxy && ANONYMISER_TYPES.has(intel.type);
 
@@ -997,6 +1007,48 @@ export default async function handler(req, res) {
         .from('expenses').update({ receipt_url: req.body.receipt_url }).eq('id', req.body.expense_id);
       if (error) return res.status(500).json({ error: error.message });
       return res.status(200).json({ message: 'Receipt updated' });
+    }
+
+    // ── POST { recheck_vpn: true } → settle suspected-VPN check-ins ──
+    // A proxy verdict on a mobile IP goes stale: carriers recycle addresses, so an IP
+    // that carried a proxy last week still reads as one for a while after. Every row
+    // flagged vpn_suspected is looked up again once it has had time to settle. Still a
+    // proxy → promoted to a real 'vpn' flag. Clean → the flag is dropped, because it
+    // was the reputation data that was wrong, not the employee. Audit therefore only
+    // ever sees a VPN badge that survived a second, independent check.
+    if (req.body?.recheck_vpn) {
+      const { data: profile } = await supabaseAdmin.from('users').select('role').eq('id', user.id).single();
+      if (!profile || !['audit', 'hr', 'super_admin'].includes(profile.role)) {
+        return res.status(403).json({ error: 'Not authorised' });
+      }
+      const SETTLE_MS = 30 * 60 * 1000;   // give the reputation data time to catch up
+      const { data: rows, error: readErr } = await supabaseAdmin
+        .from('attendance_checkins')
+        .select('id, ip_address, spoof_flags, checked_at')
+        .contains('spoof_flags', ['vpn_suspected'])
+        .lt('checked_at', new Date(Date.now() - SETTLE_MS).toISOString())
+        .order('checked_at', { ascending: false })
+        .limit(25);
+      if (readErr) return res.status(500).json({ error: readErr.message });
+
+      const verdicts = new Map();   // one lookup per distinct IP, however many rows share it
+      let confirmed = 0, cleared = 0;
+      for (const row of (rows || [])) {
+        if (!row.ip_address) continue;
+        if (!verdicts.has(row.ip_address)) {
+          const intel = await ipIntel(row.ip_address);
+          verdicts.set(row.ip_address, intel ? !!intel.proxy : null);
+        }
+        const stillProxy = verdicts.get(row.ip_address);
+        if (stillProxy === null) continue;   // lookup failed — leave it suspected, try next time
+        const flags = (Array.isArray(row.spoof_flags) ? row.spoof_flags : [])
+          .filter((f) => f !== 'vpn_suspected' && f !== 'vpn');
+        if (stillProxy) { flags.push('vpn'); confirmed++; } else { cleared++; }
+        await supabaseAdmin.from('attendance_checkins')
+          .update({ spoof_flags: flags.length ? flags : null, ip_proxy: stillProxy })
+          .eq('id', row.id);
+      }
+      return res.status(200).json({ checked: (rows || []).length, confirmed, cleared });
     }
 
     // ── POST { set_my_site } → remember the site the employee just picked ──
