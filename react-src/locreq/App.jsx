@@ -82,6 +82,15 @@ export default function App() {
   const [siteGeo, setSiteGeo] = useState(null);      // { latitude, longitude, radius_m } | null — usual site's fence
   const [allSiteGeo, setAllSiteGeo] = useState([]);  // every site's geo-fence — used to find the nearest one
   const [autoSiteCode, setAutoSiteCode] = useState(null); // nearest site code from GPS, when no profile match
+  // A manual pick, for when neither source lands on the right site. Only 70 of 199
+  // profiles carry a site_name that matches the site list — the rest say "Site" or
+  // "Discom" — so most people fall through to the GPS guess, and that only knows the
+  // 47 sites which actually have a fence. Without this they had no way to correct it.
+  const [pickedSiteCode, setPickedSiteCode] = useState(null);
+  const [sheetOpen, setSheetOpen] = useState(false);
+  const [sheetQ, setSheetQ] = useState('');
+  const [vh, setVh] = useState(typeof window !== 'undefined' ? window.innerHeight : 800);
+  const sheetInputRef = useRef(null);
   const videoRef = useRef(null);
   const streamRef = useRef(null);
   const mapDivRef = useRef(null);
@@ -184,17 +193,28 @@ export default function App() {
   // match — same 450m threshold as the check-in page. Display-only guess; setting
   // the same code again is a no-op re-render-wise, so this is safe on every GPS tick.
   useEffect(() => {
-    if (resolveUsualSite() || !gpsPos || !allSiteGeo.length) return;
+    if (pickedSiteCode || resolveUsualSite() || !gpsPos || !allSiteGeo.length) return;
     let best = null;
     for (const g of allSiteGeo) {
       const d = hav(gpsPos.lat, gpsPos.lon, g.latitude, g.longitude);
       if (!best || d < best.d) best = { d, code: g.site_code };
     }
     if (best && best.d <= 450) setAutoSiteCode(best.code);
-  }, [gpsPos, allSiteGeo, profile]);
+  }, [gpsPos, allSiteGeo, profile, pickedSiteCode]);
 
-  const displaySite = resolveUsualSite() || (autoSiteCode ? getSites().find((s) => s.code === autoSiteCode) : null);
-  const displayAutoPicked = !resolveUsualSite() && !!autoSiteCode;
+  // Focus the search box as the sheet opens, and keep it clear of the on-screen keyboard.
+  useEffect(() => { if (sheetOpen) setTimeout(() => sheetInputRef.current?.focus(), 80); }, [sheetOpen]);
+  useEffect(() => {
+    const vv = window.visualViewport;
+    const onResize = () => setVh(vv ? vv.height : window.innerHeight);
+    onResize();
+    (vv || window).addEventListener('resize', onResize);
+    return () => (vv || window).removeEventListener('resize', onResize);
+  }, []);
+
+  const pickedSite = pickedSiteCode ? getSites().find((s) => s.code === pickedSiteCode) : null;
+  const displaySite = pickedSite || resolveUsualSite() || (autoSiteCode ? getSites().find((s) => s.code === autoSiteCode) : null);
+  const displayAutoPicked = !pickedSite && !resolveUsualSite() && !!autoSiteCode;
 
   // Fetch the resolved site's geo-fence. Depends on the site *code* (a stable
   // primitive), not the gpsPos-driven object above, so it only re-fetches when the
@@ -424,11 +444,15 @@ export default function App() {
             <div ref={mapDivRef} style={{ height: 150, background: '#dbeafe' }} />
             <div style={{ padding: '.65rem .85rem' }}>
               {displaySite ? (
-                <>
+                <div style={{ display: 'flex', alignItems: 'flex-start', gap: '.6rem' }}>
+                  <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ fontWeight: 800, fontSize: '.88rem', color: '#0f172a', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                     {displaySite.name} <span style={{ color: '#64748b', fontWeight: 600, fontSize: '.72rem' }}>{displaySite.code}</span>
                     {displayAutoPicked && (
                       <span style={{ marginLeft: 6, background: '#eff6ff', color: '#2563eb', borderRadius: 5, padding: '1px 6px', fontSize: '.62rem', fontWeight: 800, whiteSpace: 'nowrap' }}>📍 auto-detected</span>
+                    )}
+                    {pickedSite && (
+                      <span style={{ marginLeft: 6, background: '#f0fdf4', color: '#15803d', borderRadius: 5, padding: '1px 6px', fontSize: '.62rem', fontWeight: 800, whiteSpace: 'nowrap' }}>✎ you chose this</span>
                     )}
                   </div>
                   <div style={{ fontSize: '.74rem', fontWeight: 700, marginTop: 1, color: liveInside === true ? '#16a34a' : liveInside === false ? '#b45309' : '#64748b' }}>
@@ -437,9 +461,16 @@ export default function App() {
                       : liveInside ? `You are ${liveDist} m from site — inside fence`
                       : `You are ${liveDist} m from site — outside fence`}
                   </div>
-                </>
+                  </div>
+                  <button onClick={() => { setSheetQ(''); setSheetOpen(true); }}
+                    style={{ flexShrink: 0, background: '#f1f5f9', border: '1px solid #cbd5e1', borderRadius: 9, padding: '.3rem .6rem', fontSize: '.72rem', fontWeight: 800, color: '#334155', cursor: 'pointer', fontFamily: 'inherit' }}>Change</button>
+                </div>
               ) : (
-                <div style={{ fontSize: '.85rem', color: '#64748b', fontWeight: 600 }}>No site detected yet — your live location will still be recorded for HR</div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '.6rem' }}>
+                  <div style={{ flex: 1, fontSize: '.85rem', color: '#64748b', fontWeight: 600 }}>No site detected — pick yours, or leave it and your live location is still recorded</div>
+                  <button onClick={() => { setSheetQ(''); setSheetOpen(true); }}
+                    style={{ flexShrink: 0, background: '#2563eb', border: 'none', borderRadius: 9, padding: '.4rem .7rem', fontSize: '.74rem', fontWeight: 800, color: '#fff', cursor: 'pointer', fontFamily: 'inherit' }}>Pick site</button>
+                </div>
               )}
             </div>
           </div>
@@ -539,6 +570,60 @@ export default function App() {
           )}
         </main>
       </div>
+
+      {/* Site picker — same bottom sheet the check-in screen uses, so the two
+          screens behave alike. Prefix matches rank above substring ones, which
+          puts "LOC0056" at the top the moment its digits are typed. */}
+      {sheetOpen && (() => {
+        const sq = sheetQ.trim().toLowerCase();
+        let matches = getSites();
+        if (sq) {
+          const pre = [], sub = [];
+          for (const st of getSites()) {
+            const name = st.name.toLowerCase(), code = st.code.toLowerCase(), dist = (st.district || '').toLowerCase();
+            if (name.startsWith(sq) || code.startsWith(sq) || code.replace('loc', '').startsWith(sq.replace('loc', ''))) pre.push(st);
+            else if (name.includes(sq) || code.includes(sq) || dist.includes(sq)) sub.push(st);
+          }
+          matches = [...pre, ...sub];
+        }
+        matches = matches.slice(0, 80);
+        return (
+          <div onClick={() => setSheetOpen(false)} style={{ position: 'fixed', inset: 0, zIndex: 1000, background: 'rgba(15,23,42,.45)', backdropFilter: 'blur(3px)', display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}>
+            <div onClick={(e) => e.stopPropagation()} style={{ width: '100%', maxWidth: 560, background: '#fff', borderRadius: '24px 24px 0 0', maxHeight: Math.round(vh * 0.85), display: 'flex', flexDirection: 'column', boxShadow: '0 -12px 40px rgba(15,23,42,.25)' }}>
+              <div style={{ padding: '.9rem 1rem .5rem' }}>
+                <div style={{ width: 40, height: 4, background: '#e2e8f0', borderRadius: 4, margin: '0 auto .7rem' }} />
+                <div style={{ display: 'flex', alignItems: 'center', gap: '.6rem' }}>
+                  <input ref={sheetInputRef} value={sheetQ} onChange={(e) => setSheetQ(e.target.value)} placeholder="Search site name or LOC code…"
+                    style={{ flex: 1, height: 46, border: '1.5px solid #cbd5e1', borderRadius: 12, padding: '0 .9rem', fontSize: '1rem', fontFamily: 'inherit', outline: 'none' }} />
+                  <button onClick={() => setSheetOpen(false)} style={{ background: '#f1f5f9', border: 'none', borderRadius: 10, width: 42, height: 42, fontWeight: 800, color: '#475569', cursor: 'pointer' }}>✕</button>
+                </div>
+                <div style={{ fontSize: '.72rem', color: '#94a3b8', marginTop: '.45rem', fontWeight: 600 }}>{matches.length} site{matches.length === 1 ? '' : 's'}</div>
+              </div>
+              <div style={{ overflowY: 'auto', padding: '0 .5rem .8rem' }}>
+                {pickedSiteCode && (
+                  <div onClick={() => { setPickedSiteCode(null); setSheetOpen(false); }}
+                    style={{ padding: '.7rem .8rem', margin: '0 .3rem .3rem', borderRadius: 12, cursor: 'pointer', fontSize: '.85rem', fontWeight: 700, color: '#2563eb', background: '#eff6ff' }}>↺ Back to the detected site</div>
+                )}
+                {matches.map((st) => {
+                  const isSel = displaySite && displaySite.code === st.code;
+                  return (
+                    <div key={st.code} onClick={() => { setPickedSiteCode(st.code); setSheetOpen(false); }}
+                      style={{ padding: '.7rem .8rem', borderRadius: 12, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '.6rem', background: isSel ? '#f0fdf4' : 'transparent' }}>
+                      <span style={{ fontSize: '1rem' }}>📍</span>
+                      <span style={{ flex: 1 }}>
+                        <span style={{ display: 'block', fontWeight: 700, fontSize: '.92rem', color: '#0f172a' }}>{st.name}</span>
+                        <span style={{ display: 'block', fontSize: '.72rem', color: '#64748b' }}><span style={{ color: '#16a34a', fontWeight: 700 }}>{st.code}</span>{st.district ? ` · ${st.district}` : ''}</span>
+                      </span>
+                      {isSel && <span style={{ color: '#16a34a', fontWeight: 800 }}>✓</span>}
+                    </div>
+                  );
+                })}
+                {matches.length === 0 && <div style={{ padding: '1.5rem', textAlign: 'center', color: '#94a3b8', fontSize: '.88rem' }}>No sites match "{sheetQ}"</div>}
+              </div>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 }
