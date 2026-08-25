@@ -459,6 +459,41 @@ export default function App() {
     setBusy(navigator.onLine ? 'Getting GPS…' : 'Getting GPS… (offline)'); setResult(null);
     navigator.geolocation.getCurrentPosition(async (pos) => {
       const { latitude, longitude, accuracy } = pos.coords;
+
+      // Catch the wrong site before it is recorded. On 25 Aug two people checked in
+      // standing on their own site but against another one — Raj Kumar Bhakar picked
+      // Dausar from 6 m outside Jetpura, 25 km away; Pappu Dan Charan picked Sindhu
+      // from 86 m outside Bamboo. Both read as "Outside" and looked like absence.
+      // Only speak up when the answer is unambiguous: outside the chosen fence, well
+      // inside another one, and that other site far nearer — otherwise adjacent
+      // plants like the two Gajroopdesars would nag on every check-in.
+      const chosen = allSiteGeo.find((x) => x.site_code === selected.code);
+      const chosenDist = chosen ? hav(latitude, longitude, chosen.latitude, chosen.longitude) : null;
+      let closer = null;
+      for (const cand of allSiteGeo) {
+        if (cand.site_code === selected.code) continue;
+        const d = hav(latitude, longitude, cand.latitude, cand.longitude);
+        if (!closer || d < closer.d) closer = { d, cand };
+      }
+      if (chosen && closer
+          && chosenDist > (chosen.radius_m || 200)
+          && closer.d <= (closer.cand.radius_m || 200) * 0.5
+          && chosenDist > closer.d * 3) {
+        const other = sites.find((x) => x.code === closer.cand.site_code);
+        const otherName = other ? other.name : closer.cand.site_code;
+        const ok = window.confirm(
+          `You are ${Math.round(closer.d)} m from ${otherName}, but you picked ${selected.name} `
+          + `(${Math.round(chosenDist)} m away).\n\nOK — switch to ${otherName}\nCancel — keep ${selected.name}`
+        );
+        if (ok) {
+          setSiteVal(`${otherName} — ${closer.cand.site_code}`);
+          setUserPicked(true); setAutoPicked(false);
+          setBusy('');
+          window.showMessage(`Switched to ${otherName} — tap Check In again.`, 'info');
+          return;
+        }
+      }
+
       const captured_at = new Date().toISOString();
       const client_id = uuid();
       // Stash the check-in locally (raw photo Blob + GPS) to sync later.
