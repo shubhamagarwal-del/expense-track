@@ -4527,7 +4527,28 @@
         // lines in the PDF grand-total but not the cleared-only Excel total, which
         // tripped the portal's "Excel ₹X vs PDF ₹Y" rejection.)
         const excel_b64 = performExcelExport(cleared, `${fnameBase}.xlsx`, { returnBase64: true });
-        const pdf_b64 = await downloadDeptPDF({ expenses: cleared, monthLabel: monthYear, fileLabel: `${name} — ${cycleText}`, returnBase64: true });
+
+        // The portal rejects an oversized upload with 413, and a receipt-heavy cycle
+        // reaches that on its own: Arun Kumar Bairwa's July 16-End has 54 receipts
+        // which weigh 4 MB in storage but inflate well past it once embedded. Rather
+        // than guess one setting that suits every cycle, build it, measure, and rebuild
+        // smaller only when it needs to be — so ordinary cycles keep full quality.
+        const PDF_LIMIT = 4 * 1024 * 1024;   // stay clear of the portal's ceiling
+        const STEPS = [{}, { rcptMax: 1000, rcptQ: 0.6 }, { rcptMax: 800, rcptQ: 0.5 }, { rcptMax: 600, rcptQ: 0.42 }];
+        let pdf_b64 = null;
+        for (let i = 0; i < STEPS.length; i++) {
+          pdf_b64 = await downloadDeptPDF({ expenses: cleared, monthLabel: monthYear, fileLabel: `${name} — ${cycleText}`, returnBase64: true, ...STEPS[i] });
+          if (!pdf_b64) break;
+          const bytes = Math.round(pdf_b64.length * 0.75);   // base64 → raw
+          if (bytes <= PDF_LIMIT) {
+            if (i > 0) console.info(`[push] PDF ${(bytes / 1048576).toFixed(1)}MB after ${i} extra compression pass(es)`);
+            break;
+          }
+          if (i === STEPS.length - 1) {
+            throw new Error(`This cycle's report is ${(bytes / 1048576).toFixed(1)} MB even at the smallest receipt size — too large for the portal to accept. Split the cycle or push it without receipts.`);
+          }
+          if (!silent) showMessage(`Report is ${(bytes / 1048576).toFixed(1)} MB — compressing receipts further…`, 'info');
+        }
 
         const session = (await db.auth.getSession()).data.session;
         const token = session?.access_token;
@@ -5282,8 +5303,10 @@
       // limit — a cycle with many/large receipts otherwise pushes a JSON body
       // over ~4.5MB and Vercel rejects it with 413 ("Request Entity Too Large").
       // Downloads (!silent) keep full resolution/quality.
-      const RCPT_MAX = silent ? 1400 : Infinity;   // max long-side px for embedded receipts
-      const RCPT_Q   = silent ? 0.68 : 0.88;        // JPEG quality
+      // Caller may tighten these — pushCycleToAccounts retries with smaller numbers
+      // when the finished PDF is still too big for the portal to accept.
+      const RCPT_MAX = opts.rcptMax != null ? opts.rcptMax : (silent ? 1400 : Infinity);
+      const RCPT_Q   = opts.rcptQ   != null ? opts.rcptQ   : (silent ? 0.68 : 0.88);
 
       const btn = document.getElementById('btn-export-pdf') || { disabled: false, innerHTML: '' };
       const origHTML = btn.innerHTML;
