@@ -392,7 +392,11 @@ export default function App() {
 
   // ── one-tap flow: round button → camera → capture → auto submit ──
   async function startCheckin() {
-    if (!(await notificationsOn())) { refreshNotif(); return window.showMessage('Turn on notifications first — required to check in.', 'error'); }
+    // Notifications are how HR reaches someone for a location request, so the banner
+    // still asks for them — but they are not required to check in. Employees whose
+    // phone or browser will not grant the permission were locked out of recording
+    // attendance entirely, which is a far worse outcome than a missed ping.
+    refreshNotif();
     if (!selected) { setSheetOpen(true); return; }
     openCamera();
   }
@@ -565,8 +569,8 @@ export default function App() {
   }
   sheetMatches = sheetMatches.slice(0, 80);
 
-  const punchReady = notifOn && !!selected && !busy && !camOn && !photoPreview;
-  const punchLabel = busy ? busy : !notifOn ? 'NOTIFS OFF' : !selected ? 'SELECT SITE' : 'CHECK IN';
+  const punchReady = !!selected && !busy && !camOn && !photoPreview;
+  const punchLabel = busy ? busy : !selected ? 'SELECT SITE' : 'CHECK IN';
 
   const greeting = now.getHours() < 12 ? 'Good Morning' : now.getHours() < 17 ? 'Good Afternoon' : 'Good Evening';
   const fullDate = now.toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'short', year: 'numeric' });
@@ -647,7 +651,7 @@ export default function App() {
               <div style={{ flex: 1, fontSize: '.78rem', color: notifState === 'blocked' ? '#991b1b' : '#334155' }}>
                 {notifState === 'blocked'
                   ? <><b>Notifications blocked.</b> Tap 🔒 in the address bar → Notifications → Allow, then reload.</>
-                  : <><b>Turn on notifications</b> — required to check in.</>}
+                  : <><b>Turn on notifications</b> — so HR can reach you for a location check. You can still check in without them.</>}
               </div>
               {notifState === 'blocked'
                 ? <button onClick={() => location.reload()} style={{ background: '#0f172a', color: '#fff', border: 'none', borderRadius: 10, padding: '.55rem .9rem', fontWeight: 800, fontSize: '.8rem', cursor: 'pointer' }}>Reload</button>
@@ -727,7 +731,7 @@ export default function App() {
               style={{ width: '100%', marginTop: 16, border: 'none', borderRadius: 20, padding: 20, display: 'flex', alignItems: 'center', gap: 16, color: '#fff', cursor: busy ? 'wait' : 'pointer', textAlign: 'left', background: busy ? 'linear-gradient(100deg,#0ea5e9,#0369a1)' : 'linear-gradient(100deg,#16a34a 0%,#22c55e 42%,#2563eb 100%)', boxShadow: '0 12px 26px rgba(37,99,235,.28)' }}>
               <span style={{ width: 60, height: 60, borderRadius: '50%', background: 'rgba(255,255,255,.95)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 26, flexShrink: 0 }}>{busy ? '⏳' : '📷'}</span>
               <span style={{ minWidth: 0 }}>
-                <span style={{ display: 'block', fontSize: 22, fontWeight: 800, letterSpacing: '.3px' }}>{busy ? busy : !notifOn ? 'ENABLE NOTIFS' : !selected ? 'SELECT SITE' : 'CHECK IN'}</span>
+                <span style={{ display: 'block', fontSize: 22, fontWeight: 800, letterSpacing: '.3px' }}>{busy ? busy : !selected ? 'SELECT SITE' : 'CHECK IN'}</span>
                 <span style={{ display: 'block', fontSize: 13, opacity: .9, marginTop: 2 }}>Photo + GPS Verification</span>
               </span>
               <span style={{ marginLeft: 'auto', fontSize: 22, opacity: .9 }}>›</span>
