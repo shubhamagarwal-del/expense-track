@@ -559,7 +559,14 @@ export default async function handler(req, res) {
         if (hrs > 0 && km > 25 && km / hrs > 120) spoof_flags.push('impossible_travel');
       }
       // 4. Poor GPS accuracy — informational (unreliable fix, not proof of fraud).
-      if (accuracy != null && accuracy > 500) spoof_flags.push('poor_gps');
+      // Threshold was 500 m, which let the readings that actually cause trouble slip
+      // through unmarked. Rajendra Singh Rathore's Ajoliya check-ins show the pattern
+      // exactly: 20 fixes accurate to 1-14 m all land dead on the site, while the ones
+      // that read 900 m, 1,477 m and 1,900 m away carry accuracies of 900 m, 400 m and
+      // 1,300 m. The distance simply tracks the error. Below ~150 m a fix is worth
+      // arguing about; above it the phone is triangulating off towers and the reading
+      // says nothing about where the person stood.
+      if (accuracy != null && accuracy > 150) spoof_flags.push('poor_gps');
 
       // Optional hard block: only when explicitly enabled AND it's a clear VPN on a
       // real attendance check-in. Off by default so a false positive can never lock
