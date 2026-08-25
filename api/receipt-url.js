@@ -178,7 +178,7 @@ export default async function handler(req, res) {
       const ids = [...new Set((rows || []).map(r => r.user_id).filter(Boolean))];
       const nameMap = {};
       if (ids.length) {
-        const { data: us } = await supabaseAdmin.from('users').select('id, name, department, emp_no').in('id', ids);
+        const { data: us } = await supabaseAdmin.from('users').select('id, name, department, emp_no, phone').in('id', ids);
         (us || []).forEach(u => { nameMap[u.id] = u; });
       }
       // Attendance conflict (feature 3): did the employee check in on a day their imported
@@ -200,6 +200,9 @@ export default async function handler(req, res) {
           ...r,
           name: nameMap[r.user_id]?.name || null,
           department: nameMap[r.user_id]?.department || null,
+          // Phone travels with the row so an off-site or flagged check-in can be
+          // queried on the spot, without leaving the page to look the person up.
+          phone: nameMap[r.user_id]?.phone || null,
           att_status: a?.status || null,
           att_source: a?.source || null,
         };

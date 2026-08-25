@@ -214,7 +214,7 @@ export default function App() {
   const list = useMemo(() => {
     let l = rows.slice();
     const qq = q.toLowerCase().trim();
-    if (qq) l = l.filter((r) => `${r.name || ''} ${r.emp_no || ''} ${r.site_name || ''} ${r.site_code || ''} ${r.department || ''} ${r.location_name || ''} ${r.nearest_site_name || ''}`.toLowerCase().includes(qq));
+    if (qq) l = l.filter((r) => `${r.name || ''} ${r.emp_no || ''} ${r.phone || ''} ${r.site_name || ''} ${r.site_code || ''} ${r.department || ''} ${r.location_name || ''} ${r.nearest_site_name || ''}`.toLowerCase().includes(qq));
     if (st === 'inside') l = l.filter((r) => r.inside_fence === true);
     else if (st === 'outside') l = l.filter((r) => r.inside_fence === false);
     else if (st === 'nofence') l = l.filter((r) => r.inside_fence == null);
@@ -227,7 +227,7 @@ export default function App() {
 
   const attRows = useMemo(() => {
     const qq = q.toLowerCase().trim();
-    return qq ? rows.filter((r) => `${r.name || ''} ${r.emp_no || ''} ${r.site_name || ''} ${r.department || ''} ${r.location_name || ''}`.toLowerCase().includes(qq)) : rows;
+    return qq ? rows.filter((r) => `${r.name || ''} ${r.emp_no || ''} ${r.phone || ''} ${r.site_name || ''} ${r.department || ''} ${r.location_name || ''}`.toLowerCase().includes(qq)) : rows;
   }, [rows, q]);
 
   // ── daily rollup ──
@@ -299,7 +299,7 @@ export default function App() {
     if (!list.length) return window.showMessage('No check-ins to export.', 'error');
     const statusText = (r) => (r.inside_fence === true ? 'Inside' : r.inside_fence === false ? 'Outside' : 'No fence');
     const data = list.map((r) => ({
-      'Employee': r.name || '', 'Emp No': r.emp_no || '', 'Department': r.department || '',
+      'Employee': r.name || '', 'Emp No': r.emp_no || '', 'Phone': r.phone || '', 'Department': r.department || '',
       'Site': r.site_name || '', 'Site Code': r.site_code || '',
       'Slot': { morning: 'Morning', afternoon: 'Afternoon', evening: 'Evening' }[slotOf(r.checked_at)] || '',
       'Status': statusText(r),
@@ -524,6 +524,9 @@ export default function App() {
                             <td style={td}>
                               <div style={{ fontWeight: 600 }}>{r.name || '—'}</div>
                               <div style={{ fontSize: '.72rem', color: 'var(--text-muted)' }}>{r.emp_no || ''}{r.department ? ' · ' + r.department : ''}</div>
+                              {r.phone && (
+                                <a href={`tel:${r.phone}`} style={{ fontSize: '.72rem', color: 'var(--primary,#4338ca)', fontWeight: 600, textDecoration: 'none' }}>📞 {r.phone}</a>
+                              )}
                             </td>
                             <td style={td}>
                               <div style={{ fontWeight: 600 }}>{r.site_name || '—'}</div>
