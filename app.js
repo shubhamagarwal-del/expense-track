@@ -1137,46 +1137,105 @@ async function removeExpenseReceipt(expenseId, url) {
   }
 }
 
-/** Open expense receipt(s). Shows a picker modal when there are multiple.
+/** Open an expense's receipt(s) in the slideable viewer.
  *  expenseId (optional) — if provided, the view is audited via /api/expense-view
  *  so admins can be required to view a receipt before approving. */
 function viewExpenseReceipts(urlOrJson, expenseId) {
   const urls = parseReceiptUrls(urlOrJson);
   if (!urls.length) return;
-  if (urls.length === 1) { viewReceipt(urls[0], expenseId); return; }
+  openReceiptGallery(urls, 0, expenseId);
+}
 
-  let picker = document.getElementById('_rcpt-picker');
-  if (picker) picker.remove();
-  picker = document.createElement('div');
-  picker.id = '_rcpt-picker';
-  picker.style.cssText = 'position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.5);display:flex;align-items:center;justify-content:center;padding:1rem';
-  picker.innerHTML = `
-    <div style="background:#fff;border-radius:16px;padding:1.5rem;width:100%;max-width:320px;box-shadow:0 8px 32px rgba(0,0,0,.25)">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem">
-        <h3 style="margin:0;font-size:1rem;font-weight:700">View Receipts</h3>
-        <button onclick="document.getElementById('_rcpt-picker').remove()" style="background:none;border:none;font-size:1.2rem;cursor:pointer;color:#6b7280">✕</button>
-      </div>
-      ${urls.map((u, i) => `<div style="display:flex;gap:.4rem;margin-bottom:.4rem">
-        <button data-url="${escHtml(u)}" style="flex:1;text-align:left;padding:.6rem .8rem;border:1px solid #e5e7eb;border-radius:8px;cursor:pointer;background:#f9fafb;font-size:.85rem">📎 Receipt ${i + 1}</button>
-        ${canEditReceipts() ? `<button data-del-url="${escHtml(u)}" title="Remove this receipt" style="border:1px solid #fecaca;background:#fff;color:#dc2626;border-radius:8px;padding:0 .6rem;cursor:pointer;font-size:.85rem">🗑️</button>` : ''}
-      </div>`).join('')}
-      ${canEditReceipts() && urls.length > 1 ? `<button data-del-url="all" style="display:block;width:100%;margin-top:.5rem;padding:.5rem;border:1px solid #fecaca;background:#fff;color:#dc2626;border-radius:8px;cursor:pointer;font-size:.78rem;font-weight:700">🗑️ Remove all ${urls.length} receipts</button>` : ''}
-    </div>`;
-  picker.addEventListener('click', (ev) => {
-    const del = ev.target.closest('[data-del-url]');
-    if (del) {
-      ev.stopPropagation();
-      removeExpenseReceipt(expenseId, del.dataset.delUrl).then(ok => { if (ok) picker.remove(); });
-      return;
-    }
-    const btn = ev.target.closest('[data-url]');
-    // Open the receipt on top of this list (viewer z-index 10000 > picker 9999)
-    // but DON'T close the list — so after closing the image the user lands back
-    // here and can open the next receipt without reopening the whole picker.
-    if (btn) { viewReceipt(btn.dataset.url, expenseId); return; }
-    if (ev.target === picker) picker.remove();
-  });
-  document.body.appendChild(picker);
+// ── Receipt gallery ────────────────────────────────────────────────────────
+// Multiple receipts used to open a picker list: tap one, look, close, tap the
+// next. An expense with six of them meant six round trips just to read it. They
+// now open straight into a viewer you move through — arrows, swipe, or ← →.
+let _rcptGal = null;        // { urls, idx, expenseId, signed: Map<storedUrl, signedUrl> }
+let _rcptKeysBound = false; // keyboard nav is bound once, not per modal
+
+function closeReceiptModal() {
+  _rcptGal = null;
+  document.getElementById('_rcpt-viewer')?.remove();
+}
+
+/** Swap a stored (private) URL for a signed one, cached per receipt.
+ *  The server signs for an hour, so anything older than SIGNED_TTL is re-signed
+ *  rather than handed back — an approver can leave the viewer open a long time,
+ *  and a stale token renders as a broken image with no way to recover. */
+const SIGNED_TTL = 45 * 60 * 1000;
+
+async function _signedReceiptUrl(storedUrl) {
+  const g = _rcptGal;
+  const hit = g?.signed.get(storedUrl);
+  if (hit && Date.now() - hit.at < SIGNED_TTL) return hit.url;
+  let finalUrl = storedUrl;
+  const match = String(storedUrl).match(/\/receipts\/(.+?)(\?|$)/);
+  if (match) {
+    try {
+      await initSupabase();
+      const { data: { session } } = await db.auth.getSession();
+      const res = await fetch('/api/receipt-url', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session?.access_token}` },
+        body: JSON.stringify({ path: match[1] }),
+      });
+      if (res.ok) { try { const d = JSON.parse(await res.text()); if (d.url) finalUrl = d.url; } catch {} }
+    } catch { /* fall back to the stored URL */ }
+  }
+  if (g) g.signed.set(storedUrl, { url: finalUrl, at: Date.now() });
+  return finalUrl;
+}
+
+function openReceiptGallery(urls, idx, expenseId) {
+  _rcptGal = { urls, idx: 0, expenseId, signed: new Map(), viewed: false };
+  showReceiptAt(idx);
+}
+
+/** Show receipt `i`, wrapping around the ends. */
+async function showReceiptAt(i) {
+  const g = _rcptGal;
+  if (!g || !g.urls.length) return;
+  const n = g.urls.length;
+  g.idx = ((i % n) + n) % n;
+  const at = g.idx;
+  const nav = { i: at, total: n };
+  showReceiptModal(null, true, nav);
+  const url = await _signedReceiptUrl(g.urls[at]);
+  if (_rcptGal !== g || g.idx !== at) return;   // closed, or moved on, while this was signing
+  showReceiptModal(url, false, nav);
+  // Audit the view once per opening, not once per slide — otherwise flicking
+  // through six receipts fires six /api/expense-view writes for one expense.
+  if (g.expenseId && !g.viewed && typeof window.markExpenseAsViewed === 'function') {
+    g.viewed = true;
+    window.markExpenseAsViewed(g.expenseId);
+  }
+  if (n > 1) _signedReceiptUrl(g.urls[(at + 1) % n]).catch(() => {});   // next one, ready in advance
+}
+
+/** Step through the gallery — used by the arrows, the keyboard and swipes. */
+function rcptStep(delta) {
+  if (_rcptGal && _rcptGal.urls.length > 1) showReceiptAt(_rcptGal.idx + delta);
+}
+
+/** Detach the receipt currently on screen (HR / Super Admin), then stay in the
+ *  gallery on whatever takes its place — so a six-receipt expense can be tidied
+ *  up in one pass instead of reopening the viewer after every removal. */
+async function rcptRemoveCurrent() {
+  const g = _rcptGal;
+  if (!g || !g.expenseId || !canEditReceipts()) return;
+  const at = g.idx;
+  const url = g.urls[at];
+  const ok = await removeExpenseReceipt(g.expenseId, url);
+  if (!ok || _rcptGal !== g) return;          // cancelled, failed, or closed while asking
+  // Find the receipt by identity, not by the index that happens to be current —
+  // the delete round-trip is slow and the arrows stay live throughout it.
+  const i = g.urls[at] === url ? at : g.urls.indexOf(url);
+  if (i < 0) return;                           // already gone
+  g.urls.splice(i, 1);
+  g.signed.delete(url);
+  if (!g.urls.length) { closeReceiptModal(); return; }
+  if (i < g.idx) g.idx--;                      // the slides after it shifted down
+  showReceiptAt(Math.min(g.idx, g.urls.length - 1));
 }
 
 /**
@@ -1187,6 +1246,7 @@ function viewExpenseReceipts(urlOrJson, expenseId) {
  */
 async function viewReceipt(storedUrl, expenseId) {
   if (!storedUrl) return;
+  _rcptGal = null;   // a lone receipt, not a step in the last gallery
 
   showReceiptModal(null, true);
 
@@ -1221,38 +1281,83 @@ async function viewReceipt(storedUrl, expenseId) {
 }
 
 /** Render (or update) the same-page receipt viewer modal. */
-function showReceiptModal(url, loading) {
+function showReceiptModal(url, loading, nav) {
   let modal = document.getElementById('_rcpt-viewer');
   if (!modal) {
     modal = document.createElement('div');
     modal.id = '_rcpt-viewer';
-    modal.style.cssText = 'position:fixed;inset:0;z-index:10000;background:rgba(15,23,42,.88);display:flex;align-items:center;justify-content:center;padding:1.25rem';
-    modal.addEventListener('click', (ev) => { if (ev.target === modal) modal.remove(); });
-    document.addEventListener('keydown', function escClose(ev) {
-      if (ev.key === 'Escape') { const m = document.getElementById('_rcpt-viewer'); if (m) m.remove(); document.removeEventListener('keydown', escClose); }
-    });
+    modal.style.cssText = 'position:fixed;inset:0;z-index:10000;background:rgba(15,23,42,.88);display:flex;align-items:center;justify-content:center;padding:1.25rem;overflow:auto;-webkit-overflow-scrolling:touch';
+    modal.addEventListener('click', (ev) => { if (ev.target === modal) closeReceiptModal(); });
+    if (!_rcptKeysBound) {
+      // Bound once for the life of the page. Re-binding per modal used to stack
+      // stale handlers, so one arrow press moved two receipts.
+      _rcptKeysBound = true;
+      document.addEventListener('keydown', (ev) => {
+        if (!document.getElementById('_rcpt-viewer')) return;
+        if (ev.key === 'Escape') closeReceiptModal();
+        else if (ev.key === 'ArrowRight') rcptStep(1);
+        else if (ev.key === 'ArrowLeft') rcptStep(-1);
+      });
+    }
+    // Swipe, so a phone works the way a photo gallery does. Horizontal only, and
+    // far enough to be deliberate — a vertical drag is someone scrolling the page.
+    // Strictly one finger, matched by identifier: `touches[0]` is whichever finger
+    // went down first and `changedTouches[0]` is whichever came up, so on a pinch —
+    // the first thing anyone does to a small bill photo — the delta was being
+    // measured between two different fingers and flipped the page.
+    let sw = null;
+    modal.addEventListener('touchstart', (ev) => {
+      sw = ev.touches.length === 1
+        ? { id: ev.touches[0].identifier, x: ev.touches[0].clientX, y: ev.touches[0].clientY }
+        : null;                                   // a second finger cancels the gesture
+    }, { passive: true });
+    modal.addEventListener('touchcancel', () => { sw = null; }, { passive: true });
+    modal.addEventListener('touchend', (ev) => {
+      const t = sw && [...ev.changedTouches].find(c => c.identifier === sw.id);
+      const done = sw;
+      sw = null;
+      if (!t || !done || ev.touches.length) return;   // wrong finger, or others still down
+      const dx = t.clientX - done.x, dy = t.clientY - done.y;
+      if (Math.abs(dx) > 55 && Math.abs(dx) > Math.abs(dy)) rcptStep(dx < 0 ? 1 : -1);
+    }, { passive: true });
     document.body.appendChild(modal);
   }
 
   if (loading) {
     modal.innerHTML = `<div style="color:#fff;text-align:center;font-size:.85rem">
       <div style="width:30px;height:30px;border:3px solid rgba(255,255,255,.25);border-top-color:#fff;border-radius:50%;animation:spin .65s linear infinite;margin:0 auto .75rem"></div>
-      Loading receipt…
+      Loading receipt${nav && nav.total > 1 ? ` ${nav.i + 1} / ${nav.total}` : ''}…
     </div>`;
     return;
   }
 
   const isPDF = url.toLowerCase().includes('.pdf');
+  const many = nav && nav.total > 1;
+  const canRemove = _rcptGal?.expenseId && canEditReceipts();
+  const arrow = (dir, sym, cls) => `<button onclick="rcptStep(${dir})" class="rcpt-arrow ${cls}" aria-label="${dir < 0 ? 'Previous' : 'Next'} receipt">${sym}</button>`;
+  const dots = many && nav.total <= 12
+    ? `<div class="rcpt-dots">${Array.from({ length: nav.total }, (_, k) =>
+        `<button onclick="showReceiptAt(${k})" class="rcpt-dot" aria-current="${k === nav.i}" aria-label="Receipt ${k + 1}"></button>`).join('')}</div>`
+    : '';
+
   modal.innerHTML = `
-    <div style="position:relative;display:flex;flex-direction:column;align-items:center;max-width:94vw;max-height:94vh">
-      <div style="display:flex;gap:.5rem;margin-bottom:.65rem">
-        <a href="${url}" target="_blank" rel="noopener" style="background:#fff;color:#1e293b;padding:.45rem 1rem;border-radius:8px;font-size:.8rem;font-weight:700;text-decoration:none">⤓ Open Original</a>
-        <button onclick="document.getElementById('_rcpt-viewer').remove()" style="background:#fff;color:#1e293b;border:none;padding:.45rem 1rem;border-radius:8px;font-size:.8rem;font-weight:700;cursor:pointer">✕ Close</button>
+    <div class="rcpt-shell">
+      <div class="rcpt-bar">
+        ${many ? `<span class="rcpt-count">${nav.i + 1} / ${nav.total}</span>` : ''}
+        <a href="${escHtml(url)}" target="_blank" rel="noopener" class="rcpt-btn">⤓ Open Original</a>
+        ${canRemove ? `<button onclick="rcptRemoveCurrent()" title="Detach ${many ? 'this receipt' : 'the receipt'} from the expense" class="rcpt-btn rcpt-btn-danger">🗑️ Remove${many ? ' this' : ''}</button>` : ''}
+        <button onclick="closeReceiptModal()" class="rcpt-btn">✕ Close</button>
       </div>
-      ${isPDF
-        ? `<iframe src="${escHtml(url)}" style="width:min(94vw,820px);height:min(82vh,1000px);border:none;border-radius:10px;background:#fff"></iframe>`
-        : `<img src="${escHtml(url)}" style="max-width:94vw;max-height:82vh;border-radius:10px;box-shadow:0 12px 48px rgba(0,0,0,.5);background:#fff" />`
-      }
+      <div class="rcpt-frame">
+        ${many ? arrow(-1, '‹', 'rcpt-prev') : ''}
+        ${isPDF
+          ? `<iframe src="${escHtml(url)}" class="rcpt-media"></iframe>`
+          : `<img src="${escHtml(url)}" class="rcpt-media" alt="Receipt${many ? ` ${nav.i + 1} of ${nav.total}` : ''}" />`
+        }
+        ${many ? arrow(1, '›', 'rcpt-next') : ''}
+      </div>
+      ${dots}
+      ${many ? `<div class="rcpt-hint">swipe or use ← →</div>` : ''}
     </div>`;
 }
 
