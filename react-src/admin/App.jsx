@@ -31,6 +31,10 @@ const FLAG_META = {
   // a proxy hit on a recycled mobile IP is usually stale reputation data, not a VPN.
   vpn_suspected: { label: '🛡️ VPN? checking', bg: '#f3f4f6', col: '#6b7280' },
   impossible_travel: { label: '⚡ Impossible travel', bg: '#fee2e2', col: '#991b1b' },
+  // The same exact GPS coordinate, on a good (<=20m) fix, 3+ times — real GPS always
+  // differs by a few metres re-fixing the same spot, so this is what a fake-location
+  // app pinned to one point looks like. A confirmed pattern, not a maybe.
+  static_gps_suspected: { label: '📍 Static GPS', bg: '#fee2e2', col: '#991b1b' },
   poor_gps: { label: '📡 Weak GPS', bg: '#f3f4f6', col: '#6b7280' },
   // ip_far is deliberately absent: it fired on 417 of 627 check-ins across every
   // employee, because these carriers surface traffic at a distant gateway. Any

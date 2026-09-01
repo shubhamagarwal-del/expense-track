@@ -672,6 +672,12 @@ function populateSidebar(profile) {
   // Employees can add expenses (not admin/hr/audit/super_admin)
   if (!['admin', 'super_admin', 'hr', 'audit'].includes(role)) {
     if (el('sb-add-link')) el('sb-add-link').style.display = '';
+    if (el('sb-grn-link')) el('sb-grn-link').style.display = '';
+  }
+
+  // GRN Review: Manager (admin), HR, Audit, Super Admin
+  if (['admin', 'hr', 'audit', 'super_admin'].includes(role)) {
+    if (el('sb-grn-review-link')) el('sb-grn-review-link').style.display = '';
   }
 
   // Create User: super_admin and hr only
@@ -1523,6 +1529,7 @@ function escHtml(str) {
     const items = [
       { href: 'dashboard.html', icon: '🏠', label: 'Home' },
       { href: 'add-expense.html', icon: '🧾', label: 'Expense' },
+      { href: 'add-grn.html', icon: '📦', label: 'GRN' },
       { href: 'checkin-react.html', icon: '📷', label: 'Check In', fab: true },
       { href: 'location-request-react.html', icon: '📍', label: 'Location' },
       { href: 'profile.html', icon: '👤', label: 'Profile' },

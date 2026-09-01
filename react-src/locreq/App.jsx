@@ -19,6 +19,23 @@ const buzz = (ms = 120) => { try { navigator.vibrate?.(ms); } catch { } };
 
 const uuid = () => (crypto?.randomUUID ? crypto.randomUUID() : Date.now() + '-' + Math.random().toString(16).slice(2));
 
+// The page already runs a continuous watchPosition (for the map dot / live distance),
+// so at submit time reuse that fix instead of firing a second, independent
+// getCurrentPosition(maximumAge:0) — on a site full of solar panels, GPS multipath
+// can make that fresh request time out even though a perfectly good fix is already
+// on screen (seen for real: map showing a live 3225m-from-fence position, then
+// "Couldn't get GPS location" on Send). Only fall back to a fresh request when the
+// watch hasn't produced anything recent.
+function getPositionPreferCached(gpsPos, opts) {
+  return new Promise((resolve, reject) => {
+    if (gpsPos && Date.now() - gpsPos.at < 20000) {
+      resolve({ coords: { latitude: gpsPos.lat, longitude: gpsPos.lon, accuracy: gpsPos.acc } });
+      return;
+    }
+    navigator.geolocation.getCurrentPosition(resolve, reject, opts);
+  });
+}
+
 // ── Offline queue (IndexedDB) — SAME store the check-in page uses, so whichever page
 // is open when the network returns drains everything. See check-in App.jsx for notes.
 const OQ_DB = 'checkin_offline_v1';
@@ -171,7 +188,7 @@ export default function App() {
   useEffect(() => {
     if (!profile || !navigator.geolocation) return;
     const id = navigator.geolocation.watchPosition(
-      (p) => { setGpsPos({ lat: p.coords.latitude, lon: p.coords.longitude, acc: Math.round(p.coords.accuracy) }); setGpsErr(false); },
+      (p) => { setGpsPos({ lat: p.coords.latitude, lon: p.coords.longitude, acc: Math.round(p.coords.accuracy), at: Date.now() }); setGpsErr(false); },
       () => setGpsErr(true),
       { enableHighAccuracy: true, maximumAge: 5000, timeout: 15000 }
     );
@@ -372,7 +389,7 @@ export default function App() {
   async function submitLocation(file) {
     if (!navigator.geolocation) return window.showMessage("GPS isn't supported on this device.", 'error');
     setBusy(navigator.onLine ? 'Getting GPS…' : 'Getting GPS… (offline)'); setResult(null);
-    navigator.geolocation.getCurrentPosition(async (pos) => {
+    getPositionPreferCached(gpsPos, { enableHighAccuracy: true, timeout: navigator.onLine ? 15000 : 30000, maximumAge: 0 }).then(async (pos) => {
       const { latitude, longitude, accuracy } = pos.coords;
       const captured_at = new Date().toISOString();
       const client_id = uuid();
@@ -408,10 +425,10 @@ export default function App() {
         else { setResult({ ok: false, text: err.message }); } // keep the preview so Retake/confirm stay available to retry
       }
       finally { setBusy(''); }
-    }, (err) => {
+    }).catch((err) => {
       setBusy('');
       setResult({ ok: false, text: err.code === 1 ? 'GPS permission needed (allow location in the browser).' : "Couldn't get GPS location — try in the open." });
-    }, { enableHighAccuracy: true, timeout: navigator.onLine ? 15000 : 30000, maximumAge: 0 });
+    });
   }
 
   const r = reqs[0];

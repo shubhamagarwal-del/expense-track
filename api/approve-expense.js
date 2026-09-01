@@ -24,6 +24,13 @@ export default async function handler(req, res) {
   if (!ALLOWED_ROLES.includes(profile.role))
     return res.status(403).json({ error: 'Not authorised to approve expenses' });
 
+  // ── GRN single mode: { grn_id, action: 'approved'|'rejected', remark } ──
+  // Same Manager(L1) → HR → Audit chain as expenses, just a leaner state
+  // machine (no bulk mode, no amount/category edits, no audit_review/query).
+  if (req.body?.grn_id) {
+    return await handleGrnAction(req, res, supabaseAdmin, user, profile);
+  }
+
   // ── BULK mode: { expense_ids: [...] } ───────────────────────
   if (Array.isArray(req.body?.expense_ids)) {
     const { expense_ids } = req.body;
@@ -282,6 +289,87 @@ export default async function handler(req, res) {
 
   const { error: updateErr } = await supabaseAdmin
     .from('expenses').update(update).eq('id', expense_id);
+  if (updateErr) return res.status(500).json({ error: updateErr.message });
+
+  return res.status(200).json({ message: 'Success', status: update.status });
+}
+
+// ── GRN approval — mirrors the expense chain (pending → l1_approved →
+// hr_approved → audit_cleared), with rejection as a terminal state at any
+// stage. No bulk mode and no amount/category edits — GRNs don't need them.
+async function handleGrnAction(req, res, supabaseAdmin, user, profile) {
+  const { grn_id, action, remark } = req.body;
+  if (!['approved', 'rejected'].includes(action))
+    return res.status(400).json({ error: 'Invalid action' });
+  if (action === 'rejected' && !remark?.trim())
+    return res.status(400).json({ error: 'A reason is required for rejection' });
+
+  const { data: grn, error: grnErr } = await supabaseAdmin
+    .from('grn_entries').select('*, users(department)').eq('id', grn_id).single();
+  if (grnErr || !grn) return res.status(404).json({ error: 'GRN not found' });
+
+  // Department guard: Line Manager can only act on their own department
+  if (profile.role === 'admin') {
+    const myDept = (profile.department || '').toLowerCase().trim();
+    const grnDept = (grn.users?.department || '').toLowerCase().trim();
+    if (myDept && grnDept && myDept !== grnDept) {
+      return res.status(403).json({
+        error: `You can only approve GRNs from the ${profile.department} department`
+      });
+    }
+  }
+
+  const now = new Date().toISOString();
+  let update = {};
+
+  if (profile.role === 'admin') {
+    if (grn.status !== 'pending')
+      return res.status(400).json({ error: 'GRN is not pending Manager approval' });
+    update = {
+      l1_by: user.id, l1_by_name: profile.name, l1_at: now,
+      l1_remark: remark?.trim() || null,
+      status: action === 'approved' ? 'l1_approved' : 'l1_rejected',
+    };
+    if (action === 'rejected') update.rejection_reason = remark.trim();
+
+  } else if (profile.role === 'hr') {
+    if (grn.status !== 'l1_approved')
+      return res.status(400).json({ error: 'GRN is not ready for HR approval' });
+    update = {
+      hr_by: user.id, hr_by_name: profile.name, hr_at: now,
+      hr_remark: remark?.trim() || null,
+      status: action === 'approved' ? 'hr_approved' : 'rejected',
+    };
+    if (action === 'rejected') update.rejection_reason = remark.trim();
+
+  } else if (profile.role === 'audit') {
+    if (grn.status !== 'hr_approved')
+      return res.status(400).json({ error: 'GRN is not ready for audit review' });
+    update = {
+      audit_by: user.id, audit_by_name: profile.name, audit_at: now,
+      audit_remark: remark?.trim() || null,
+      status: action === 'approved' ? 'audit_cleared' : 'rejected',
+    };
+    if (action === 'rejected') update.rejection_reason = remark.trim();
+
+  } else {
+    // Super Admin: override at any non-terminal stage
+    if (!['pending', 'l1_approved', 'hr_approved'].includes(grn.status))
+      return res.status(400).json({ error: 'Cannot override this GRN status' });
+
+    if (action === 'rejected') {
+      update = { rejection_reason: remark.trim(), status: 'rejected' };
+    } else if (grn.status === 'pending') {
+      update = { l1_by: user.id, l1_by_name: profile.name, l1_at: now, l1_remark: remark?.trim() || 'Super Admin override', status: 'l1_approved' };
+    } else if (grn.status === 'l1_approved') {
+      update = { hr_by: user.id, hr_by_name: profile.name, hr_at: now, hr_remark: remark?.trim() || 'Super Admin override', status: 'hr_approved' };
+    } else {
+      update = { audit_by: user.id, audit_by_name: profile.name, audit_at: now, audit_remark: remark?.trim() || 'Super Admin override', status: 'audit_cleared' };
+    }
+  }
+
+  const { error: updateErr } = await supabaseAdmin
+    .from('grn_entries').update(update).eq('id', grn_id);
   if (updateErr) return res.status(500).json({ error: updateErr.message });
 
   return res.status(200).json({ message: 'Success', status: update.status });

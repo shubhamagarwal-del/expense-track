@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ExpenseTrack — GRN Review</title>
+  <link rel="stylesheet" href="style.css" />
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <link rel="manifest" href="/manifest.json" />
+  <meta name="theme-color" content="#6366f1" />
+  <link rel="shortcut icon" href="/favicon.ico" />
+  <link rel="icon" type="image/png" sizes="192x192" href="/icon-192.png" />
+  <link rel="apple-touch-icon" href="/icon.svg" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <script src="/pwa-register.js" defer></script>
+</head>
+
+<body>
+  <div class="app-layout">
+    <div class="sidebar-overlay" id="sidebar-overlay" onclick="closeSidebar()"></div>
+    <nav class="sidebar" id="sidebar">
+      <div class="sidebar-logo">
+        <div class="logo-icon"><img src="/icon-192.png" alt="ExpenseTrack" /></div>
+        <span class="logo-text">ExpenseTrack</span>
+      </div>
+      <div class="sidebar-nav">
+        <p class="sidebar-nav-label">Menu</p>
+        <a href="dashboard.html" class="sidebar-link">
+          <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" /></svg>
+          Dashboard
+        </a>
+        <a href="grn-review.html" class="sidebar-link active" id="sb-grn-review-link">
+          <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" /></svg>
+          GRN Review
+        </a>
+        <a href="payment-register.html" class="sidebar-link" id="sb-payment-register-link" style="display:none">
+          <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 8v8m-4-5h8M5 6h14a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2z" /></svg>
+          Payment Register
+        </a>
+        <a href="profile.html" class="sidebar-link">
+          <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" /></svg>
+          My Profile
+        </a>
+        <a href="#" onclick="logout();return false" class="sidebar-link">
+          <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" /></svg>
+          Sign Out
+        </a>
+      </div>
+    </nav>
+
+    <div class="app-main">
+      <header class="topbar">
+        <button class="topbar-menu" onclick="toggleSidebar()" aria-label="Open menu">
+          <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 12h16M4 18h16" /></svg>
+        </button>
+        <span class="topbar-title">GRN Review</span>
+        <div class="topbar-right"></div>
+      </header>
+
+      <main class="page-content" style="max-width:720px;margin:0 auto">
+        <div style="margin-bottom:1rem">
+          <h1 style="margin:0 0 .25rem;font-size:1.35rem;font-weight:800">GRN Review</h1>
+          <p id="grn-stage-label" style="margin:0;color:var(--text-muted);font-size:.88rem"></p>
+        </div>
+
+        <div style="display:flex;gap:.5rem;margin-bottom:1rem">
+          <button class="grn-tab-btn" data-tab="action" onclick="switchGrnTab('action')" style="flex:1;padding:.6rem;border-radius:10px;border:1.5px solid var(--border);background:#2563eb;color:#fff;font-weight:700;font-size:.85rem;cursor:pointer">Needs Action</button>
+          <button class="grn-tab-btn" data-tab="history" onclick="switchGrnTab('history')" style="flex:1;padding:.6rem;border-radius:10px;border:1.5px solid var(--border);background:#fff;color:var(--text-muted);font-weight:700;font-size:.85rem;cursor:pointer">History</button>
+        </div>
+
+        <div id="grn-review-list"><div class="loading-state"><div class="spinner"></div><span>Loading…</span></div></div>
+      </main>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="app.js"></script>
+  <script>
+    let currentProfile = null;
+    let allGrns = [];
+    let grnTab = 'action';
+
+    const GRN_STATUS_META = {
+      pending:       { label: '⏳ Pending — Manager',  bg: '#fef9c3', col: '#854d0e' },
+      l1_approved:   { label: '✅ Manager OK — HR',    bg: '#dbeafe', col: '#1e40af' },
+      l1_rejected:   { label: '❌ Rejected — Manager',  bg: '#fee2e2', col: '#991b1b' },
+      hr_approved:   { label: '✅ HR OK — Audit',       bg: '#e0e7ff', col: '#3730a3' },
+      audit_cleared: { label: '✅ Cleared',             bg: '#dcfce7', col: '#166534' },
+      rejected:      { label: '❌ Rejected',            bg: '#fee2e2', col: '#991b1b' },
+    };
+
+    const MY_STAGE_STATUS = { admin: 'pending', hr: 'l1_approved', audit: 'hr_approved' };
+
+    function formatGrnItems(items) {
+      return (items || []).map(it => `${it.item} (${it.qty})`).join(' · ') || '—';
+    }
+
+    (async () => {
+      const user = await requireAuth();
+      if (!user) return;
+      currentProfile = await getUserProfile();
+      if (!currentProfile) { showMessage('Could not load profile.', 'error'); return; }
+      if (!['admin', 'hr', 'audit', 'super_admin'].includes(currentProfile.role)) {
+        location.href = 'dashboard.html';
+        return;
+      }
+      if (typeof populateSidebar === 'function') populateSidebar(currentProfile);
+
+      const stageLabels = {
+        admin: 'Your queue: newly submitted GRNs waiting on Manager approval.',
+        hr: 'Your queue: Manager-approved GRNs waiting on HR approval.',
+        audit: 'Your queue: HR-approved GRNs waiting on Audit clearance.',
+        super_admin: 'Super Admin — can act at any pending stage.',
+      };
+      document.getElementById('grn-stage-label').textContent = stageLabels[currentProfile.role] || '';
+
+      await loadGrns();
+    })();
+
+    async function loadGrns() {
+      const list = document.getElementById('grn-review-list');
+      try {
+        await initSupabase();
+        let q = db.from('grn_entries').select('*, users(name, emp_no, department)').order('created_at', { ascending: false });
+        if (currentProfile.role === 'admin' && currentProfile.company_id) q = q.eq('company_id', currentProfile.company_id);
+        const { data, error } = await q.limit(500);
+        if (error) throw error;
+
+        allGrns = data || [];
+        if (currentProfile.role === 'admin') {
+          const myDept = (currentProfile.department || '').toLowerCase().trim();
+          if (myDept) allGrns = allGrns.filter(g => {
+            const d = (g.users?.department || '').toLowerCase().trim();
+            return !d || d === myDept;
+          });
+        }
+        renderGrnList();
+      } catch (err) {
+        list.innerHTML = `<div style="padding:1rem;color:#991b1b;font-size:.85rem">Error: ${escHtml(err.message)}</div>`;
+      }
+    }
+
+    function switchGrnTab(tab) {
+      grnTab = tab;
+      document.querySelectorAll('.grn-tab-btn').forEach(b => {
+        const active = b.dataset.tab === tab;
+        b.style.background = active ? '#2563eb' : '#fff';
+        b.style.color = active ? '#fff' : 'var(--text-muted)';
+      });
+      renderGrnList();
+    }
+
+    function renderGrnList() {
+      const list = document.getElementById('grn-review-list');
+      const myStageStatuses = currentProfile.role === 'super_admin'
+        ? ['pending', 'l1_approved', 'hr_approved']
+        : [MY_STAGE_STATUS[currentProfile.role]];
+
+      const rows = grnTab === 'action'
+        ? allGrns.filter(g => myStageStatuses.includes(g.status))
+        : allGrns.filter(g => !myStageStatuses.includes(g.status));
+
+      if (!rows.length) {
+        list.innerHTML = `<div style="background:var(--card-bg,#fff);border:1px solid var(--border);border-radius:16px;padding:2rem 1.25rem;text-align:center;color:var(--text-muted)">
+          <div style="font-size:2rem">✅</div>
+          <div style="font-weight:700;color:var(--text-1,#0f172a);margin-top:.4rem">${grnTab === 'action' ? 'Nothing waiting on you' : 'No history yet'}</div>
+        </div>`;
+        return;
+      }
+
+      list.innerHTML = rows.map(g => {
+        const meta = GRN_STATUS_META[g.status] || { label: g.status, bg: '#f1f5f9', col: '#334155' };
+        const canAct = grnTab === 'action';
+        return `<div class="grn-card" data-id="${g.id}" style="background:var(--card-bg,#fff);border:1px solid var(--border);border-radius:14px;padding:1rem;margin-bottom:.75rem">
+          <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:.5rem">
+            <div>
+              <div style="font-weight:700;font-size:.95rem">${escHtml(formatGrnItems(g.items))}</div>
+              <div style="font-size:.82rem;color:var(--text-muted);margin-top:.15rem">${escHtml(g.vendor_name)}${g.po_number ? ' · PO ' + escHtml(g.po_number) : ''}</div>
+              <div style="font-size:.8rem;color:var(--text-muted);margin-top:.15rem">${escHtml(g.site_name || '')} · ${escHtml(g.received_date)}</div>
+              <div style="font-size:.8rem;color:var(--text-muted);margin-top:.15rem">👤 ${escHtml(g.users?.name || 'Unknown')}${g.users?.emp_no ? ' (' + escHtml(g.users.emp_no) + ')' : ''}</div>
+            </div>
+            <span style="flex-shrink:0;background:${meta.bg};color:${meta.col};font-size:.72rem;font-weight:700;padding:.25rem .55rem;border-radius:999px;white-space:nowrap">${meta.label}</span>
+          </div>
+          ${g.receipt_url ? `<img src="${escHtml(g.receipt_url)}" alt="invoice" style="margin-top:.6rem;max-width:160px;max-height:160px;border-radius:10px;border:1px solid var(--border);cursor:pointer" onclick="window.open('${escHtml(g.receipt_url)}','_blank')">` : ''}
+          ${g.rejection_reason ? `<div style="margin-top:.5rem;font-size:.8rem;color:#991b1b">Reason: ${escHtml(g.rejection_reason)}</div>` : ''}
+          ${canAct ? `
+            <div class="grn-actions" style="display:flex;gap:.5rem;margin-top:.75rem">
+              <button onclick="actOnGrn('${g.id}','approved')" style="flex:1;padding:.55rem;border:none;border-radius:9px;background:#16a34a;color:#fff;font-weight:700;font-size:.85rem;cursor:pointer">Approve</button>
+              <button onclick="showGrnRejectBox('${g.id}')" style="flex:1;padding:.55rem;border:none;border-radius:9px;background:#dc2626;color:#fff;font-weight:700;font-size:.85rem;cursor:pointer">Reject</button>
+            </div>
+            <div class="grn-reject-box" id="reject-box-${g.id}" style="display:none;margin-top:.6rem">
+              <textarea id="reject-reason-${g.id}" placeholder="Reason for rejection…" style="width:100%;min-height:56px;border:1px solid var(--border);border-radius:9px;padding:.5rem;font-family:inherit;font-size:.85rem;box-sizing:border-box"></textarea>
+              <button onclick="actOnGrn('${g.id}','rejected')" style="margin-top:.4rem;width:100%;padding:.5rem;border:none;border-radius:9px;background:#dc2626;color:#fff;font-weight:700;font-size:.83rem;cursor:pointer">Confirm reject</button>
+            </div>
+          ` : ''}
+        </div>`;
+      }).join('');
+    }
+
+    function showGrnRejectBox(id) {
+      const box = document.getElementById(`reject-box-${id}`);
+      if (box) box.style.display = box.style.display === 'none' ? '' : 'none';
+    }
+
+    async function actOnGrn(id, action) {
+      let remark = '';
+      if (action === 'rejected') {
+        remark = (document.getElementById(`reject-reason-${id}`)?.value || '').trim();
+        if (!remark) return showMessage('A reason is required for rejection.', 'error');
+      }
+      const card = document.querySelector(`.grn-card[data-id="${id}"]`);
+      const buttons = card?.querySelectorAll('button');
+      buttons?.forEach(b => b.disabled = true);
+      try {
+        const token = (await db.auth.getSession()).data.session?.access_token;
+        const res = await fetch('/api/approve-expense', {
+          method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+          body: JSON.stringify({ grn_id: id, action, remark: remark || undefined }),
+        });
+        const body = await res.json();
+        if (!res.ok) throw new Error(body.error || 'Failed');
+        showMessage(action === 'approved' ? 'GRN approved.' : 'GRN rejected.', 'success');
+        await loadGrns();
+      } catch (err) {
+        showMessage(err.message || 'Action failed — try again.', 'error');
+        buttons?.forEach(b => b.disabled = false);
+      }
+    }
+  </script>
+</body>
+
+</html>

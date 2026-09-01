@@ -49,6 +49,22 @@ const buzz = (ms = 120) => { try { navigator.vibrate?.(ms); } catch { } };
 
 const uuid = () => (crypto?.randomUUID ? crypto.randomUUID() : Date.now() + '-' + Math.random().toString(16).slice(2));
 
+// The page already runs a continuous watchPosition (for the map dot / live distance),
+// so at submit time reuse that fix instead of firing a second, independent
+// getCurrentPosition(maximumAge:0) — on a site full of solar panels, GPS multipath
+// can make that fresh request time out even though a perfectly good fix is already
+// on screen. Only fall back to a fresh request when the watch hasn't produced
+// anything recent.
+function getPositionPreferCached(gpsPos, opts) {
+  return new Promise((resolve, reject) => {
+    if (gpsPos && Date.now() - gpsPos.at < 20000) {
+      resolve({ coords: { latitude: gpsPos.lat, longitude: gpsPos.lon, accuracy: gpsPos.acc } });
+      return;
+    }
+    navigator.geolocation.getCurrentPosition(resolve, reject, opts);
+  });
+}
+
 // Open-Meteo weather_code → a little icon + label (free API, no key).
 const wxFromCode = (c) => {
   if (c == null) return { icon: '🌡️', label: 'Weather' };
@@ -273,7 +289,7 @@ export default function App() {
   useEffect(() => {
     if (!profile || !navigator.geolocation) return;
     const id = navigator.geolocation.watchPosition(
-      (p) => { setGpsPos({ lat: p.coords.latitude, lon: p.coords.longitude, acc: Math.round(p.coords.accuracy) }); setGpsErr(false); },
+      (p) => { setGpsPos({ lat: p.coords.latitude, lon: p.coords.longitude, acc: Math.round(p.coords.accuracy), at: Date.now() }); setGpsErr(false); },
       () => setGpsErr(true),
       { enableHighAccuracy: true, maximumAge: 5000, timeout: 15000 }
     );
@@ -461,7 +477,7 @@ export default function App() {
   async function submitCheckin(file) {
     if (!navigator.geolocation) return window.showMessage("GPS isn't supported on this device.", 'error');
     setBusy(navigator.onLine ? 'Getting GPS…' : 'Getting GPS… (offline)'); setResult(null);
-    navigator.geolocation.getCurrentPosition(async (pos) => {
+    getPositionPreferCached(gpsPos, { enableHighAccuracy: true, timeout: navigator.onLine ? 15000 : 30000, maximumAge: 0 }).then(async (pos) => {
       const { latitude, longitude, accuracy } = pos.coords;
 
       // Catch the wrong site before it is recorded. On 25 Aug two people checked in
@@ -535,10 +551,10 @@ export default function App() {
         else { setResult({ error: err.message }); } // keep the preview so Retake/Check in stay available to retry
       }
       finally { setBusy(''); }
-    }, (err) => {
+    }).catch((err) => {
       setBusy('');
       setResult({ error: err.code === 1 ? 'GPS permission needed (allow location in the browser).' : "Couldn't get GPS location — try in the open." });
-    }, { enableHighAccuracy: true, timeout: navigator.onLine ? 15000 : 30000, maximumAge: 0 });
+    });
   }
 
   // ── derived ──

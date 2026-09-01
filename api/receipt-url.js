@@ -525,12 +525,15 @@ export default async function handler(req, res) {
       // Run the IP lookup, the place-name lookup, and the "previous check-in"
       // fetch together so they don't add up serially.
       const ip = clientIp(req);
-      const [location_name, intel, prevCkRes] = await Promise.all([
+      const [location_name, intel, prevCkRes, recentCkRes] = await Promise.all([
         reverseGeocodePlace(latitude, longitude),
         ipIntel(ip),
         supabaseAdmin.from('attendance_checkins')
           .select('latitude, longitude, checked_at')
           .eq('user_id', user.id).order('checked_at', { ascending: false }).limit(1),
+        supabaseAdmin.from('attendance_checkins')
+          .select('latitude, longitude, accuracy_m')
+          .eq('user_id', user.id).order('checked_at', { ascending: false }).limit(200),
       ]);
 
       const spoof_flags = [];
@@ -567,6 +570,33 @@ export default async function handler(req, res) {
       // arguing about; above it the phone is triangulating off towers and the reading
       // says nothing about where the person stood.
       if (accuracy != null && accuracy > 150) spoof_flags.push('poor_gps');
+
+      // 5. Static GPS — two independent tells, either one is enough. Both only ever
+      // fire on a *good* fix (accuracy <= 20 m): a poor fix (>150 m, already flagged
+      // poor_gps) can repeat for entirely innocent reasons — the phone falling back to
+      // the same nearby cell tower when indoors — so keeping this gated to good fixes
+      // is what keeps the two apart.
+      //   a) the exact same coordinate (down to the stored decimal), recorded 3+ times.
+      //      A real handset re-fixing the same spot always differs by a few metres —
+      //      satellite geometry keeps moving — so a bit-for-bit repeat is what a
+      //      fake-location app pinned to one point looks like.
+      //   b) EVERY good fix this employee has ever recorded (min. 12, so it can't fire
+      //      on coincidence) reads the exact same accuracy — a spoofing app that
+      //      varies the fake coordinate but forgets to vary the reported accuracy.
+      //      Tried and dropped first at "8-of-last-10" and "8-of-last-30": both wrongly
+      //      caught genuine employees whose phones just usually report a common figure
+      //      like "3 m", and even requiring unanimity across ALL history still had one
+      //      employee whose first 10 real check-ins happened to coincide on "3 m" by
+      //      chance before later ones diverged. 12 is past where that coincidence
+      //      cleared, while a real 100%-constant case (like this one) still shows up
+      //      well before then and only gets more certain from there.
+      if (accuracy != null && accuracy <= 20) {
+        const history = (recentCkRes?.data || []);
+        const goodFixes = history.filter(r => r.accuracy_m != null && r.accuracy_m <= 20);
+        const sameCoord = history.filter(r => r.latitude === latitude && r.longitude === longitude).length;
+        const allSameAccuracy = goodFixes.length >= 11 && goodFixes.every(r => r.accuracy_m === Math.round(accuracy));
+        if (sameCoord >= 2 || allSameAccuracy) spoof_flags.push('static_gps_suspected');
+      }
 
       // Optional hard block: only when explicitly enabled AND it's a clear VPN on a
       // real attendance check-in. Off by default so a false positive can never lock
