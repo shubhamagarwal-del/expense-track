@@ -355,6 +355,7 @@
                 <option value="hr">HR</option>
                 <option value="audit">Audit</option>
                 <option value="super_admin">Super Admin</option>
+                <option value="travel_desk">Travel Desk</option>
               </select>
             </div>
           </div>
@@ -618,8 +619,8 @@
   let editOpen = false;
   let activeFilter = null; // null = all, 'employee'|'admin'|'super_admin'
 
-  const ROLE_LABEL = { employee: 'Employee', admin: 'Manager (L1)', hr: 'HR', audit: 'Audit', super_admin: 'Super Admin', engineer: 'Engineer' };
-  const ROLE_COLOR = { employee: '#6366f1', admin: '#0891b2', hr: '#059669', audit: '#d97706', super_admin: '#7c3aed', engineer: '#9333ea' };
+  const ROLE_LABEL = { employee: 'Employee', admin: 'Manager (L1)', hr: 'HR', audit: 'Audit', super_admin: 'Super Admin', engineer: 'Engineer', travel_desk: 'Travel Desk' };
+  const ROLE_COLOR = { employee: '#6366f1', admin: '#0891b2', hr: '#059669', audit: '#d97706', super_admin: '#7c3aed', engineer: '#9333ea', travel_desk: '#0d9488' };
 
   // ── Boot ──────────────────────────────────────────────────
   (async () => {
