@@ -1726,7 +1726,36 @@
 
         <!-- Filters row — compact, no labels above (default option text doubles as the label), single row that wraps naturally if the window is narrow -->
         <div style="display:flex;align-items:center;gap:.5rem;flex-wrap:wrap;">
-          <input class="form-input" type="month" id="f-month" onchange="autoUpdateCycleFilter()" title="Month" style="width:150px;height:36px;font-size:.78rem;border-radius:8px;padding:0 .6rem" />
+          <!-- Two plain <select>s instead of a native <input type="month"> — some
+               browser/OS combos fail to open the native month-picker at all (no
+               calendar widget available), leaving the field looking blank and
+               unclickable. Selects have no such dependency. f-month stays as a
+               hidden input holding the composed YYYY-MM value so every existing
+               reader of #f-month keeps working unchanged. -->
+          <input type="hidden" id="f-month" />
+          <select class="form-select" id="f-month-mon" onchange="syncMonthFilter()" title="Month" style="width:80px;height:36px;font-size:.78rem;border-radius:8px;padding:0 .3rem">
+            <option value="">Month</option>
+            <option value="01">Jan</option>
+            <option value="02">Feb</option>
+            <option value="03">Mar</option>
+            <option value="04">Apr</option>
+            <option value="05">May</option>
+            <option value="06">Jun</option>
+            <option value="07">Jul</option>
+            <option value="08">Aug</option>
+            <option value="09">Sep</option>
+            <option value="10">Oct</option>
+            <option value="11">Nov</option>
+            <option value="12">Dec</option>
+          </select>
+          <select class="form-select" id="f-month-yr" onchange="syncMonthFilter()" title="Year" style="width:76px;height:36px;font-size:.78rem;border-radius:8px;padding:0 .3rem">
+            <option value="">Year</option>
+            <option value="2023">2023</option>
+            <option value="2024">2024</option>
+            <option value="2025">2025</option>
+            <option value="2026">2026</option>
+            <option value="2027">2027</option>
+          </select>
           <select class="form-select" id="f-cycle" title="Cycle" style="width:98px;height:36px;font-size:.78rem;border-radius:8px;padding:0 .4rem">
             <option value="all">Cycle</option>
             <option value="1st - 15th">1st – 15th</option>
@@ -2529,6 +2558,17 @@
       applyCycleFilter();
     }
 
+    /** Compose the Month/Year <select> pair into #f-month's YYYY-MM value (or
+     *  empty if either is unset) — every existing filter reads #f-month by id,
+     *  so nothing else needs to change. */
+    function syncMonthFilter() {
+      const mon = document.getElementById('f-month-mon')?.value || '';
+      const yr  = document.getElementById('f-month-yr')?.value || '';
+      const hidden = document.getElementById('f-month');
+      if (hidden) hidden.value = (mon && yr) ? `${yr}-${mon}` : '';
+      autoUpdateCycleFilter();
+    }
+
     function refreshListViewWithCustom(filteredData) {
       const search = document.getElementById('f-user-search')?.value.toLowerCase().trim() || '';
       let filtered = filteredData;
@@ -2576,6 +2616,8 @@
 
     async function clearFilter() {
       if (document.getElementById('f-month')) document.getElementById('f-month').value = '';
+      if (document.getElementById('f-month-mon')) document.getElementById('f-month-mon').value = '';
+      if (document.getElementById('f-month-yr')) document.getElementById('f-month-yr').value = '';
       if (document.getElementById('f-cycle')) document.getElementById('f-cycle').value = 'all';
       if (document.getElementById('f-user-search')) document.getElementById('f-user-search').value = '';
       if (document.getElementById('f-manager')) document.getElementById('f-manager').value = '';
@@ -2871,6 +2913,15 @@
           const el = document.getElementById(id);
           if (el && v) el.value = v;
         });
+        // #f-month is a hidden input (see the Month/Year <select> pair above) —
+        // restoring its value doesn't move those visible selects, so split it
+        // back out here to keep the UI in sync with the restored filter.
+        const savedMonth = state.filters?.['f-month'];
+        if (savedMonth) {
+          const [yr, mon] = savedMonth.split('-');
+          if (document.getElementById('f-month-yr'))  document.getElementById('f-month-yr').value  = yr  || '';
+          if (document.getElementById('f-month-mon')) document.getElementById('f-month-mon').value = mon || '';
+        }
         if (state.hierExpanded) {
           hierExpanded.depts  = new Set(state.hierExpanded.depts  || []);
           hierExpanded.mgrs   = new Set(state.hierExpanded.mgrs   || []);
@@ -6063,7 +6114,15 @@
         return;
       }
 
-      if (search || mgrFilter || hierStatusFilter !== 'all') {
+      // Auto-expand every matching dept/manager so a search or filter surfaces its
+      // result directly — but only when the match is actually narrow. A broad filter
+      // (e.g. a status chip touching hundreds of employees org-wide) would otherwise
+      // force-open every department/manager row at once, which is expensive to build
+      // (buildDeptBody computes several stats per employee) and can freeze the tab.
+      // Above this size the filter still applies — the user just expands what they
+      // want, same as browsing without a filter.
+      const AUTO_EXPAND_MAX = 50;
+      if ((search || mgrFilter || hierStatusFilter !== 'all') && filtered.length <= AUTO_EXPAND_MAX) {
         depts.forEach(dept => {
           hierExpanded.depts.add(dept);
           Object.keys(tree[dept].managers).forEach(mk => hierExpanded.mgrs.add(mk + '||' + dept));
