@@ -1236,6 +1236,16 @@
     function getCachedEmpDetail(eId, user, exps, lms) {
       const fp = exps.length + '|' + exps.map(e => e.id + ':' + e.status).join(',');
       const cached = _hierEmpDetailCache[eId];
+      // Cache hit or miss, the per-cycle table builders still need registering —
+      // hierCycleBodyMap is reset every render, but a cache hit skips the body of
+      // renderHierEmpDetail (where those builders would normally get registered),
+      // so without this a cycle under a cache-served employee could never expand.
+      // Grouping is cheap (memoized month/year formatting), so doing it either way
+      // costs nothing extra.
+      groupExpensesByCycle(exps).forEach(g => {
+        const cycId = `${user.id}|${g.mY}|${g.cT}`.replace(/[^a-zA-Z0-9]/g, '_');
+        hierCycleBodyMap[cycId] = () => buildCycleEntryTable(g);
+      });
       if (cached && cached.fp === fp) return cached.html;
       const html = renderHierEmpDetail(user, exps, lms);
       delete _hierEmpDetailCache[eId]; // re-insert at the end so eviction above is oldest-first
@@ -6390,8 +6400,12 @@
       }).join('');
     }
 
-    function renderHierEmpDetail(user, expenses, lms) {
-      // Group by month/cycle (en-US month label to match stored cycle_payments keys)
+    /** Group an employee's expenses by month/cycle (en-US month label to match
+     *  stored cycle_payments keys). Shared by renderHierEmpDetail and the
+     *  cache-hit path in getCachedEmpDetail, which needs these SAME groups to
+     *  re-register hierCycleBodyMap without re-paying for the (slow) header HTML
+     *  that a cache hit already has. */
+    function groupExpensesByCycle(expenses) {
       const groups = {};
       expenses.forEach(e => {
         const d = new Date(e.created_at);
@@ -6403,78 +6417,14 @@
         if (!groups[k]) groups[k] = { mY, cT, entries: [] };
         groups[k].entries.push(e);
       });
-      const sorted = Object.values(groups).sort((a,b) => new Date(b.entries[0].created_at) - new Date(a.entries[0].created_at));
+      return Object.values(groups).sort((a,b) => new Date(b.entries[0].created_at) - new Date(a.entries[0].created_at));
+    }
 
-      // Audit doesn't need the employee/bank/site-wise detail — only the expense lines to
-      // clear/flag. Hiding these for Audit also skips the (heavier) site-wise summary render.
-      const showEmpDetail = currentProfile.role !== 'audit';
+    /** One cycle's full entry table (date/category/description/amount/status/actions
+     *  per row) — the expensive-to-build part, so it's only ever called lazily
+     *  (see hierCycleBodyMap / hierToggleCycle), never unconditionally. */
+    function buildCycleEntryTable(g) {
       return `
-      <div style="padding:.875rem 1rem">
-        ${showEmpDetail ? `
-        <!-- Employee info -->
-        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:.625rem;background:var(--card-bg,#fff);border:1px solid var(--border);border-radius:10px;padding:.875rem;margin-bottom:.75rem;font-size:.8rem">
-          ${[['👤 Name',user.name],['🆔 Emp No',user.emp_no],['📧 Email',user.email],
-             ['📱 Mobile',user.phone],['🏢 Dept',user.department],['📍 Site',user.site_name],
-             ...(lms ? [['👔 Manager', lms.map(m=>m.name).join(' / ')]] : [])
-            ].map(([l,v])=>v?`<div style="min-width:0;overflow:hidden"><div style="font-size:.6rem;text-transform:uppercase;font-weight:700;color:var(--text-muted);margin-bottom:2px">${l}</div><div style="font-weight:600;word-break:break-all;overflow-wrap:anywhere">${escHtml(String(v))}</div></div>`:'').filter(Boolean).join('')}
-        </div>
-        ${(user.bank_holder||user.bank_name) ? `
-        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:.625rem;background:#eff6ff;border:1px solid #bfdbfe;border-radius:10px;padding:.875rem;margin-bottom:.75rem;font-size:.8rem">
-          <div style="grid-column:1/-1;font-size:.6rem;font-weight:700;color:#1e40af;text-transform:uppercase;margin-bottom:.1rem">🏦 Bank Details</div>
-          ${[['Holder',user.bank_holder],['Bank',user.bank_name],['IFSC',user.bank_ifsc],
-             ['Acct No',user.bank_account||null]
-            ].map(([l,v])=>v?`<div><div style="font-size:.6rem;text-transform:uppercase;font-weight:700;color:#3b82f6;margin-bottom:2px">${l}</div><div style="font-weight:700;color:#1e3a8a">${escHtml(String(v))}</div></div>`:'').filter(Boolean).join('')}
-        </div>` : ''}
-        <!-- Site-wise summary -->
-        ${(()=>{
-          const siteData = {};
-          expenses.forEach(e => {
-            if (totalsExcludedStatuses().includes(e.status)) return;
-            const site = extractSite(e) || user.site_name || 'Unassigned';
-            const amt  = e.approved_amount != null ? +e.approved_amount : +e.amount;
-            if (!siteData[site]) siteData[site] = { total: 0, days: new Set(), count: 0 };
-            siteData[site].total += amt;
-            siteData[site].days.add(new Date(e.created_at).toDateString());
-            siteData[site].count++;
-          });
-          const sites = Object.entries(siteData).sort(([a],[b]) => a.localeCompare(b));
-          if (!sites.length) return '';
-          const overallTotal = sites.reduce((s,[,d]) => s + d.total, 0);
-          return `
-          <div style="border:1px solid #e0e7ff;border-radius:10px;overflow:hidden;margin-bottom:.75rem">
-            <div style="background:linear-gradient(135deg,#4f46e5,#7c3aed);padding:.6rem 1rem;display:flex;justify-content:space-between;align-items:center">
-              <span style="color:#fff;font-weight:700;font-size:.8rem">📍 Site-wise Summary</span>
-              <span style="color:rgba(255,255,255,.85);font-size:.75rem;font-weight:600">Overall: ${formatCurrency(overallTotal)}</span>
-            </div>
-            <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:.5rem;padding:.75rem;background:#f5f3ff">
-              ${sites.map(([site, d]) => `
-              <div style="background:#fff;border:1px solid #c4b5fd;border-radius:8px;padding:.6rem .75rem">
-                <div style="font-size:.72rem;font-weight:700;color:#5b21b6;margin-bottom:.25rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${escHtml(site)}">📍 ${escHtml(site)}</div>
-                <div style="font-size:1rem;font-weight:800;color:#4f46e5">${formatCurrency(d.total)}</div>
-                <div style="font-size:.65rem;color:#7c3aed;margin-top:.15rem">${d.count} entries · ${d.days.size} day${d.days.size!==1?'s':''}</div>
-              </div>`).join('')}
-            </div>
-          </div>`;
-        })()}
-        ` : ''}
-        <!-- Cycle groups -->
-        ${sorted.map(g => {
-          const safeKey = `${user.id}|${g.mY}|${g.cT}`;
-          const cycId = safeKey.replace(/[^a-zA-Z0-9]/g, '_');
-          const cycOpen = hierExpanded.cycles.has(cycId);
-          const gTotal = g.entries.reduce((s,e)=>{
-            if(totalsExcludedStatuses().includes(e.status)) return s;
-            return s+(e.approved_amount!=null?+e.approved_amount:+e.amount);
-          },0);
-          const gPaid = cyclePaidFor(user.id, g.mY, g.cT);
-          const gPend = gTotal - gPaid;
-          // The full entry table below is the expensive part (per-row: category pill,
-          // description parsing, status badge, receipt links, several conditional action
-          // buttons). It used to render unconditionally into the template, just CSS-hidden
-          // when collapsed — so an employee with many cycles/entries paid that full cost on
-          // every render regardless of what was actually open. Build it lazily instead,
-          // matching the same pattern already used for department/employee bodies.
-          const buildCycleBody = () => `
               <table style="width:100%;border-collapse:collapse;font-size:.8rem">
                 <thead>
                   <tr style="background:var(--bg-page,#f9fafb)">
@@ -6543,6 +6493,79 @@
                   }).join('')}
                 </tbody>
               </table>`;
+    }
+
+    function renderHierEmpDetail(user, expenses, lms) {
+      const sorted = groupExpensesByCycle(expenses);
+
+      // Audit doesn't need the employee/bank/site-wise detail — only the expense lines to
+      // clear/flag. Hiding these for Audit also skips the (heavier) site-wise summary render.
+      const showEmpDetail = currentProfile.role !== 'audit';
+      return `
+      <div style="padding:.875rem 1rem">
+        ${showEmpDetail ? `
+        <!-- Employee info -->
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:.625rem;background:var(--card-bg,#fff);border:1px solid var(--border);border-radius:10px;padding:.875rem;margin-bottom:.75rem;font-size:.8rem">
+          ${[['👤 Name',user.name],['🆔 Emp No',user.emp_no],['📧 Email',user.email],
+             ['📱 Mobile',user.phone],['🏢 Dept',user.department],['📍 Site',user.site_name],
+             ...(lms ? [['👔 Manager', lms.map(m=>m.name).join(' / ')]] : [])
+            ].map(([l,v])=>v?`<div style="min-width:0;overflow:hidden"><div style="font-size:.6rem;text-transform:uppercase;font-weight:700;color:var(--text-muted);margin-bottom:2px">${l}</div><div style="font-weight:600;word-break:break-all;overflow-wrap:anywhere">${escHtml(String(v))}</div></div>`:'').filter(Boolean).join('')}
+        </div>
+        ${(user.bank_holder||user.bank_name) ? `
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:.625rem;background:#eff6ff;border:1px solid #bfdbfe;border-radius:10px;padding:.875rem;margin-bottom:.75rem;font-size:.8rem">
+          <div style="grid-column:1/-1;font-size:.6rem;font-weight:700;color:#1e40af;text-transform:uppercase;margin-bottom:.1rem">🏦 Bank Details</div>
+          ${[['Holder',user.bank_holder],['Bank',user.bank_name],['IFSC',user.bank_ifsc],
+             ['Acct No',user.bank_account||null]
+            ].map(([l,v])=>v?`<div><div style="font-size:.6rem;text-transform:uppercase;font-weight:700;color:#3b82f6;margin-bottom:2px">${l}</div><div style="font-weight:700;color:#1e3a8a">${escHtml(String(v))}</div></div>`:'').filter(Boolean).join('')}
+        </div>` : ''}
+        <!-- Site-wise summary -->
+        ${(()=>{
+          const siteData = {};
+          expenses.forEach(e => {
+            if (totalsExcludedStatuses().includes(e.status)) return;
+            const site = extractSite(e) || user.site_name || 'Unassigned';
+            const amt  = e.approved_amount != null ? +e.approved_amount : +e.amount;
+            if (!siteData[site]) siteData[site] = { total: 0, days: new Set(), count: 0 };
+            siteData[site].total += amt;
+            siteData[site].days.add(new Date(e.created_at).toDateString());
+            siteData[site].count++;
+          });
+          const sites = Object.entries(siteData).sort(([a],[b]) => a.localeCompare(b));
+          if (!sites.length) return '';
+          const overallTotal = sites.reduce((s,[,d]) => s + d.total, 0);
+          return `
+          <div style="border:1px solid #e0e7ff;border-radius:10px;overflow:hidden;margin-bottom:.75rem">
+            <div style="background:linear-gradient(135deg,#4f46e5,#7c3aed);padding:.6rem 1rem;display:flex;justify-content:space-between;align-items:center">
+              <span style="color:#fff;font-weight:700;font-size:.8rem">📍 Site-wise Summary</span>
+              <span style="color:rgba(255,255,255,.85);font-size:.75rem;font-weight:600">Overall: ${formatCurrency(overallTotal)}</span>
+            </div>
+            <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:.5rem;padding:.75rem;background:#f5f3ff">
+              ${sites.map(([site, d]) => `
+              <div style="background:#fff;border:1px solid #c4b5fd;border-radius:8px;padding:.6rem .75rem">
+                <div style="font-size:.72rem;font-weight:700;color:#5b21b6;margin-bottom:.25rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${escHtml(site)}">📍 ${escHtml(site)}</div>
+                <div style="font-size:1rem;font-weight:800;color:#4f46e5">${formatCurrency(d.total)}</div>
+                <div style="font-size:.65rem;color:#7c3aed;margin-top:.15rem">${d.count} entries · ${d.days.size} day${d.days.size!==1?'s':''}</div>
+              </div>`).join('')}
+            </div>
+          </div>`;
+        })()}
+        ` : ''}
+        <!-- Cycle groups -->
+        ${sorted.map(g => {
+          const safeKey = `${user.id}|${g.mY}|${g.cT}`;
+          const cycId = safeKey.replace(/[^a-zA-Z0-9]/g, '_');
+          const cycOpen = hierExpanded.cycles.has(cycId);
+          const gTotal = g.entries.reduce((s,e)=>{
+            if(totalsExcludedStatuses().includes(e.status)) return s;
+            return s+(e.approved_amount!=null?+e.approved_amount:+e.amount);
+          },0);
+          const gPaid = cyclePaidFor(user.id, g.mY, g.cT);
+          const gPend = gTotal - gPaid;
+          // The full entry table is the expensive part to build (per-row: category
+          // pill, description parsing, status badge, receipt links, several
+          // conditional action buttons) — buildCycleEntryTable is only ever called
+          // lazily (see hierCycleBodyMap / hierToggleCycle), never unconditionally.
+          const buildCycleBody = () => buildCycleEntryTable(g);
           hierCycleBodyMap[cycId] = buildCycleBody;
           return `
           <div data-cyc-card style="border:1px solid var(--border);border-radius:10px;overflow:hidden;margin-bottom:.625rem;background:var(--card-bg,#fff)">
