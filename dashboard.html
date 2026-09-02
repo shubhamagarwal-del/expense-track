@@ -1208,14 +1208,39 @@
     // maps above, which reset every render) — re-expanding the same employee later
     // in the session reuses this instead of rebuilding, as long as their own data
     // hasn't changed. Invalidated automatically via a cheap per-employee fingerprint
-    // (count + id:status pairs) rather than needing an actual page refresh.
+    // (count + id:status pairs). Persisted to sessionStorage so it also survives an
+    // in-app navigation (clicking "Dashboard", etc. — a real page reload just like
+    // a manual refresh, browser-side) — restored on boot UNLESS the Navigation
+    // Timing API reports this exact load as a genuine manual refresh, which is the
+    // one case meant to start clean.
+    const HIER_EMP_CACHE_KEY = '_hierEmpDetailCache_v1';
+    const HIER_EMP_CACHE_MAX = 25; // cap how many employees' HTML we persist
     let _hierEmpDetailCache = {};
+    (function restoreHierEmpDetailCache() {
+      try {
+        const navType = performance.getEntriesByType('navigation')[0]?.type;
+        if (navType === 'reload') { sessionStorage.removeItem(HIER_EMP_CACHE_KEY); return; }
+        const raw = sessionStorage.getItem(HIER_EMP_CACHE_KEY);
+        if (raw) _hierEmpDetailCache = JSON.parse(raw);
+      } catch (_) { /* corrupt/unavailable storage — just start empty */ }
+    })();
+    function _persistHierEmpDetailCache() {
+      try {
+        const keys = Object.keys(_hierEmpDetailCache);
+        if (keys.length > HIER_EMP_CACHE_MAX) {
+          keys.slice(0, keys.length - HIER_EMP_CACHE_MAX).forEach(k => delete _hierEmpDetailCache[k]);
+        }
+        sessionStorage.setItem(HIER_EMP_CACHE_KEY, JSON.stringify(_hierEmpDetailCache));
+      } catch (_) { /* quota exceeded or storage unavailable — cache still works in-memory this session */ }
+    }
     function getCachedEmpDetail(eId, user, exps, lms) {
       const fp = exps.length + '|' + exps.map(e => e.id + ':' + e.status).join(',');
       const cached = _hierEmpDetailCache[eId];
       if (cached && cached.fp === fp) return cached.html;
       const html = renderHierEmpDetail(user, exps, lms);
+      delete _hierEmpDetailCache[eId]; // re-insert at the end so eviction above is oldest-first
       _hierEmpDetailCache[eId] = { fp, html };
+      _persistHierEmpDetailCache();
       return html;
     }
 
